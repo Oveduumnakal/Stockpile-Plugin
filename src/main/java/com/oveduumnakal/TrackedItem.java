@@ -48,6 +48,9 @@ public class TrackedItem
 	private long prevAvgPrice;
 	private boolean hasDeltas;
 
+	private long costBasis;
+	private boolean costBasisInitialized;
+
 	public long getHighValue()
 	{
 		return (long) quantity * highPrice;
@@ -66,5 +69,10 @@ public class TrackedItem
 	public boolean hasPrices()
 	{
 		return highPrice > 0 || lowPrice > 0;
+	}
+
+	public long getProfit()
+	{
+		return getAvgValue() - costBasis;
 	}
 }

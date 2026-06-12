@@ -101,6 +101,9 @@ public class ItemTrackerPanel extends PluginPanel
 	private final JLabel coinsIcon;
 	private long lastCoinsIconValue = -1;
 
+	private final JLabel profitLabel;
+	private final JPanel profitSection;
+
 	private static final class PulseEntry
 	{
 		final JLabel label;
@@ -246,11 +249,39 @@ public class ItemTrackerPanel extends PluginPanel
 		lastRefreshLabel.setFont(lastRefreshLabel.getFont().deriveFont(Font.ITALIC, 10f));
 		lastRefreshLabel.setBorder(new EmptyBorder(4, 0, 0, 0));
 
+		JLabel profitTitle = new JLabel("Profit", SwingConstants.CENTER);
+		profitTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		profitTitle.setFont(profitTitle.getFont().deriveFont(Font.BOLD, 12f));
+		profitTitle.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createCompoundBorder(
+				new EmptyBorder(10, 0, 0, 0),
+				new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
+			),
+			new EmptyBorder(10, 0, 6, 0)
+		));
+
+		profitLabel = new JLabel("—", SwingConstants.CENTER);
+		profitLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		profitLabel.setFont(profitLabel.getFont().deriveFont(Font.BOLD, 13f));
+
+		profitSection = new JPanel();
+		profitSection.setLayout(new BoxLayout(profitSection, BoxLayout.Y_AXIS));
+		profitSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		profitSection.add(profitTitle);
+		profitSection.add(profitLabel);
+		profitSection.setVisible(false);
+
 		JPanel bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		bottomPanel.add(totalsTitle, BorderLayout.NORTH);
 		bottomPanel.add(totalsPanel, BorderLayout.CENTER);
-		bottomPanel.add(lastRefreshLabel, BorderLayout.SOUTH);
+
+		JPanel belowTotals = new JPanel();
+		belowTotals.setLayout(new BoxLayout(belowTotals, BoxLayout.Y_AXIS));
+		belowTotals.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		belowTotals.add(lastRefreshLabel);
+		belowTotals.add(profitSection);
+		bottomPanel.add(belowTotals, BorderLayout.SOUTH);
 
 		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
@@ -494,6 +525,8 @@ public class ItemTrackerPanel extends PluginPanel
 			trackedItemsPanel.removeAll();
 
 			long totalHigh = 0, totalLow = 0, totalAvg = 0;
+			long totalCostBasis = 0;
+			boolean anyProfitData = false;
 			long prevPriceTotalHigh = 0, prevPriceTotalLow = 0, prevPriceTotalAvg = 0;
 			boolean anyDeltas = false;
 			ValueFormat itemFmt = itemValueFormatSupplier.get();
@@ -519,6 +552,11 @@ public class ItemTrackerPanel extends PluginPanel
 					totalHigh += item.getHighValue();
 					totalLow  += item.getLowValue();
 					totalAvg  += item.getAvgValue();
+					if (item.isCostBasisInitialized())
+					{
+						totalCostBasis += item.getCostBasis();
+						anyProfitData = true;
+					}
 					if (item.isHasDeltas())
 					{
 						anyDeltas = true;
@@ -557,6 +595,19 @@ public class ItemTrackerPanel extends PluginPanel
 				pulseIfShown(totalHighDeltaLabel, Long.compare(totalHigh, prevPriceTotalHigh), indicatorMode);
 				pulseIfShown(totalLowDeltaLabel,  Long.compare(totalLow,  prevPriceTotalLow),  indicatorMode);
 				pulseIfShown(totalAvgDeltaLabel,  Long.compare(totalAvg,  prevPriceTotalAvg),  indicatorMode);
+			}
+
+			if (anyProfitData && hasPrices)
+			{
+				long profit = totalAvg - totalCostBasis;
+				String sign = profit >= 0 ? "+" : "";
+				profitLabel.setText(sign + formatGp(profit, totalFmt));
+				profitLabel.setForeground(profit >= 0 ? COLOR_HIGH : COLOR_LOW);
+				profitSection.setVisible(true);
+			}
+			else
+			{
+				profitSection.setVisible(false);
 			}
 
 			trackedItemsPanel.revalidate();

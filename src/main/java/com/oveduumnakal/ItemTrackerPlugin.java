@@ -256,7 +256,8 @@ public class ItemTrackerPlugin extends Plugin
 				String[] fields = part.split(":");
 				int itemId = Integer.parseInt(fields[0].trim());
 				int quantity = fields.length > 1 ? Integer.parseInt(fields[1].trim()) : 0;
-				addTrackedItem(itemId, quantity);
+				long costBasis = fields.length > 2 ? Long.parseLong(fields[2].trim()) : -1;
+				addTrackedItem(itemId, quantity, costBasis);
 			}
 			catch (NumberFormatException e)
 			{
@@ -268,7 +269,7 @@ public class ItemTrackerPlugin extends Plugin
 	private void persistTrackedItems()
 	{
 		String ids = trackedItems.values().stream()
-				.map(item -> item.getItemId() + ":" + item.getQuantity())
+				.map(item -> item.getItemId() + ":" + item.getQuantity() + ":" + item.getCostBasis())
 				.collect(Collectors.joining(","));
 		configManager.setRSProfileConfiguration(
 				ItemTrackerConfig.GROUP, ItemTrackerConfig.KEY_TRACKED_ITEMS, ids);
@@ -276,10 +277,16 @@ public class ItemTrackerPlugin extends Plugin
 
 	private void addTrackedItem(int itemId)
 	{
-		addTrackedItem(itemId, 0);
+		addTrackedItem(itemId, 0, -1);
 	}
 
 	private void addTrackedItem(int itemId, int initialQuantity)
+	{
+		addTrackedItem(itemId, initialQuantity, -1);
+	}
+
+	// costBasis of -1 means uninitialized; it will be set on first price load.
+	private void addTrackedItem(int itemId, int initialQuantity, long costBasis)
 	{
 		clientThread.invokeLater(() ->
 		{
@@ -292,6 +299,11 @@ public class ItemTrackerPlugin extends Plugin
 			TrackedItem tracked = new TrackedItem(itemId, composition.getName());
 			tracked.setTradeable(composition.isTradeable());
 			tracked.setQuantity(initialQuantity);
+			if (costBasis >= 0)
+			{
+				tracked.setCostBasis(costBasis);
+				tracked.setCostBasisInitialized(true);
+			}
 			trackedItems.put(itemId, tracked);
 
 			syncQuantitiesForItem(tracked);
@@ -344,6 +356,13 @@ public class ItemTrackerPlugin extends Plugin
 				item.setLowPrice(prices.getLow());
 				item.setAvgPrice(prices.avg());
 				item.setPriceLoadFailed(false);
+
+				if (!item.isCostBasisInitialized())
+				{
+					item.setCostBasis((long) item.getQuantity() * prices.avg());
+					item.setCostBasisInitialized(true);
+					persistTrackedItems();
+				}
 			}
 			else if (!item.hasPrices() && item.isTradeable())
 			{
@@ -583,12 +602,27 @@ public class ItemTrackerPlugin extends Plugin
 	{
 		for (TrackedItem tracked : trackedItems.values())
 		{
-			int total = runePouchCounts.getOrDefault(tracked.getItemId(), 0);
+			int newQty = runePouchCounts.getOrDefault(tracked.getItemId(), 0);
 			for (Map<Integer, Integer> c : containerCounts.values())
 			{
-				total += c.getOrDefault(tracked.getItemId(), 0);
+				newQty += c.getOrDefault(tracked.getItemId(), 0);
 			}
-			tracked.setQuantity(total);
+
+			if (tracked.isCostBasisInitialized() && tracked.hasPrices())
+			{
+				int prevQty = tracked.getQuantity();
+				int delta = newQty - prevQty;
+				if (delta > 0)
+				{
+					tracked.setCostBasis(tracked.getCostBasis() + (long) delta * tracked.getAvgPrice());
+				}
+				else if (delta < 0 && prevQty > 0)
+				{
+					tracked.setCostBasis(newQty == 0 ? 0 : tracked.getCostBasis() * newQty / prevQty);
+				}
+			}
+
+			tracked.setQuantity(newQty);
 		}
 		persistTrackedItems();
 	}
