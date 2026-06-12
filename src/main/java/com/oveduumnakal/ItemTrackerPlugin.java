@@ -178,7 +178,8 @@ public class ItemTrackerPlugin extends Plugin
 				config::itemValueFormat,
 				config::totalValueFormat,
 				config::priceDisplay,
-				config::geRefreshRate
+				config::geRefreshRate,
+				config::trackProfit
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
@@ -393,6 +394,7 @@ public class ItemTrackerPlugin extends Plugin
 			case ItemTrackerConfig.KEY_ITEM_VALUE_FORMAT:
 			case ItemTrackerConfig.KEY_TOTAL_VALUE_FORMAT:
 			case ItemTrackerConfig.KEY_PRICE_DISPLAY:
+			case ItemTrackerConfig.KEY_TRACK_PROFIT:
 				refreshPanel();
 				break;
 			case ItemTrackerConfig.KEY_GE_REFRESH_RATE:

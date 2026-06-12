@@ -44,6 +44,7 @@ public interface ItemTrackerConfig extends Config
 	String KEY_TOTAL_VALUE_FORMAT = "totalValueFormat";
 	String KEY_NOTIFY_ON_VALUE_THRESHOLD = "notifyOnValueThreshold";
 	String KEY_VALUE_THRESHOLD = "valueThreshold";
+	String KEY_TRACK_PROFIT = "trackProfit";
 
 	@ConfigSection(
 			name = "Prices",
@@ -67,16 +68,23 @@ public interface ItemTrackerConfig extends Config
 	String notificationsSection = "notifications";
 
 	@ConfigSection(
+			name = "Profit Tracking",
+			description = "Profit tracking settings",
+			position = 3
+	)
+	String profitTrackingSection = "profitTracking";
+
+	@ConfigSection(
 			name = "Highlighting",
 			description = "Tracked item highlighting settings",
-			position = 3
+			position = 4
 	)
 	String highlightingSection = "highlighting";
 
 	@ConfigSection(
 			name = "Miscellaneous",
 			description = "Miscellaneous settings",
-			position = 4
+			position = 5
 	)
 	String miscellaneousSection = "miscellaneous";
 
@@ -152,6 +160,18 @@ public interface ItemTrackerConfig extends Config
 	default int valueThreshold()
 	{
 		return 0;
+	}
+
+	@ConfigItem(
+			keyName = KEY_TRACK_PROFIT,
+			name = "Track Profit",
+			description = "Show a profit section below the GE value totals based on item prices at the time they were acquired",
+			section = profitTrackingSection,
+			position = 0
+	)
+	default boolean trackProfit()
+	{
+		return true;
 	}
 
 	@ConfigItem(

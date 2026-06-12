@@ -66,6 +66,7 @@ public class ItemTrackerPanel extends PluginPanel
 	private final Supplier<ValueFormat> totalValueFormatSupplier;
 	private final Supplier<PriceDisplay> priceDisplaySupplier;
 	private final Supplier<Integer> refreshRateSupplier;
+	private final Supplier<Boolean> trackProfitSupplier;
 
 	private final IconTextField searchField;
 	private final JPanel searchResultsPanel;
@@ -125,7 +126,8 @@ public class ItemTrackerPanel extends PluginPanel
 			Supplier<ValueFormat> itemValueFormatSupplier,
 			Supplier<ValueFormat> totalValueFormatSupplier,
 			Supplier<PriceDisplay> priceDisplaySupplier,
-			Supplier<Integer> refreshRateSupplier)
+			Supplier<Integer> refreshRateSupplier,
+			Supplier<Boolean> trackProfitSupplier)
 	{
 		this.itemManager = itemManager;
 		this.onAddItem = onAddItem;
@@ -134,6 +136,7 @@ public class ItemTrackerPanel extends PluginPanel
 		this.totalValueFormatSupplier = totalValueFormatSupplier;
 		this.priceDisplaySupplier = priceDisplaySupplier;
 		this.refreshRateSupplier = refreshRateSupplier;
+		this.trackProfitSupplier = trackProfitSupplier;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -597,7 +600,7 @@ public class ItemTrackerPanel extends PluginPanel
 				pulseIfShown(totalAvgDeltaLabel,  Long.compare(totalAvg,  prevPriceTotalAvg),  indicatorMode);
 			}
 
-			if (anyProfitData && hasPrices)
+			if (anyProfitData && hasPrices && trackProfitSupplier.get())
 			{
 				long profit = totalAvg - totalCostBasis;
 				String sign = profit >= 0 ? "+" : "";
