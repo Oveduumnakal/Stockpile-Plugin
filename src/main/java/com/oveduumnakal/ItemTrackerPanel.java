@@ -27,8 +27,10 @@ package com.oveduumnakal;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.IconTextField;
+import net.runelite.client.ui.components.PluginErrorPanel;
 import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.http.api.item.ItemPrice;
 
@@ -223,7 +225,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		JLabel title = new JLabel("Item Tracker");
 		title.setForeground(Color.WHITE);
-		title.setFont(title.getFont().deriveFont(Font.BOLD, 16f));
+		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setBorder(new EmptyBorder(0, 0, 4, 0));
 
 		searchResultsPanel = new JPanel();
@@ -251,7 +253,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		JLabel trackedLabel = new JLabel("Tracked Items", SwingConstants.CENTER);
 		trackedLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		trackedLabel.setFont(trackedLabel.getFont().deriveFont(Font.BOLD, 12f));
+		trackedLabel.setFont(FontManager.getRunescapeBoldFont());
 		trackedLabel.setBorder(new EmptyBorder(6, 0, 4, 0));
 
 		JPanel trackedLabelWrapper = new JPanel(new BorderLayout());
@@ -270,7 +272,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		JLabel totalsTitle = new JLabel("Estimated GE Sell Value", SwingConstants.CENTER);
 		totalsTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		totalsTitle.setFont(totalsTitle.getFont().deriveFont(Font.BOLD, 12f));
+		totalsTitle.setFont(FontManager.getRunescapeBoldFont());
 		totalsTitle.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createCompoundBorder(
 				new EmptyBorder(10, 0, 0, 0),
@@ -285,15 +287,15 @@ public class ItemTrackerPanel extends PluginPanel
 
 		totalHighLabel = new JLabel("High:  —");
 		totalHighLabel.setForeground(COLOR_HIGH);
-		totalHighLabel.setFont(totalHighLabel.getFont().deriveFont(Font.BOLD, 11f));
+		totalHighLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		totalLowLabel = new JLabel("Low:   —");
 		totalLowLabel.setForeground(COLOR_LOW);
-		totalLowLabel.setFont(totalLowLabel.getFont().deriveFont(Font.BOLD, 11f));
+		totalLowLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		totalAvgLabel = new JLabel("Avg:   —");
 		totalAvgLabel.setForeground(COLOR_AVG);
-		totalAvgLabel.setFont(totalAvgLabel.getFont().deriveFont(Font.BOLD, 11f));
+		totalAvgLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		totalHighDeltaLabel = createDeltaLabel();
 		totalLowDeltaLabel = createDeltaLabel();
@@ -328,30 +330,34 @@ public class ItemTrackerPanel extends PluginPanel
 
 		lastRefreshLabel = new JLabel("Prices not yet loaded");
 		lastRefreshLabel.setForeground(new Color(150, 150, 150));
-		lastRefreshLabel.setFont(lastRefreshLabel.getFont().deriveFont(Font.ITALIC, 10f));
+		lastRefreshLabel.setFont(FontManager.getRunescapeSmallFont());
 		lastRefreshLabel.setBorder(new EmptyBorder(4, 0, 0, 0));
 
-		JLabel profitTitle = new JLabel("Profit", SwingConstants.CENTER);
-		profitTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		profitTitle.setFont(profitTitle.getFont().deriveFont(Font.BOLD, 12f));
-		profitTitle.setBorder(BorderFactory.createCompoundBorder(
+		JLabel profitPrefixLabel = new JLabel("Est. Profit:");
+		profitPrefixLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		profitPrefixLabel.setFont(FontManager.getRunescapeSmallFont());
+
+		profitLabel = new JLabel("—");
+		profitLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		profitLabel.setFont(FontManager.getRunescapeSmallFont());
+
+		JPanel profitRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+		profitRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		profitRow.add(profitPrefixLabel);
+		profitRow.add(profitLabel);
+
+		profitSection = new JPanel(new BorderLayout());
+		profitSection.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		profitSection.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createCompoundBorder(
-				new EmptyBorder(10, 0, 0, 0),
+				new EmptyBorder(4, 0, 0, 0),
 				new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
 			),
-			new EmptyBorder(10, 0, 6, 0)
+			new EmptyBorder(4, 0, 0, 0)
 		));
-
-		profitLabel = new JLabel("—", SwingConstants.CENTER);
-		profitLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		profitLabel.setFont(profitLabel.getFont().deriveFont(Font.BOLD, 13f));
-
-		profitSection = new JPanel();
-		profitSection.setLayout(new BoxLayout(profitSection, BoxLayout.Y_AXIS));
-		profitSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		profitSection.add(profitTitle);
-		profitSection.add(profitLabel);
+		profitSection.add(profitRow, BorderLayout.CENTER);
 		profitSection.setVisible(false);
+		totalsRows.add(profitSection);
 
 		bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -363,7 +369,6 @@ public class ItemTrackerPanel extends PluginPanel
 		belowTotals.setLayout(new BoxLayout(belowTotals, BoxLayout.Y_AXIS));
 		belowTotals.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		belowTotals.add(lastRefreshLabel);
-		belowTotals.add(profitSection);
 		bottomPanel.add(belowTotals, BorderLayout.SOUTH);
 
 		JPanel topPanel = new JPanel();
@@ -449,7 +454,7 @@ public class ItemTrackerPanel extends PluginPanel
 	private JLabel createDeltaLabel()
 	{
 		JLabel label = new JLabel();
-		label.setFont(label.getFont().deriveFont(Font.BOLD, 10f));
+		label.setFont(FontManager.getRunescapeBoldFont());
 		label.setPreferredSize(DELTA_LABEL_SIZE);
 		label.setHorizontalAlignment(SwingConstants.CENTER);
 		return label;
@@ -570,7 +575,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		JLabel nameLabel = new JLabel(itemName);
 		nameLabel.setForeground(Color.WHITE);
-		nameLabel.setFont(nameLabel.getFont().deriveFont(11f));
+		nameLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JButton addBtn = new JButton("+");
 		addBtn.setPreferredSize(new Dimension(28, 22));
@@ -652,14 +657,12 @@ public class ItemTrackerPanel extends PluginPanel
 
 			if (items.isEmpty())
 			{
-				JLabel empty = new JLabel("No items tracked. Search above to add one.", SwingConstants.CENTER);
-				empty.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-				empty.setFont(empty.getFont().deriveFont(Font.ITALIC, 11f));
-				empty.setBorder(new EmptyBorder(8, 0, 0, 0));
+				PluginErrorPanel errorPanel = new PluginErrorPanel();
+				errorPanel.setContent("No items tracked", "Search above to add an item to track.");
 
 				JPanel emptyWrapper = new JPanel(new BorderLayout());
 				emptyWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
-				emptyWrapper.add(empty, BorderLayout.CENTER);
+				emptyWrapper.add(errorPanel, BorderLayout.CENTER);
 				trackedItemsPanel.add(emptyWrapper);
 			}
 			else
@@ -717,9 +720,9 @@ public class ItemTrackerPanel extends PluginPanel
 			if (anyProfitData && hasPrices && trackProfitSupplier.get())
 			{
 				long profit = totalAvg - totalCostBasis;
-				String sign = profit >= 0 ? "+" : "";
+				String sign = profit > 0 ? "+" : "";
 				profitLabel.setText(sign + formatGp(profit, totalFmt));
-				profitLabel.setForeground(profit >= 0 ? COLOR_HIGH : COLOR_LOW);
+				profitLabel.setForeground(profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW));
 				profitSection.setVisible(true);
 			}
 			else
@@ -761,7 +764,7 @@ public class ItemTrackerPanel extends PluginPanel
 		removeBtn.setMargin(new Insets(0, 0, 0, 0));
 		removeBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		removeBtn.setForeground(hovered ? REMOVE_COLOR : REMOVE_HIDDEN);
-		removeBtn.setFont(removeBtn.getFont().deriveFont(removeBtn.getFont().getSize() * 2f / 3f));
+		removeBtn.setFont(FontManager.getRunescapeSmallFont());
 		removeBtn.setFocusPainted(false);
 		removeBtn.setBorderPainted(false);
 		removeBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -779,11 +782,11 @@ public class ItemTrackerPanel extends PluginPanel
 
 		JLabel nameLabel = new JLabel(item.getName());
 		nameLabel.setForeground(Color.WHITE);
-		nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 11f));
+		nameLabel.setFont(FontManager.getRunescapeBoldFont());
 
 		JLabel qtyLabel = new JLabel("Qty: " + NUMBER_FORMAT.format(item.getQuantity()));
 		qtyLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		qtyLabel.setFont(qtyLabel.getFont().deriveFont(11f));
+		qtyLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JPanel nameRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
 		nameRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -815,7 +818,7 @@ public class ItemTrackerPanel extends PluginPanel
 				loading.setForeground(LOADING_COLOR);
 				loadingLabels.add(loading);
 			}
-			loading.setFont(loading.getFont().deriveFont(Font.ITALIC, 10f));
+			loading.setFont(FontManager.getRunescapeSmallFont());
 
 			JPanel loadingRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
 			loadingRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -842,14 +845,14 @@ public class ItemTrackerPanel extends PluginPanel
 						? "High (ea): " + formatGp(item.getHighPrice(), fmt)
 						: "High: " + formatGp(item.getHighValue(), fmt));
 				highLabel.setForeground(COLOR_HIGH);
-				highLabel.setFont(highLabel.getFont().deriveFont(11f));
+				highLabel.setFont(FontManager.getRunescapeSmallFont());
 				addPriceRow(pricesPanel, gridy++, highLabel, itemIndicatorMode, item.getHighDelta());
 
 				lowLabel = new JLabel(hovered
 						? "Low (ea): " + formatGp(item.getLowPrice(), fmt)
 						: "Low: " + formatGp(item.getLowValue(), fmt));
 				lowLabel.setForeground(COLOR_LOW);
-				lowLabel.setFont(lowLabel.getFont().deriveFont(11f));
+				lowLabel.setFont(FontManager.getRunescapeSmallFont());
 				addPriceRow(pricesPanel, gridy++, lowLabel, itemIndicatorMode, item.getLowDelta());
 			}
 			else
@@ -865,7 +868,7 @@ public class ItemTrackerPanel extends PluginPanel
 						? avgLabelText + " (ea): " + formatGp(item.getAvgPrice(), fmt)
 						: avgLabelText + ": " + formatGp(item.getAvgValue(), fmt));
 				avgLabel.setForeground(COLOR_AVG);
-				avgLabel.setFont(avgLabel.getFont().deriveFont(11f));
+				avgLabel.setFont(FontManager.getRunescapeSmallFont());
 				addPriceRow(pricesPanel, gridy, avgLabel, itemIndicatorMode, item.getAvgDelta());
 			}
 			else
@@ -993,9 +996,9 @@ public class ItemTrackerPanel extends PluginPanel
 
 		detailIconLabel.setPreferredSize(new Dimension(32, 32));
 		detailNameLabel.setForeground(Color.WHITE);
-		detailNameLabel.setFont(detailNameLabel.getFont().deriveFont(Font.BOLD, 13f));
+		detailNameLabel.setFont(FontManager.getRunescapeBoldFont());
 		detailQtyLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		detailQtyLabel.setFont(detailQtyLabel.getFont().deriveFont(13f));
+		detailQtyLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JPanel titleRow = new JPanel()
 		{
@@ -1197,11 +1200,11 @@ public class ItemTrackerPanel extends PluginPanel
 		block.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		highLabel.setForeground(COLOR_HIGH);
-		highLabel.setFont(highLabel.getFont().deriveFont(Font.BOLD, 11f));
+		highLabel.setFont(FontManager.getRunescapeSmallFont());
 		lowLabel.setForeground(COLOR_LOW);
-		lowLabel.setFont(lowLabel.getFont().deriveFont(Font.BOLD, 11f));
+		lowLabel.setFont(FontManager.getRunescapeSmallFont());
 		avgLabel.setForeground(COLOR_AVG);
-		avgLabel.setFont(avgLabel.getFont().deriveFont(Font.BOLD, 11f));
+		avgLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JPanel highRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
 		highRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -1261,7 +1264,7 @@ public class ItemTrackerPanel extends PluginPanel
 			}
 		};
 		title.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
+		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		if (withDivider)
 		{
