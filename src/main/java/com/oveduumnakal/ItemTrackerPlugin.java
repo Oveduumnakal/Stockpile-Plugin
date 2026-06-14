@@ -558,6 +558,7 @@ public class ItemTrackerPlugin extends Plugin
 		boolean firstSync = seenContainersSinceLogin.add(containerId);
 
 		Map<Integer, Integer> counts = containerCounts.computeIfAbsent(containerId, k -> new HashMap<>());
+		Map<Integer, Integer> prevCounts = new HashMap<>(counts);
 		counts.clear();
 		ItemContainer container = event.getItemContainer();
 		if (container != null)
@@ -571,7 +572,7 @@ public class ItemTrackerPlugin extends Plugin
 			}
 		}
 
-		recomputeAllQuantities(firstSync);
+		applySourceDelta(prevCounts, counts, firstSync);
 		refreshPanel();
 	}
 
@@ -648,10 +649,11 @@ public class ItemTrackerPlugin extends Plugin
 	{
 		if (RUNE_POUCH_VARBITS.contains(event.getVarbitId()))
 		{
+			Map<Integer, Integer> prevPouch = new HashMap<>(runePouchCounts);
 			syncRunePouch();
 			boolean firstSync = !runePouchSeenSinceLogin;
 			runePouchSeenSinceLogin = true;
-			recomputeAllQuantities(firstSync);
+			applySourceDelta(prevPouch, runePouchCounts, firstSync);
 			refreshPanel();
 		}
 	}
@@ -694,46 +696,35 @@ public class ItemTrackerPlugin extends Plugin
 		}
 	}
 
-	private void recomputeAllQuantities()
+	private void applySourceDelta(Map<Integer, Integer> prevCounts, Map<Integer, Integer> newCounts, boolean firstSync)
 	{
-		recomputeAllQuantities(false);
-	}
-
-	private void recomputeAllQuantities(boolean skipAcquisitionDelta)
-	{
+		long now = System.currentTimeMillis();
 		for (TrackedItem tracked : trackedItems.values())
 		{
-			int newQty = runePouchCounts.getOrDefault(tracked.getItemId(), 0);
-			for (Map<Integer, Integer> c : containerCounts.values())
-			{
-				newQty += c.getOrDefault(tracked.getItemId(), 0);
-			}
+			int itemId = tracked.getItemId();
+			int oldC = prevCounts.getOrDefault(itemId, 0);
+			int newC = newCounts.getOrDefault(itemId, 0);
+			int delta = newC - oldC;
 
-			if (skipAcquisitionDelta)
+			if (firstSync || delta == 0)
 			{
-				if (newQty > tracked.getQuantity())
-				{
-					tracked.setQuantity(newQty);
-				}
 				continue;
 			}
 
 			if (tracked.isCostBasisInitialized() && tracked.hasPrices())
 			{
-				int prevQty = tracked.getQuantity();
-				int delta = newQty - prevQty;
 				if (delta > 0)
 				{
 					tracked.getAcquisitions().add(new AcquisitionRecord(
-							delta, tracked.getAvgPrice(), System.currentTimeMillis()));
+							delta, tracked.getAvgPrice(), now));
 				}
-				else if (delta < 0)
+				else
 				{
 					consumeFifo(tracked, -delta);
 				}
 			}
 
-			tracked.setQuantity(newQty);
+			tracked.setQuantity(tracked.getQuantity() + delta);
 		}
 		persistTrackedItems();
 	}
