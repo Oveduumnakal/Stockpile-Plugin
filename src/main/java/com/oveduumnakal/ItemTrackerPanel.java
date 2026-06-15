@@ -45,6 +45,8 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
@@ -151,6 +153,7 @@ public class ItemTrackerPanel extends PluginPanel
 	private final JLabel totalAvgDeltaLabel;
 	private final JLabel coinsIcon;
 	private long lastCoinsIconValue = -1;
+	private final Map<Integer, ImageIcon> coinsIconCache = new HashMap<>();
 
 	private final JLabel profitLabel;
 	private final JPanel profitSection;
@@ -412,7 +415,24 @@ public class ItemTrackerPanel extends PluginPanel
 			return;
 		}
 		lastCoinsIconValue = quantity;
-		itemManager.getImage(net.runelite.api.gameval.ItemID.COINS, quantity, false).addTo(coinsIcon);
+
+		ImageIcon cached = coinsIconCache.get(quantity);
+		if (cached != null)
+		{
+			coinsIcon.setIcon(cached);
+			return;
+		}
+
+		AsyncBufferedImage img = itemManager.getImage(net.runelite.api.gameval.ItemID.COINS, quantity, false);
+		img.onLoaded(() ->
+		{
+			ImageIcon icon = new ImageIcon(img);
+			coinsIconCache.put(quantity, icon);
+			if (quantity == lastCoinsIconValue)
+			{
+				coinsIcon.setIcon(icon);
+			}
+		});
 	}
 
 	private void equalizeTotalsLabelWidths()
@@ -1349,19 +1369,44 @@ public class ItemTrackerPanel extends PluginPanel
 		removeRowBtn.setFocusPainted(false);
 		removeRowBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		removeRowBtn.setEnabled(false);
-		removeRowBtn.addActionListener(e -> {
+
+		Runnable removeSelectedRows = () -> {
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null) return;
-			int row = acquisitionsTable.getSelectedRow();
-			if (row < 0 || row >= t.getAcquisitions().size()) return;
-			t.getAcquisitions().remove(row);
+			if (acquisitionsTable.isEditing())
+			{
+				acquisitionsTable.getCellEditor().stopCellEditing();
+			}
+			int[] selected = acquisitionsTable.getSelectedRows();
+			if (selected.length == 0) return;
+			List<AcquisitionRecord> records = t.getAcquisitions();
+			java.util.Arrays.sort(selected);
+			for (int i = selected.length - 1; i >= 0; i--)
+			{
+				int idx = selected[i];
+				if (idx >= 0 && idx < records.size())
+				{
+					records.remove(idx);
+				}
+			}
 			acquisitionsModel.fireTableDataChanged();
 			acquisitionsTable.revalidate();
 			onAcquisitionsEdited.accept(detailItemId);
-		});
-		acquisitionsTable.getSelectionModel().addListSelectionListener(e -> {
-			int row = acquisitionsTable.getSelectedRow();
-			removeRowBtn.setEnabled(row >= 0 && row < acquisitionsModel.getRowCount());
+		};
+
+		removeRowBtn.addActionListener(e -> removeSelectedRows.run());
+		acquisitionsTable.getSelectionModel().addListSelectionListener(e ->
+				removeRowBtn.setEnabled(acquisitionsTable.getSelectedRowCount() > 0));
+
+		acquisitionsTable.getInputMap(JComponent.WHEN_FOCUSED)
+				.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "deleteSelectedRows");
+		acquisitionsTable.getActionMap().put("deleteSelectedRows", new AbstractAction()
+		{
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				removeSelectedRows.run();
+			}
 		});
 
 		JButton cleanBtn = new JButton(buildBrushIcon());
@@ -1595,7 +1640,7 @@ public class ItemTrackerPanel extends PluginPanel
 		icon.addTo(detailIconLabel);
 		detailNameLabel.setText(item.getName());
 
-		int detailQty = item.getRecordQuantitySum();
+		int detailQty = item.getQuantity();
 		detailQtyLabel.setText("Qty: " + abbreviateQty(detailQty));
 		detailQtyLabel.setToolTipText(NUMBER_FORMAT.format(detailQty));
 

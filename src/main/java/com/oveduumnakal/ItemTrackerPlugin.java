@@ -164,6 +164,8 @@ public class ItemTrackerPlugin extends Plugin
 	private final Set<Integer> seenContainersSinceLogin = new HashSet<>();
 
 	private boolean runePouchSeenSinceLogin = false;
+	private boolean pendingQuantitySync = false;
+	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
 	private final Map<TileItem, Tile> groundItems = new HashMap<>();
 
@@ -448,10 +450,9 @@ public class ItemTrackerPlugin extends Plugin
 
 				if (!item.isCostBasisInitialized())
 				{
-					if (item.getQuantity() > 0)
+					if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
 					{
-						item.getAcquisitions().add(new AcquisitionRecord(
-								item.getQuantity(), prices.avg(), null));
+						addOpenAcquisition(item, item.getQuantity(), prices.avg());
 					}
 					item.setCostBasisInitialized(true);
 					persistTrackedItems();
@@ -586,9 +587,8 @@ public class ItemTrackerPlugin extends Plugin
 
 		boolean firstSync = seenContainersSinceLogin.add(containerId);
 
-		Map<Integer, Integer> counts = containerCounts.computeIfAbsent(containerId, k -> new HashMap<>());
-		Map<Integer, Integer> prevCounts = new HashMap<>(counts);
-		counts.clear();
+		Map<Integer, Integer> oldCounts = containerCounts.getOrDefault(containerId, Collections.emptyMap());
+		Map<Integer, Integer> newCounts = new HashMap<>();
 		ItemContainer container = event.getItemContainer();
 		if (container != null)
 		{
@@ -596,18 +596,44 @@ public class ItemTrackerPlugin extends Plugin
 			{
 				if (item.getId() > 0)
 				{
-					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					newCounts.merge(item.getId(), item.getQuantity(), Integer::sum);
 				}
 			}
 		}
 
-		applySourceDelta(prevCounts, counts, firstSync);
+		if (!firstSync)
+		{
+			Set<Integer> allIds = new HashSet<>(oldCounts.keySet());
+			allIds.addAll(newCounts.keySet());
+			for (int itemId : allIds)
+			{
+				int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
+				if (delta != 0)
+				{
+					pendingItemDeltas.merge(itemId, delta, Integer::sum);
+				}
+			}
+			pendingQuantitySync = true;
+		}
+
+		containerCounts.put(containerId, newCounts);
+
+		if (firstSync && containerId == InventoryID.BANK && config.autoUpdateQuantity())
+		{
+			reconcileAllQuantities();
+		}
 		refreshPanel();
 	}
 
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
+		if (pendingQuantitySync)
+		{
+			pendingQuantitySync = false;
+			syncQuantitiesFromContainers();
+		}
+
 		if (!config.highlightMode().ground() || client.isMenuOpen())
 		{
 			return;
@@ -665,6 +691,8 @@ public class ItemTrackerPlugin extends Plugin
 				runePouchCounts.clear();
 				seenContainersSinceLogin.clear();
 				runePouchSeenSinceLogin = false;
+				pendingQuantitySync = false;
+				pendingItemDeltas.clear();
 				loadPersistedItems();
 				refreshPanel();
 				break;
@@ -678,11 +706,24 @@ public class ItemTrackerPlugin extends Plugin
 	{
 		if (RUNE_POUCH_VARBITS.contains(event.getVarbitId()))
 		{
-			Map<Integer, Integer> prevPouch = new HashMap<>(runePouchCounts);
+			Map<Integer, Integer> oldPouch = new HashMap<>(runePouchCounts);
 			syncRunePouch();
 			boolean firstSync = !runePouchSeenSinceLogin;
 			runePouchSeenSinceLogin = true;
-			applySourceDelta(prevPouch, runePouchCounts, firstSync);
+			if (!firstSync)
+			{
+				Set<Integer> allIds = new HashSet<>(oldPouch.keySet());
+				allIds.addAll(runePouchCounts.keySet());
+				for (int itemId : allIds)
+				{
+					int delta = runePouchCounts.getOrDefault(itemId, 0) - oldPouch.getOrDefault(itemId, 0);
+					if (delta != 0)
+					{
+						pendingItemDeltas.merge(itemId, delta, Integer::sum);
+					}
+				}
+				pendingQuantitySync = true;
+			}
 			refreshPanel();
 		}
 	}
@@ -704,66 +745,216 @@ public class ItemTrackerPlugin extends Plugin
 		}
 	}
 
+	private void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt)
+	{
+		if (qty <= 0)
+		{
+			return;
+		}
+		List<AcquisitionRecord> records = tracked.getAcquisitions();
+
+		int undoBudget = qty;
+		java.util.Iterator<AcquisitionRecord> it = records.iterator();
+		while (it.hasNext() && undoBudget > 0)
+		{
+			AcquisitionRecord r = it.next();
+			Long sold = r.getSoldAt();
+			if (sold != null && r.getBoughtAt() == boughtAt && sold == boughtAt)
+			{
+				int undo = Math.min(r.getQuantity(), undoBudget);
+				r.setQuantity(r.getQuantity() - undo);
+				if (r.getQuantity() == 0)
+				{
+					it.remove();
+				}
+				undoBudget -= undo;
+			}
+		}
+
+		for (AcquisitionRecord r : records)
+		{
+			if (r.getSoldAt() == null && r.getBoughtAt() == boughtAt)
+			{
+				r.setQuantity(r.getQuantity() + qty);
+				return;
+			}
+		}
+		records.add(new AcquisitionRecord(qty, boughtAt, null));
+	}
+
+	private boolean mergeClosed(List<AcquisitionRecord> records, int qty, long boughtAt, long soldAtPrice)
+	{
+		for (AcquisitionRecord r : records)
+		{
+			Long sold = r.getSoldAt();
+			if (sold != null && r.getBoughtAt() == boughtAt && sold == soldAtPrice)
+			{
+				r.setQuantity(r.getQuantity() + qty);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private void closeFifo(TrackedItem tracked, int amount, long soldAtPrice)
 	{
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 		int remaining = amount;
-		for (int i = 0; i < records.size() && remaining > 0; i++)
+
+		java.util.Iterator<AcquisitionRecord> cancelIt = records.iterator();
+		while (cancelIt.hasNext() && remaining > 0)
+		{
+			AcquisitionRecord r = cancelIt.next();
+			if (r.getSoldAt() == null && r.getBoughtAt() == soldAtPrice)
+			{
+				int cancel = Math.min(r.getQuantity(), remaining);
+				r.setQuantity(r.getQuantity() - cancel);
+				if (r.getQuantity() == 0)
+				{
+					cancelIt.remove();
+				}
+				remaining -= cancel;
+			}
+		}
+
+		int i = 0;
+		while (i < records.size() && remaining > 0)
 		{
 			AcquisitionRecord r = records.get(i);
 			if (r.getSoldAt() != null)
 			{
+				i++;
 				continue;
 			}
 			if (r.getQuantity() <= remaining)
 			{
-				remaining -= r.getQuantity();
-				r.setSoldAt(soldAtPrice);
+				int closeQty = r.getQuantity();
+				remaining -= closeQty;
+				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
+				{
+					records.remove(i);
+				}
+				else
+				{
+					r.setSoldAt(soldAtPrice);
+					i++;
+				}
 			}
 			else
 			{
-				AcquisitionRecord closed = new AcquisitionRecord(remaining, r.getBoughtAt(), soldAtPrice);
-				r.setQuantity(r.getQuantity() - remaining);
-				records.add(i, closed);
+				int closeQty = remaining;
+				r.setQuantity(r.getQuantity() - closeQty);
 				remaining = 0;
+				if (!mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
+				{
+					records.add(i, new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice));
+				}
 			}
 		}
 	}
 
-	private void applySourceDelta(Map<Integer, Integer> prevCounts, Map<Integer, Integer> newCounts, boolean firstSync)
+	private void syncQuantitiesFromContainers()
 	{
-		if (!config.autoUpdateQuantity())
+		if (pendingItemDeltas.isEmpty())
 		{
 			return;
 		}
+		Map<Integer, Integer> deltas = new HashMap<>(pendingItemDeltas);
+		pendingItemDeltas.clear();
+		if (!config.autoUpdateQuantity() || trackedItems.isEmpty())
+		{
+			return;
+		}
+		boolean changed = false;
 		for (TrackedItem tracked : trackedItems.values())
 		{
-			int itemId = tracked.getItemId();
-			int oldC = prevCounts.getOrDefault(itemId, 0);
-			int newC = newCounts.getOrDefault(itemId, 0);
-			int delta = newC - oldC;
-
-			if (firstSync || delta == 0)
+			if (tracked.getMode() != TrackItemMode.TRACK)
 			{
 				continue;
 			}
-
-			if (tracked.isCostBasisInitialized() && tracked.hasPrices())
+			Integer delta = deltas.get(tracked.getItemId());
+			if (delta == null || delta == 0)
 			{
-				if (delta > 0)
+				continue;
+			}
+			if (delta > 0)
+			{
+				addOpenAcquisition(tracked, delta, tracked.getAvgPrice());
+			}
+			else
+			{
+				closeFifo(tracked, -delta, tracked.getAvgPrice());
+			}
+			tracked.setQuantity(tracked.getQuantity() + delta);
+			changed = true;
+		}
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
+	}
+
+	private void reconcileAllQuantities()
+	{
+		pendingItemDeltas.clear();
+		if (client.getGameState() != GameState.LOGGED_IN || trackedItems.isEmpty())
+		{
+			return;
+		}
+
+		for (int containerId : TRACKED_CONTAINERS)
+		{
+			ItemContainer container = client.getItemContainer(containerId);
+			if (container == null)
+			{
+				continue;
+			}
+			Map<Integer, Integer> counts = containerCounts.computeIfAbsent(containerId, k -> new HashMap<>());
+			counts.clear();
+			for (Item item : container.getItems())
+			{
+				if (item.getId() > 0)
 				{
-					tracked.getAcquisitions().add(new AcquisitionRecord(
-							delta, tracked.getAvgPrice(), null));
-				}
-				else
-				{
-					closeFifo(tracked, -delta, tracked.getAvgPrice());
+					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
 				}
 			}
-
-			tracked.setQuantity(tracked.getQuantity() + delta);
 		}
-		persistTrackedItems();
+		syncRunePouch();
+
+		boolean changed = false;
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getMode() != TrackItemMode.TRACK)
+			{
+				continue;
+			}
+			int total = runePouchCounts.getOrDefault(tracked.getItemId(), 0);
+			for (Map<Integer, Integer> c : containerCounts.values())
+			{
+				total += c.getOrDefault(tracked.getItemId(), 0);
+			}
+			int logDelta = total - tracked.getRecordQuantitySum();
+			if (logDelta > 0)
+			{
+				addOpenAcquisition(tracked, logDelta, tracked.getAvgPrice());
+				changed = true;
+			}
+			else if (logDelta < 0)
+			{
+				closeFifo(tracked, -logDelta, tracked.getAvgPrice());
+				changed = true;
+			}
+			if (tracked.getQuantity() != total)
+			{
+				tracked.setQuantity(total);
+				changed = true;
+			}
+		}
+		if (changed)
+		{
+			persistTrackedItems();
+		}
 	}
 
 	private void syncQuantitiesForItem(TrackedItem tracked)
@@ -817,6 +1008,7 @@ public class ItemTrackerPlugin extends Plugin
 				return;
 			}
 			tracked.setCostBasisInitialized(true);
+			tracked.setQuantity(tracked.getRecordQuantitySum());
 			persistTrackedItems();
 			refreshPanel();
 		});

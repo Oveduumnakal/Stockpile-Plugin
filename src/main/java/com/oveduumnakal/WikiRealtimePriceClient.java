@@ -218,18 +218,18 @@ public class WikiRealtimePriceClient
 			{
 				continue;
 			}
-			if (p.getAvgHighPrice() > 0)
+			long hv = p.getHighPriceVolume();
+			long lv = p.getLowPriceVolume();
+			if (p.getAvgHighPrice() > 0 && hv > 0)
 			{
 				highSum += p.getAvgHighPrice();
 				highCount++;
 			}
-			if (p.getAvgLowPrice() > 0)
+			if (p.getAvgLowPrice() > 0 && lv > 0)
 			{
 				lowSum += p.getAvgLowPrice();
 				lowCount++;
 			}
-			long hv = p.getHighPriceVolume();
-			long lv = p.getLowPriceVolume();
 			weightedSum += p.getAvgHighPrice() * hv + p.getAvgLowPrice() * lv;
 			totalVol += hv + lv;
 			volume += hv + lv;
