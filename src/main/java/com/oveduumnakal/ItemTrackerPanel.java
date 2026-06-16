@@ -54,6 +54,7 @@ import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -61,7 +62,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 @Slf4j
 public class ItemTrackerPanel extends PluginPanel
@@ -75,17 +75,12 @@ public class ItemTrackerPanel extends PluginPanel
 	private static final Color TINT_HIGH = new Color(35, 70, 35);
 	private static final Color TINT_LOW  = new Color(70, 35, 35);
 	private static final Color TINT_AVG  = new Color(75, 60, 25);
+	private static final Color TINT_VOLUME = new Color(55, 55, 55);
 
 	private final ItemManager itemManager;
+	private final ItemTrackerConfig config;
 	private final BiConsumer<Integer, TrackItemMode> onAddItem;
 	private final Consumer<Integer> onRemoveItem;
-	private final Supplier<ValueFormat> totalValueFormatSupplier;
-	private final Supplier<PriceDisplay> priceDisplaySupplier;
-	private final Supplier<Integer> refreshRateSupplier;
-	private final Supplier<Boolean> trackProfitSupplier;
-	private final Supplier<Boolean> showPerItemProfitSupplier;
-	private final Supplier<Boolean> showTotalsSupplier;
-	private final Supplier<List<TimeWindow>> rowWindowsSupplier;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final BiConsumer<Integer, TimeWindow> onRequestSeries;
 
@@ -124,6 +119,20 @@ public class ItemTrackerPanel extends PluginPanel
 
 	private final JPanel trackedItemsPanel;
 	private final JPanel bottomPanel;
+	private final JLabel totalsTitle;
+	private final JPanel geEstimatesSlotTop = new JPanel(new BorderLayout());
+	private final JPanel geEstimatesSlotBottom = new JPanel(new BorderLayout());
+	private EstimatesPosition currentEstimatesPosition;
+
+	private static final Color DIVIDER_COLOR = new Color(80, 80, 80);
+	private static final javax.swing.border.Border TITLE_BORDER_WITH_TOP_DIVIDER =
+			BorderFactory.createCompoundBorder(
+					BorderFactory.createCompoundBorder(
+							new EmptyBorder(10, 0, 0, 0),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
+					new EmptyBorder(10, 0, 12, 0));
+	private static final javax.swing.border.Border TITLE_BORDER_NO_DIVIDER =
+			new EmptyBorder(10, 0, 12, 0);
 
 	private final JLabel totalHighLabel;
 	private final JLabel totalLowLabel;
@@ -177,28 +186,16 @@ public class ItemTrackerPanel extends PluginPanel
 
 	public ItemTrackerPanel(
 			ItemManager itemManager,
+			ItemTrackerConfig config,
 			BiConsumer<Integer, TrackItemMode> onAddItem,
 			Consumer<Integer> onRemoveItem,
-			Supplier<ValueFormat> totalValueFormatSupplier,
-			Supplier<PriceDisplay> priceDisplaySupplier,
-			Supplier<Integer> refreshRateSupplier,
-			Supplier<Boolean> trackProfitSupplier,
-			Supplier<Boolean> showPerItemProfitSupplier,
-			Supplier<Boolean> showTotalsSupplier,
-			Supplier<List<TimeWindow>> rowWindowsSupplier,
 			Consumer<Integer> onAcquisitionsEdited,
 			BiConsumer<Integer, TimeWindow> onRequestSeries)
 	{
 		this.itemManager = itemManager;
+		this.config = config;
 		this.onAddItem = onAddItem;
 		this.onRemoveItem = onRemoveItem;
-		this.totalValueFormatSupplier = totalValueFormatSupplier;
-		this.priceDisplaySupplier = priceDisplaySupplier;
-		this.refreshRateSupplier = refreshRateSupplier;
-		this.trackProfitSupplier = trackProfitSupplier;
-		this.showPerItemProfitSupplier = showPerItemProfitSupplier;
-		this.showTotalsSupplier = showTotalsSupplier;
-		this.rowWindowsSupplier = rowWindowsSupplier;
 		this.onAcquisitionsEdited = onAcquisitionsEdited;
 		this.onRequestSeries = onRequestSeries;
 
@@ -253,16 +250,10 @@ public class ItemTrackerPanel extends PluginPanel
 		updateCoinsIcon(0);
 		totalsPanel.add(coinsIcon, BorderLayout.WEST);
 
-		JLabel totalsTitle = new JLabel("Estimated GE Sell Value", SwingConstants.CENTER);
+		totalsTitle = new JLabel("Estimated GE Sell Value", SwingConstants.CENTER);
 		totalsTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		totalsTitle.setFont(FontManager.getRunescapeBoldFont());
-		totalsTitle.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createCompoundBorder(
-				new EmptyBorder(10, 0, 0, 0),
-				new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
-			),
-			new EmptyBorder(10, 0, 12, 0)
-		));
+		totalsTitle.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
 
 		JPanel totalsRows = new JPanel();
 		totalsRows.setLayout(new BoxLayout(totalsRows, BoxLayout.Y_AXIS));
@@ -343,6 +334,9 @@ public class ItemTrackerPanel extends PluginPanel
 		belowTotals.add(lastRefreshLabel);
 		bottomPanel.add(belowTotals, BorderLayout.SOUTH);
 
+		geEstimatesSlotTop.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		geEstimatesSlotBottom.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
 		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 		topPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -350,21 +344,20 @@ public class ItemTrackerPanel extends PluginPanel
 		topPanel.add(searchField);
 		topPanel.add(Box.createVerticalStrut(4));
 		topPanel.add(searchResultsPanel);
+		topPanel.add(geEstimatesSlotTop);
 		topPanel.add(trackedLabelWrapper);
 
 		JPanel mainCard = new JPanel(new BorderLayout(0, 8));
 		mainCard.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		mainCard.add(topPanel, BorderLayout.NORTH);
 
-		JPanel bottomPinned = new JPanel(new BorderLayout());
-		bottomPinned.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		bottomPinned.add(bottomPanel, BorderLayout.NORTH);
-
 		JPanel itemsAndTotals = new JPanel(new BorderLayout(0, 8));
 		itemsAndTotals.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		itemsAndTotals.add(trackedItemsPanel, BorderLayout.NORTH);
-		itemsAndTotals.add(bottomPinned, BorderLayout.CENTER);
+		itemsAndTotals.add(geEstimatesSlotBottom, BorderLayout.CENTER);
 		mainCard.add(itemsAndTotals, BorderLayout.CENTER);
+
+		applyEstimatesPosition(EstimatesPosition.BOTTOM);
 
 		buildDetailCard();
 
@@ -381,6 +374,44 @@ public class ItemTrackerPanel extends PluginPanel
 
 		pulseTimer = new Timer(25, e -> updatePulses());
 		pulseTimer.start();
+	}
+
+	private void applyEstimatesPosition(EstimatesPosition position)
+	{
+		if (position == currentEstimatesPosition && bottomPanel.getParent() != null)
+		{
+			return;
+		}
+		currentEstimatesPosition = position;
+		geEstimatesSlotTop.removeAll();
+		geEstimatesSlotBottom.removeAll();
+		if (position == EstimatesPosition.TOP)
+		{
+			totalsTitle.setBorder(TITLE_BORDER_NO_DIVIDER);
+			geEstimatesSlotTop.add(bottomPanel, BorderLayout.CENTER);
+			geEstimatesSlotTop.add(buildDividerStrip(), BorderLayout.SOUTH);
+		}
+		else
+		{
+			totalsTitle.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
+			geEstimatesSlotBottom.add(bottomPanel, BorderLayout.NORTH);
+		}
+		geEstimatesSlotTop.revalidate();
+		geEstimatesSlotBottom.revalidate();
+		geEstimatesSlotTop.repaint();
+		geEstimatesSlotBottom.repaint();
+	}
+
+	private JPanel buildDividerStrip()
+	{
+		JPanel strip = new JPanel(new BorderLayout());
+		strip.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		strip.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createCompoundBorder(
+						new EmptyBorder(10, 0, 0, 0),
+						new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
+				new EmptyBorder(0, 0, 10, 0)));
+		return strip;
 	}
 
 	public void shutdown()
@@ -556,7 +587,7 @@ public class ItemTrackerPanel extends PluginPanel
 		else
 		{
 			long secondsAgo = ChronoUnit.SECONDS.between(lastPriceRefresh, Instant.now());
-			long rate = Math.max(30, refreshRateSupplier.get());
+			long rate = Math.max(30, config.priceRefreshSeconds());
 			long secondsUntil = Math.max(0, rate - secondsAgo);
 			lastRefreshLabel.setText("Price refresh in " + secondsUntil + " seconds");
 		}
@@ -688,8 +719,11 @@ public class ItemTrackerPanel extends PluginPanel
 			boolean anyProfitData = false;
 			long prevPriceTotalHigh = 0, prevPriceTotalLow = 0, prevPriceTotalAvg = 0;
 			boolean anyDeltas = false;
-			ValueFormat totalFmt = totalValueFormatSupplier.get();
-			PriceDisplay display = priceDisplaySupplier.get();
+			ValueFormat totalFmt = config.geEstimatesFormat();
+			boolean showEstHigh = config.showEstHigh();
+			boolean showEstLow = config.showEstLow();
+			boolean showEstAvg = config.showEstAvg();
+			boolean showEstProfit = config.showEstProfit();
 
 			if (items.isEmpty())
 			{
@@ -726,23 +760,20 @@ public class ItemTrackerPanel extends PluginPanel
 						prevPriceTotalLow  += item.getLowValue();
 						prevPriceTotalAvg  += item.getAvgValue();
 					}
-					trackedItemsPanel.add(buildTrackedItemRow(item, display, indicatorMode));
+					trackedItemsPanel.add(buildTrackedItemRow(item, indicatorMode));
 					trackedItemsPanel.add(Box.createVerticalStrut(4));
 				}
 			}
 
 			boolean hasPrices = items.stream().anyMatch(TrackedItem::hasPrices);
-			boolean showHighLow = display == PriceDisplay.HIGH_LOW || display == PriceDisplay.BOTH;
-			boolean showAvg     = display == PriceDisplay.AVERAGE  || display == PriceDisplay.BOTH;
 
-			totalHighRow.setVisible(showHighLow);
-			totalLowRow.setVisible(showHighLow);
-			totalAvgRow.setVisible(showAvg);
+			totalHighRow.setVisible(showEstHigh);
+			totalLowRow.setVisible(showEstLow);
+			totalAvgRow.setVisible(showEstAvg);
 
 			totalHighLabel.setText("High:  " + (hasPrices ? formatTotalGp(totalHigh, totalFmt) : "—"));
 			totalLowLabel.setText( "Low:   " + (hasPrices ? formatTotalGp(totalLow,  totalFmt) : "—"));
-			String avgTotalLabel = display == PriceDisplay.AVERAGE ? "Value" : "Avg";
-			totalAvgLabel.setText(avgTotalLabel + ":   " + (hasPrices ? formatTotalGp(totalAvg, totalFmt) : "—"));
+			totalAvgLabel.setText( "Avg:   " + (hasPrices ? formatTotalGp(totalAvg, totalFmt) : "—"));
 			if (hasPrices)
 			{
 				applyTotalTooltip(totalHighLabel, totalHigh, totalFmt);
@@ -756,7 +787,8 @@ public class ItemTrackerPanel extends PluginPanel
 				totalAvgLabel.setToolTipText(null);
 			}
 			equalizeTotalsLabelWidths();
-			bottomPanel.setVisible(showTotalsSupplier.get());
+			bottomPanel.setVisible(config.showGeEstimates());
+			applyEstimatesPosition(config.geEstimatesPosition());
 
 			updateCoinsIcon(hasPrices ? totalAvg : 0);
 
@@ -767,7 +799,7 @@ public class ItemTrackerPanel extends PluginPanel
 				pulseIfShown(totalAvgDeltaLabel,  Long.compare(totalAvg,  prevPriceTotalAvg),  indicatorMode);
 			}
 
-			if (anyProfitData && hasPrices && trackProfitSupplier.get())
+			if (anyProfitData && hasPrices && showEstProfit)
 			{
 				long profit = totalAvg - totalCostBasis;
 				String sign = profit > 0 ? "+" : "";
@@ -786,11 +818,16 @@ public class ItemTrackerPanel extends PluginPanel
 		});
 	}
 
-	private JPanel buildTrackedItemRow(TrackedItem item, PriceDisplay display, PriceIndicatorMode indicatorMode)
+	private JPanel buildTrackedItemRow(TrackedItem item, PriceIndicatorMode indicatorMode)
 	{
 		final PriceIndicatorMode itemIndicatorMode = item.isHasDeltas() ? indicatorMode : PriceIndicatorMode.OFF;
 		final boolean hovered = item.getItemId() == hoveredItemId;
-		final List<TimeWindow> rowWindows = rowWindowsSupplier.get();
+		final List<TimeWindow> rowWindows = Arrays.asList(config.row1Data(), config.row2Data(), config.row3Data());
+		final boolean showColHigh = config.showColHigh();
+		final boolean showColLow = config.showColLow();
+		final boolean showColAvg = config.showColAvg();
+		final boolean showColVolume = config.showColVolume();
+		final boolean showQty = config.showQuantityValue();
 		JPanel card = new JPanel(new BorderLayout(0, 0))
 		{
 			@Override
@@ -858,7 +895,10 @@ public class ItemTrackerPanel extends PluginPanel
 		nameRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		nameRow.add(iconLabel);
 		nameRow.add(nameLabel);
-		nameRow.add(qtyLabel);
+		if (showQty)
+		{
+			nameRow.add(qtyLabel);
+		}
 		centerPanel.add(nameRow);
 
 		final JLabel highLabel;
@@ -897,9 +937,6 @@ public class ItemTrackerPanel extends PluginPanel
 		}
 		else
 		{
-			boolean showHighLow = display == PriceDisplay.HIGH_LOW || display == PriceDisplay.BOTH;
-			boolean showAvg     = display == PriceDisplay.AVERAGE  || display == PriceDisplay.BOTH;
-
 			JPanel pricesPanel = new JPanel(new GridBagLayout());
 			pricesPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			pricesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -942,61 +979,78 @@ public class ItemTrackerPanel extends PluginPanel
 				c.anchor = GridBagConstraints.WEST;
 				pricesPanel.add(windowLbl, c);
 
-				JLabel[] cols = new JLabel[3];
-				for (int i = 0; i < cols.length; i++)
+				// Pack visible columns to the left; fill remaining slots with
+				// placeholders so each visible column keeps its share of width.
+				List<JLabel> visibleCells = new ArrayList<>(4);
+				if (showColHigh)
 				{
-					cols[i] = new JLabel("", SwingConstants.CENTER);
-					cols[i].setFont(FontManager.getRunescapeSmallFont());
+					JLabel cell = new JLabel("", SwingConstants.CENTER);
+					cell.setFont(FontManager.getRunescapeSmallFont());
+					cell.setForeground(COLOR_HIGH);
+					installItemValue(cell, h, "", "High", TINT_HIGH);
+					visibleCells.add(cell);
 				}
-				int slot = 0;
-				if (showHighLow)
+				if (showColLow)
 				{
-					cols[slot].setForeground(COLOR_HIGH);
-					installItemValue(cols[slot++], h, "", "High", TINT_HIGH);
-					cols[slot].setForeground(COLOR_LOW);
-					installItemValue(cols[slot++], l, "", "Low", TINT_LOW);
+					JLabel cell = new JLabel("", SwingConstants.CENTER);
+					cell.setFont(FontManager.getRunescapeSmallFont());
+					cell.setForeground(COLOR_LOW);
+					installItemValue(cell, l, "", "Low", TINT_LOW);
+					visibleCells.add(cell);
 				}
-				if (showAvg)
+				if (showColAvg)
 				{
-					cols[slot].setForeground(COLOR_AVG);
-					installItemValue(cols[slot++], a, "", "Avg", TINT_AVG);
+					JLabel cell = new JLabel("", SwingConstants.CENTER);
+					cell.setFont(FontManager.getRunescapeSmallFont());
+					cell.setForeground(COLOR_AVG);
+					installItemValue(cell, a, "", "Avg", TINT_AVG);
+					visibleCells.add(cell);
 				}
+				if (showColVolume)
+				{
+					JLabel cell = new JLabel("", SwingConstants.CENTER);
+					cell.setForeground(COLOR_VOLUME);
+					cell.setFont(FontManager.getRunescapeSmallFont());
+					String volText = window == TimeWindow.LIVE ? "-" : formatItemShort(vol);
+					cell.setText(volText);
+					if (window != TimeWindow.LIVE)
+					{
+						cell.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
+					}
+					HoverTintListener volListener = new HoverTintListener(cell, volText, TINT_VOLUME);
+					cell.addMouseListener(volListener);
+					SwingUtilities.invokeLater(volListener::applyIfHovered);
+					visibleCells.add(cell);
+				}
+
 				int col = 1;
-				for (int i = 0; i < cols.length; i++)
+				for (JLabel cell : visibleCells)
 				{
 					c.gridx = col++;
 					c.weightx = 1;
 					c.anchor = GridBagConstraints.CENTER;
-					pricesPanel.add(cols[i], c);
+					pricesPanel.add(cell, c);
 				}
 
-				JLabel volumeLabel = new JLabel("", SwingConstants.CENTER);
-				volumeLabel.setForeground(COLOR_VOLUME);
-				volumeLabel.setFont(FontManager.getRunescapeSmallFont());
-				if (window == TimeWindow.LIVE)
-				{
-					volumeLabel.setText("-");
-				}
-				else
-				{
-					volumeLabel.setText(formatItemShort(vol));
-					volumeLabel.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
-				}
-				c.gridx = col++;
-				c.weightx = 1;
-				c.anchor = GridBagConstraints.CENTER;
-				pricesPanel.add(volumeLabel, c);
-
-				// Inline delta pulse on each row (driven by live avg delta).
+				// Inline delta pulse, packed left with the visible columns.
 				JLabel pulse = createDeltaLabel();
 				if (itemIndicatorMode != PriceIndicatorMode.OFF)
 				{
 					pulseIfShown(pulse, item.getAvgDelta(), itemIndicatorMode);
 				}
-				c.gridx = col;
+				c.gridx = col++;
 				c.weightx = 0;
-				c.anchor = GridBagConstraints.EAST;
+				c.anchor = GridBagConstraints.WEST;
 				pricesPanel.add(pulse, c);
+
+				// Trailing placeholders so visible columns keep their widths.
+				for (int i = visibleCells.size(); i < 4; i++)
+				{
+					c.gridx = col++;
+					c.weightx = 1;
+					c.anchor = GridBagConstraints.CENTER;
+					pricesPanel.add(new JLabel(), c);
+				}
 
 				gridy++;
 			}
@@ -1007,12 +1061,12 @@ public class ItemTrackerPanel extends PluginPanel
 
 			centerPanel.add(pricesPanel);
 
-			if (showPerItemProfitSupplier.get() && trackProfitSupplier.get()
+			if (config.showItemProfitRow()
 					&& item.isCostBasisInitialized() && item.hasPrices())
 			{
 				long itemProfit = item.getAvgValue() - item.getCostBasis();
 				String sign = itemProfit > 0 ? "+" : "";
-				ValueFormat fmt = totalValueFormatSupplier.get();
+				ValueFormat fmt = config.geEstimatesFormat();
 
 				JLabel itemProfitPrefix = new JLabel("Est. Profit:");
 				itemProfitPrefix.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -1815,7 +1869,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		private String[] cols()
 		{
-			return trackProfitSupplier.get() ? COLS_FULL : COLS_NO_PROFIT;
+			return config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
 		}
 
 		@Override public int getRowCount() { return item == null ? 0 : item.getAcquisitions().size(); }

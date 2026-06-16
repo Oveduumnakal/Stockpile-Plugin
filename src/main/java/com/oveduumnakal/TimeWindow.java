@@ -11,7 +11,6 @@ public enum TimeWindow
 	NONE("None", Duration.ZERO, "5m"),
 	LIVE("Live", Duration.ZERO, "5m"),
 	H1("1h", Duration.ofHours(1), "5m"),
-	H2("2h", Duration.ofHours(2), "5m"),
 	H3("3h", Duration.ofHours(3), "5m"),
 	H6("6h", Duration.ofHours(6), "5m"),
 	H12("12h", Duration.ofHours(12), "5m"),

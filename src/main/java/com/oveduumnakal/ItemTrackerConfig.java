@@ -37,145 +37,391 @@ public interface ItemTrackerConfig extends Config
 {
 	String GROUP = "itemtracker";
 
+	// Internal
 	String KEY_TRACKED_ITEMS = "trackedItemIds";
-	String KEY_PRICE_DISPLAY = "priceDisplay";
-	String KEY_GE_REFRESH_RATE = "geRefreshRate";
-	String KEY_TOTAL_VALUE_FORMAT = "totalValueFormat";
+
+	// Section 1: Main View Settings
+	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";
+	String KEY_PRICE_CHANGE_INDICATOR = "priceChangeIndicator";
+
+	// Section 2: Tracked Item Display
+	String KEY_SHOW_COL_HIGH = "showColHigh";
+	String KEY_SHOW_COL_LOW = "showColLow";
+	String KEY_SHOW_COL_AVG = "showColAvg";
+	String KEY_SHOW_COL_VOLUME = "showColVolume";
+	String KEY_SHOW_QUANTITY_VALUE = "showQuantityValue";
+	String KEY_ROW_1_DATA = "row1Data";
+	String KEY_ROW_2_DATA = "row2Data";
+	String KEY_ROW_3_DATA = "row3Data";
+	String KEY_SHOW_ITEM_PROFIT_ROW = "showItemProfitRow";
+	String KEY_AUTO_UPDATE_QUANTITY = "autoUpdateQuantity";
+
+	// Section 3: GE Estimates Display
+	String KEY_SHOW_GE_ESTIMATES = "showGeEstimates";
+	String KEY_GE_ESTIMATES_POSITION = "geEstimatesPosition";
+	String KEY_GE_ESTIMATES_FORMAT = "geEstimatesFormat";
+	String KEY_SHOW_EST_HIGH = "showEstHigh";
+	String KEY_SHOW_EST_LOW = "showEstLow";
+	String KEY_SHOW_EST_AVG = "showEstAvg";
+	String KEY_SHOW_EST_PROFIT = "showEstProfit";
+
+	// Section 4: Tracking
+	String KEY_ADD_CONTEXT_MENU_OPTION = "addContextMenuOption";
+	String KEY_TRACK_ITEM_COLOR = "trackItemColor";
+	String KEY_STOP_TRACKING_COLOR = "stopTrackingColor";
+	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
+	String KEY_HIGHLIGHT_COLOR = "highlightColor";
+	String KEY_GLOW_EFFECT = "glowEffect";
+
+	// Section 5: Notifications
 	String KEY_NOTIFY_ON_VALUE_THRESHOLD = "notifyOnValueThreshold";
 	String KEY_VALUE_THRESHOLD = "valueThreshold";
-	String KEY_TRACK_PROFIT = "trackProfit";
-	String KEY_AUTO_UPDATE_QUANTITY = "autoUpdateQuantity";
-	String KEY_SHOW_TOTALS = "showTotals";
-	String KEY_ROW_1_WINDOW = "row1Window";
-	String KEY_ROW_2_WINDOW = "row2Window";
-	String KEY_ROW_3_WINDOW = "row3Window";
 
 	@ConfigSection(
-			name = "Prices",
-			description = "Price display and refresh settings",
+			name = "Main View Settings",
+			description = "Top-level main view settings",
 			position = 0
 	)
-	String pricesSection = "prices";
+	String mainViewSection = "mainView";
 
 	@ConfigSection(
-			name = "Formatting",
-			description = "How item and total values are formatted",
+			name = "Tracked Item Display",
+			description = "Controls what each tracked item row shows",
 			position = 1
 	)
-	String formattingSection = "formatting";
+	String trackedItemSection = "trackedItem";
+
+	@ConfigSection(
+			name = "GE Estimates Display",
+			description = "Controls the Estimated GE Sell Value section",
+			position = 2
+	)
+	String geEstimatesSection = "geEstimates";
+
+	@ConfigSection(
+			name = "Tracking",
+			description = "Context menu, highlighting, and tracking behavior",
+			position = 3
+	)
+	String trackingSection = "tracking";
 
 	@ConfigSection(
 			name = "Notifications",
 			description = "Value threshold notification settings",
-			position = 2
+			position = 4
 	)
 	String notificationsSection = "notifications";
 
-	@ConfigSection(
-			name = "Profit Tracking",
-			description = "Profit tracking settings",
-			position = 3
-	)
-	String profitTrackingSection = "profitTracking";
-
-	@ConfigSection(
-			name = "Highlighting",
-			description = "Tracked item highlighting settings",
-			position = 4
-	)
-	String highlightingSection = "highlighting";
-
-	@ConfigSection(
-			name = "Miscellaneous",
-			description = "Miscellaneous settings",
-			position = 5
-	)
-	String miscellaneousSection = "miscellaneous";
-
-	@ConfigItem(
-			keyName = KEY_PRICE_DISPLAY,
-			name = "Display",
-			description = "Which prices to show per item and in the totals",
-			section = pricesSection,
-			position = 0
-	)
-	default PriceDisplay priceDisplay()
-	{
-		return PriceDisplay.BOTH;
-	}
-
-	@ConfigItem(
-			keyName = KEY_ROW_1_WINDOW,
-			name = "Price Display 1",
-			description = "Time window shown on the first per-item price line. Select None to hide.",
-			section = pricesSection,
-			position = 2
-	)
-	default TimeWindow row1Window()
-	{
-		return TimeWindow.LIVE;
-	}
-
-	@ConfigItem(
-			keyName = KEY_ROW_2_WINDOW,
-			name = "Price Display 2",
-			description = "Time window shown on the second per-item price line. Select None to hide.",
-			section = pricesSection,
-			position = 3
-	)
-	default TimeWindow row2Window()
-	{
-		return TimeWindow.H6;
-	}
-
-	@ConfigItem(
-			keyName = KEY_ROW_3_WINDOW,
-			name = "Price Display 3",
-			description = "Time window shown on the third per-item price line. Select None to hide.",
-			section = pricesSection,
-			position = 4
-	)
-	default TimeWindow row3Window()
-	{
-		return TimeWindow.H24;
-	}
+	// ---- Section 1: Main View Settings ----
 
 	@Range(min = 30)
 	@ConfigItem(
-			keyName = KEY_GE_REFRESH_RATE,
-			name = "Refresh (Seconds)",
-			description = "How often to refresh GE prices. Minimum 30 seconds.",
-			section = pricesSection,
-			position = 1
+			keyName = KEY_PRICE_REFRESH_SECONDS,
+			name = "Price Refresh (s)",
+			description = "How often to refresh GE prices from the API. Minimum 30 seconds.",
+			section = mainViewSection,
+			position = 0
 	)
-	default int geRefreshRate()
+	default int priceRefreshSeconds()
 	{
 		return 60;
 	}
 
 	@ConfigItem(
-			keyName = KEY_TOTAL_VALUE_FORMAT,
-			name = "Total Price",
-			description = "How to display values in the totals section",
-			section = formattingSection,
-			position = 0
+			keyName = KEY_PRICE_CHANGE_INDICATOR,
+			name = "Price Change Indicator",
+			description = "How to display the pulse indicator for price changes",
+			section = mainViewSection,
+			position = 1
 	)
-	default ValueFormat totalValueFormat()
+	default PriceIndicatorMode priceChangeIndicator()
 	{
-		return ValueFormat.ABBREVIATED;
+		return PriceIndicatorMode.CHANGE;
 	}
 
+	// ---- Section 2: Tracked Item Display ----
+
 	@ConfigItem(
-			keyName = KEY_SHOW_TOTALS,
-			name = "Show Totals",
-			description = "Show the totals section below the tracked items",
-			section = formattingSection,
-			position = 2
+			keyName = KEY_SHOW_COL_HIGH,
+			name = "Show High Value",
+			description = "Show the High column in the tracked items list",
+			section = trackedItemSection,
+			position = 0
 	)
-	default boolean showTotals()
+	default boolean showColHigh()
 	{
 		return true;
 	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_COL_LOW,
+			name = "Show Low Value",
+			description = "Show the Low column in the tracked items list",
+			section = trackedItemSection,
+			position = 1
+	)
+	default boolean showColLow()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_COL_AVG,
+			name = "Show Avg Value",
+			description = "Show the Avg column in the tracked items list",
+			section = trackedItemSection,
+			position = 2
+	)
+	default boolean showColAvg()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_COL_VOLUME,
+			name = "Show Volume",
+			description = "Show the Volume column in the tracked items list",
+			section = trackedItemSection,
+			position = 3
+	)
+	default boolean showColVolume()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_QUANTITY_VALUE,
+			name = "Show Quantity Value",
+			description = "Show the quantity value next to the item name",
+			section = trackedItemSection,
+			position = 4
+	)
+	default boolean showQuantityValue()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_ROW_1_DATA,
+			name = "Row 1 Data",
+			description = "Price data shown on the first row. None hides the row.",
+			section = trackedItemSection,
+			position = 5
+	)
+	default TimeWindow row1Data()
+	{
+		return TimeWindow.LIVE;
+	}
+
+	@ConfigItem(
+			keyName = KEY_ROW_2_DATA,
+			name = "Row 2 Data",
+			description = "Price data shown on the second row. None hides the row.",
+			section = trackedItemSection,
+			position = 6
+	)
+	default TimeWindow row2Data()
+	{
+		return TimeWindow.H24;
+	}
+
+	@ConfigItem(
+			keyName = KEY_ROW_3_DATA,
+			name = "Row 3 Data",
+			description = "Price data shown on the third row. None hides the row.",
+			section = trackedItemSection,
+			position = 7
+	)
+	default TimeWindow row3Data()
+	{
+		return TimeWindow.WEEK;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_ITEM_PROFIT_ROW,
+			name = "Show Profit",
+			description = "Show the Est. Profit row below each tracked item using only that item's cost basis",
+			section = trackedItemSection,
+			position = 8
+	)
+	default boolean showItemProfitRow()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_AUTO_UPDATE_QUANTITY,
+			name = "Auto-Update Quantity",
+			description = "Automatically update tracked-item quantities from inventory/bank changes. When off, manual edits still work.",
+			section = trackedItemSection,
+			position = 9
+	)
+	default boolean autoUpdateQuantity()
+	{
+		return true;
+	}
+
+	// ---- Section 3: GE Estimates Display ----
+
+	@ConfigItem(
+			keyName = KEY_SHOW_GE_ESTIMATES,
+			name = "Show GE Estimates Section",
+			description = "Show the Estimated GE Sell Value section",
+			section = geEstimatesSection,
+			position = 0
+	)
+	default boolean showGeEstimates()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_ESTIMATES_POSITION,
+			name = "Position",
+			description = "Top: under the search bar above the tracked items list. Bottom: below the tracked items list.",
+			section = geEstimatesSection,
+			position = 1
+	)
+	default EstimatesPosition geEstimatesPosition()
+	{
+		return EstimatesPosition.BOTTOM;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_ESTIMATES_FORMAT,
+			name = "Price Format",
+			description = "How GE Estimate prices are formatted. Short abbreviates with k/m/b and shows a full-value tooltip on hover.",
+			section = geEstimatesSection,
+			position = 2
+	)
+	default ValueFormat geEstimatesFormat()
+	{
+		return ValueFormat.FULL;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_EST_HIGH,
+			name = "Show High Estimate",
+			description = "Show the row containing the estimated high value",
+			section = geEstimatesSection,
+			position = 3
+	)
+	default boolean showEstHigh()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_EST_LOW,
+			name = "Show Low Estimate",
+			description = "Show the row containing the estimated low value",
+			section = geEstimatesSection,
+			position = 4
+	)
+	default boolean showEstLow()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_EST_AVG,
+			name = "Show Avg Estimate",
+			description = "Show the row containing the estimated average value",
+			section = geEstimatesSection,
+			position = 5
+	)
+	default boolean showEstAvg()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_EST_PROFIT,
+			name = "Show Profit",
+			description = "Show the row containing the estimated profit",
+			section = geEstimatesSection,
+			position = 6
+	)
+	default boolean showEstProfit()
+	{
+		return true;
+	}
+
+	// ---- Section 4: Tracking ----
+
+	@ConfigItem(
+			keyName = KEY_ADD_CONTEXT_MENU_OPTION,
+			name = "Add Context Menu Option",
+			description = "Add a \"Track Item\" / \"Stop Tracking\" entry to right-click menus on the ground, in the bank, or in the inventory",
+			section = trackingSection,
+			position = 0
+	)
+	default boolean addContextMenuOption()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_TRACK_ITEM_COLOR,
+			name = "\"Track Item\" Color",
+			description = "Color of the \"Track Item\" context menu entry",
+			section = trackingSection,
+			position = 1
+	)
+	default Color trackItemColor()
+	{
+		return new Color(0xd8, 0xfb, 0xd4);
+	}
+
+	@ConfigItem(
+			keyName = KEY_STOP_TRACKING_COLOR,
+			name = "\"Stop Tracking\" Color",
+			description = "Color of the \"Stop Tracking\" context menu entry",
+			section = trackingSection,
+			position = 2
+	)
+	default Color stopTrackingColor()
+	{
+		return new Color(0xfb, 0xd4, 0xd4);
+	}
+
+	@ConfigItem(
+			keyName = KEY_HIGHLIGHT_TRACKED_ITEMS,
+			name = "Highlight Tracked Items",
+			description = "Where to outline tracked items",
+			section = trackingSection,
+			position = 3
+	)
+	default HighlightMode highlightTrackedItems()
+	{
+		return HighlightMode.GROUND;
+	}
+
+	@ConfigItem(
+			keyName = KEY_HIGHLIGHT_COLOR,
+			name = "Highlight Color",
+			description = "Color used to outline the highlighted tracked item",
+			section = trackingSection,
+			position = 4
+	)
+	default Color highlightColor()
+	{
+		return new Color(0xfb, 0xcd, 0x2b);
+	}
+
+	@ConfigItem(
+			keyName = KEY_GLOW_EFFECT,
+			name = "Glow Effect",
+			description = "Speed of the highlight's breathing/glow effect. Off results in a solid color.",
+			section = trackingSection,
+			position = 5
+	)
+	default GlowSpeed glowEffect()
+	{
+		return GlowSpeed.MEDIUM;
+	}
+
+	// ---- Section 5: Notifications ----
 
 	@ConfigItem(
 			keyName = KEY_NOTIFY_ON_VALUE_THRESHOLD,
@@ -200,127 +446,5 @@ public interface ItemTrackerConfig extends Config
 	default int valueThreshold()
 	{
 		return 0;
-	}
-
-	String KEY_SHOW_PER_ITEM_PROFIT = "showPerItemProfit";
-
-	@ConfigItem(
-			keyName = KEY_TRACK_PROFIT,
-			name = "Track Profit",
-			description = "Show a profit section below the GE value totals based on item prices at the time they were acquired",
-			section = profitTrackingSection,
-			position = 0
-	)
-	default boolean trackProfit()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-			keyName = KEY_SHOW_PER_ITEM_PROFIT,
-			name = "Show Per-Item Profit",
-			description = "Show an Est. Profit row under each tracked item using only that item's cost basis",
-			section = profitTrackingSection,
-			position = 1
-	)
-	default boolean showPerItemProfit()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-			keyName = "highlightMode",
-			name = "Highlight Tracked Items",
-			description = "Where to outline tracked items",
-			section = highlightingSection,
-			position = 0
-	)
-	default HighlightMode highlightMode()
-	{
-		return HighlightMode.GROUND;
-	}
-
-	@ConfigItem(
-			keyName = "highlightColor",
-			name = "Highlight Color",
-			description = "Color used to outline tracked items",
-			section = highlightingSection,
-			position = 1
-	)
-	default Color highlightColor()
-	{
-		return new Color(0xfb, 0xcd, 0x2b);
-	}
-
-	@ConfigItem(
-			keyName = "glowEffect",
-			name = "Glow Effect",
-			description = "Speed of the highlight's breathing/glow effect",
-			section = highlightingSection,
-			position = 2
-	)
-	default GlowSpeed glowEffect()
-	{
-		return GlowSpeed.MEDIUM;
-	}
-
-	@ConfigItem(
-			keyName = KEY_AUTO_UPDATE_QUANTITY,
-			name = "Auto-Update Quantity",
-			description = "Automatically update tracked-item quantities from inventory/bank changes. When off, manual edits still work.",
-			section = miscellaneousSection,
-			position = -1
-	)
-	default boolean autoUpdateQuantity()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-			keyName = "menuTrackItem",
-			name = "Track Item Menu Option",
-			description = "Add a right-click menu option to track/untrack items on the ground, in the bank, or in the inventory",
-			section = miscellaneousSection,
-			position = 0
-	)
-	default boolean menuTrackItem()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-			keyName = "priceChangeIndicator",
-			name = "Price Change Indicator",
-			description = "Pulse an indicator next to prices when they refresh: All also shows unchanged prices, Change only up/down movements",
-			section = miscellaneousSection,
-			position = 1
-	)
-	default PriceIndicatorMode priceChangeIndicator()
-	{
-		return PriceIndicatorMode.CHANGE;
-	}
-
-	@ConfigItem(
-			keyName = "trackItemColor",
-			name = "Track Item Color",
-			description = "Color of the \"Track Item\" context menu entry",
-			section = miscellaneousSection,
-			position = 2
-	)
-	default Color trackItemColor()
-	{
-		return new Color(0xd8, 0xfb, 0xd4);
-	}
-
-	@ConfigItem(
-			keyName = "stopTrackingColor",
-			name = "Stop Tracking Color",
-			description = "Color of the \"Stop Tracking\" context menu entry",
-			section = miscellaneousSection,
-			position = 3
-	)
-	default Color stopTrackingColor()
-	{
-		return new Color(0xfb, 0xd4, 0xd4);
 	}
 }

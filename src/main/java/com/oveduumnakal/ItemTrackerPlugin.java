@@ -186,15 +186,9 @@ public class ItemTrackerPlugin extends Plugin
 	{
 		panel = new ItemTrackerPanel(
 				itemManager,
+				config,
 				this::addTrackedItem,
 				this::removeTrackedItem,
-				config::totalValueFormat,
-				config::priceDisplay,
-				config::geRefreshRate,
-				config::trackProfit,
-				config::showPerItemProfit,
-				config::showTotals,
-				() -> Arrays.asList(config.row1Window(), config.row2Window(), config.row3Window()),
 				this::onAcquisitionsEdited,
 				this::requestSeries
 		);
@@ -250,7 +244,7 @@ public class ItemTrackerPlugin extends Plugin
 			priceRefreshTask.cancel(false);
 		}
 
-		int rate = Math.max(30, config.geRefreshRate());
+		int rate = Math.max(30, config.priceRefreshSeconds());
 		priceRefreshTask = executor.scheduleAtFixedRate(
 				this::refreshGePrices, 0, rate, TimeUnit.SECONDS
 		);
@@ -503,7 +497,7 @@ public class ItemTrackerPlugin extends Plugin
 		{
 			case ItemTrackerConfig.KEY_TRACKED_ITEMS:
 				return;
-			case ItemTrackerConfig.KEY_GE_REFRESH_RATE:
+			case ItemTrackerConfig.KEY_PRICE_REFRESH_SECONDS:
 				scheduleRefresh();
 				return;
 			case ItemTrackerConfig.KEY_NOTIFY_ON_VALUE_THRESHOLD:
@@ -519,7 +513,7 @@ public class ItemTrackerPlugin extends Plugin
 	@Subscribe
 	public void onMenuOpened(MenuOpened event)
 	{
-		if (!config.menuTrackItem())
+		if (!config.addContextMenuOption())
 		{
 			return;
 		}
@@ -647,7 +641,7 @@ public class ItemTrackerPlugin extends Plugin
 			syncQuantitiesFromContainers();
 		}
 
-		if (!config.highlightMode().ground() || client.isMenuOpen())
+		if (!config.highlightTrackedItems().ground() || client.isMenuOpen())
 		{
 			return;
 		}

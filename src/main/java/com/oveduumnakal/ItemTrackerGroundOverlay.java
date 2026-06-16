@@ -60,7 +60,7 @@ public class ItemTrackerGroundOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (!config.highlightMode().ground())
+		if (!config.highlightTrackedItems().ground())
 		{
 			return null;
 		}

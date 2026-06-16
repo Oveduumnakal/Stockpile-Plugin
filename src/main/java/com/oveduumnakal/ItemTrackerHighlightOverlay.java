@@ -53,7 +53,7 @@ public class ItemTrackerHighlightOverlay extends WidgetItemOverlay
 	@Override
 	public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
 	{
-		if (!config.highlightMode().invBank()
+		if (!config.highlightTrackedItems().invBank()
 				|| !plugin.isTracked(itemManager.canonicalize(itemId)))
 		{
 			return;
