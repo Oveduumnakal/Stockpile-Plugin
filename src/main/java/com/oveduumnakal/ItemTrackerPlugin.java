@@ -501,23 +501,18 @@ public class ItemTrackerPlugin extends Plugin
 
 		switch (event.getKey())
 		{
-			case ItemTrackerConfig.KEY_TOTAL_VALUE_FORMAT:
-			case ItemTrackerConfig.KEY_PRICE_DISPLAY:
-			case ItemTrackerConfig.KEY_TRACK_PROFIT:
-			case ItemTrackerConfig.KEY_SHOW_PER_ITEM_PROFIT:
-			case ItemTrackerConfig.KEY_ROW_1_WINDOW:
-			case ItemTrackerConfig.KEY_ROW_2_WINDOW:
-			case ItemTrackerConfig.KEY_ROW_3_WINDOW:
-				refreshPanel();
-				break;
+			case ItemTrackerConfig.KEY_TRACKED_ITEMS:
+				return;
 			case ItemTrackerConfig.KEY_GE_REFRESH_RATE:
 				scheduleRefresh();
-				break;
+				return;
 			case ItemTrackerConfig.KEY_NOTIFY_ON_VALUE_THRESHOLD:
 			case ItemTrackerConfig.KEY_VALUE_THRESHOLD:
 				valueThresholdNotified = false;
 				clientThread.invokeLater(this::checkValueThreshold);
-				break;
+				return;
+			default:
+				refreshPanel();
 		}
 	}
 
