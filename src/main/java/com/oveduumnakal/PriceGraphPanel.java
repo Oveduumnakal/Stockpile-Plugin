@@ -23,6 +23,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -65,10 +66,23 @@ public class PriceGraphPanel extends JPanel
 			TimeWindow.H24, TimeWindow.WEEK, TimeWindow.MONTH, TimeWindow.YEAR
 	};
 	private static final String[] TIMEFRAME_LABELS = {"1d", "1wk", "1mo", "1yr"};
+	private static final String[] TIMEFRAME_LABELS_FULL = {"1 Day", "1 Week", "1 Month", "1 Year"};
+
+	// The larger pop-out copy spells the timeframe tabs out and shows denser axes.
+	private final boolean expanded;
+	// Font for tabs, axes and tooltips: a smooth monospaced font in the pop-out,
+	// the RuneScape Small font in the sidebar.
+	private final Font baseFont;
 
 	private final JPanel tabsBar;
 	private final List<JLabel> tabLabels = new ArrayList<>();
 	private int hoverX = -1;
+
+	// The data plot is expensive to render (paths, EMA, spline), so it is cached
+	// to an image and only rebuilt when the data, timeframe, or size changes.
+	// Mouse-move hovering then only blits the cache and redraws the crosshair.
+	private transient BufferedImage plotCache;
+	private boolean plotCacheDirty = true;
 
 	private static final int TAB_BAR_HEIGHT = 28;
 	private static final int RIGHT_AXIS_WIDTH = 38;
@@ -78,12 +92,21 @@ public class PriceGraphPanel extends JPanel
 
 	public PriceGraphPanel()
 	{
-		this(Mode.PRICE);
+		this(Mode.PRICE, false);
 	}
 
 	public PriceGraphPanel(Mode mode)
 	{
+		this(mode, false);
+	}
+
+	public PriceGraphPanel(Mode mode, boolean expanded)
+	{
 		this.mode = mode;
+		this.expanded = expanded;
+		this.baseFont = expanded
+				? new Font(Font.MONOSPACED, Font.PLAIN, 13)
+				: FontManager.getRunescapeSmallFont();
 		setLayout(new java.awt.BorderLayout());
 		setBackground(BG_COLOR);
 		setPreferredSize(mode == Mode.PRICE ? new Dimension(240, 250) : new Dimension(240, 182));
@@ -92,12 +115,13 @@ public class PriceGraphPanel extends JPanel
 		tabsBar.setBackground(BG_COLOR);
 		// 5px above the timeframe buttons, a little breathing room below.
 		tabsBar.setBorder(new EmptyBorder(5, 4, 4, 4));
+		String[] tabTexts = expanded ? TIMEFRAME_LABELS_FULL : TIMEFRAME_LABELS;
 		for (int i = 0; i < TIMEFRAMES.length; i++)
 		{
 			final TimeWindow tw = TIMEFRAMES[i];
-			final JLabel tab = new JLabel(TIMEFRAME_LABELS[i]);
+			final JLabel tab = new JLabel(tabTexts[i]);
 			tab.setForeground(Color.WHITE);
-			tab.setFont(FontManager.getRunescapeSmallFont());
+			tab.setFont(baseFont);
 			tab.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 			tab.setBorder(new EmptyBorder(2, 4, 2, 4));
 			tab.addMouseListener(new MouseAdapter()
@@ -106,6 +130,7 @@ public class PriceGraphPanel extends JPanel
 				public void mouseClicked(MouseEvent e)
 				{
 					activeWindow = tw;
+					plotCacheDirty = true;
 					updateTabHighlight();
 					repaint();
 				}
@@ -144,7 +169,7 @@ public class PriceGraphPanel extends JPanel
 			if (TIMEFRAMES[i] == activeWindow)
 			{
 				l.setForeground(COLOR_AVG);
-				l.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.BOLD));
+				l.setFont(baseFont.deriveFont(Font.BOLD));
 				l.setBorder(BorderFactory.createCompoundBorder(
 						new EmptyBorder(2, 4, 0, 4),
 						BorderFactory.createMatteBorder(0, 0, 2, 0, COLOR_AVG)));
@@ -152,7 +177,7 @@ public class PriceGraphPanel extends JPanel
 			else
 			{
 				l.setForeground(Color.LIGHT_GRAY);
-				l.setFont(FontManager.getRunescapeSmallFont());
+				l.setFont(baseFont);
 				l.setBorder(new EmptyBorder(2, 4, 2, 4));
 			}
 		}
@@ -170,6 +195,7 @@ public class PriceGraphPanel extends JPanel
 		this.series6h = series6h == null ? Collections.emptyList() : series6h;
 		this.series24h = series24h == null ? Collections.emptyList() : series24h;
 		this.currentPrice = currentPrice;
+		plotCacheDirty = true;
 		repaint();
 	}
 
@@ -181,6 +207,7 @@ public class PriceGraphPanel extends JPanel
 	public void setActiveWindow(TimeWindow w)
 	{
 		this.activeWindow = w == null ? TimeWindow.H24 : w;
+		plotCacheDirty = true;
 		updateTabHighlight();
 		repaint();
 	}
@@ -204,65 +231,149 @@ public class PriceGraphPanel extends JPanel
 	protected void paintComponent(Graphics g)
 	{
 		super.paintComponent(g);
-		Graphics2D g2 = (Graphics2D) g.create();
-		try
+
+		int w = getWidth();
+		int h = getHeight();
+		if (w <= 0 || h <= 0)
 		{
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g2.setFont(FontManager.getRunescapeSmallFont());
-			FontMetrics fm = g2.getFontMetrics();
-
-			int w = getWidth();
-			int h = getHeight();
-
-			int plotTop = TAB_BAR_HEIGHT + TOP_PAD;
-			int plotBottom = h - BOTTOM_AXIS_HEIGHT;
-			int plotLeft = LEFT_PAD;
-			int plotRight = w - RIGHT_AXIS_WIDTH;
-			int plotW = Math.max(1, plotRight - plotLeft);
-			int plotH = Math.max(1, plotBottom - plotTop);
-
-			// Separator between the timeframe buttons and the graph.
-			g2.setColor(SEPARATOR_COLOR);
-			g2.drawLine(0, TAB_BAR_HEIGHT, w, TAB_BAR_HEIGHT);
-
-			long endSec = System.currentTimeMillis() / 1000L;
-			long startSec = endSec - activeWindow.getDuration().getSeconds();
-			long span = Math.max(1, endSec - startSec);
-
-			// Collect the points that fall within the selected period.
-			List<WikiRealtimePriceClient.PricePoint> visible = new ArrayList<>();
-			for (WikiRealtimePriceClient.PricePoint p : seriesForActiveWindow())
-			{
-				if (p.getTimestamp() >= startSec && p.getTimestamp() <= endSec)
-				{
-					visible.add(p);
-				}
-			}
-
-			if (visible.isEmpty())
-			{
-				g2.setColor(Color.LIGHT_GRAY);
-				String msg = "No data";
-				g2.drawString(msg, plotLeft + (plotW - fm.stringWidth(msg)) / 2, plotTop + plotH / 2);
-				return;
-			}
-
-			if (mode == Mode.VOLUME)
-			{
-				paintVolume(g2, fm, visible, plotLeft, plotTop, plotRight, plotBottom, plotW, plotH, startSec, span);
-			}
-			else
-			{
-				paintPrice(g2, fm, visible, plotLeft, plotTop, plotRight, plotBottom, plotW, plotH, startSec, span);
-			}
-
-			// X axis (shared layout: vertical labels along the bottom)
-			drawXAxis(g2, fm, plotLeft, plotBottom, plotW, startSec, endSec);
+			return;
 		}
-		finally
+
+		int plotTop = TAB_BAR_HEIGHT + TOP_PAD;
+		int plotBottom = h - BOTTOM_AXIS_HEIGHT;
+		int plotLeft = LEFT_PAD;
+		int plotRight = w - RIGHT_AXIS_WIDTH;
+		int plotW = Math.max(1, plotRight - plotLeft);
+		int plotH = Math.max(1, plotBottom - plotTop);
+
+		long endSec = System.currentTimeMillis() / 1000L;
+		long startSec = endSec - activeWindow.getDuration().getSeconds();
+		long span = Math.max(1, endSec - startSec);
+		List<WikiRealtimePriceClient.PricePoint> visible = collectVisible(startSec, endSec);
+
+		// (Re)build the heavy data plot only when the data, timeframe, or size
+		// changed; otherwise reuse the cached image so hovering stays cheap.
+		if (plotCache == null || plotCache.getWidth() != w || plotCache.getHeight() != h || plotCacheDirty)
 		{
-			g2.dispose();
+			BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			Graphics2D cg = img.createGraphics();
+			try
+			{
+				cg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				cg.setFont(baseFont);
+				renderStatic(cg, cg.getFontMetrics(), w, visible,
+						plotLeft, plotTop, plotRight, plotBottom, plotW, plotH, startSec, endSec, span);
+			}
+			finally
+			{
+				cg.dispose();
+			}
+			plotCache = img;
+			plotCacheDirty = false;
 		}
+		g.drawImage(plotCache, 0, 0, null);
+
+		// Lightweight hover overlay drawn fresh each paint.
+		if (!visible.isEmpty() && hoverX >= plotLeft && hoverX <= plotRight)
+		{
+			Graphics2D g2 = (Graphics2D) g.create();
+			try
+			{
+				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				g2.setFont(baseFont);
+				drawHover(g2, g2.getFontMetrics(), visible, plotLeft, plotTop, plotRight, plotBottom, plotW, startSec, span);
+			}
+			finally
+			{
+				g2.dispose();
+			}
+		}
+	}
+
+	/** Points within the active timeframe; recomputed each paint (cheap). */
+	private List<WikiRealtimePriceClient.PricePoint> collectVisible(long startSec, long endSec)
+	{
+		List<WikiRealtimePriceClient.PricePoint> visible = new ArrayList<>();
+		for (WikiRealtimePriceClient.PricePoint p : seriesForActiveWindow())
+		{
+			if (p.getTimestamp() >= startSec && p.getTimestamp() <= endSec)
+			{
+				visible.add(p);
+			}
+		}
+		return visible;
+	}
+
+	/** Renders the static graph (separator, axes, data) into the plot cache. */
+	private void renderStatic(Graphics2D g2, FontMetrics fm, int w,
+			List<WikiRealtimePriceClient.PricePoint> visible,
+			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
+			long startSec, long endSec, long span)
+	{
+		// Separator between the timeframe buttons and the graph.
+		g2.setColor(SEPARATOR_COLOR);
+		g2.drawLine(0, TAB_BAR_HEIGHT, w, TAB_BAR_HEIGHT);
+
+		if (visible.isEmpty())
+		{
+			g2.setColor(Color.LIGHT_GRAY);
+			String msg = "No data";
+			g2.drawString(msg, plotLeft + (plotW - fm.stringWidth(msg)) / 2, plotTop + plotH / 2);
+			return;
+		}
+
+		if (mode == Mode.VOLUME)
+		{
+			paintVolume(g2, fm, visible, plotLeft, plotTop, plotRight, plotBottom, plotW, plotH, startSec, span);
+		}
+		else
+		{
+			paintPrice(g2, fm, visible, plotLeft, plotTop, plotRight, plotBottom, plotW, plotH, startSec, span);
+		}
+
+		// X axis (shared layout: vertical labels along the bottom)
+		drawXAxis(g2, fm, plotLeft, plotBottom, plotW, startSec, endSec);
+	}
+
+	/** Draws the hover crosshair and value tooltip for the point under the cursor. */
+	private void drawHover(Graphics2D g2, FontMetrics fm,
+			List<WikiRealtimePriceClient.PricePoint> visible,
+			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, long startSec, long span)
+	{
+		int idx = closestIndex(visible, plotLeft, plotW, startSec, span);
+		if (idx < 0)
+		{
+			return;
+		}
+		WikiRealtimePriceClient.PricePoint closest = visible.get(idx);
+		g2.setStroke(new BasicStroke(1));
+		g2.setColor(new Color(255, 255, 255, 120));
+		g2.drawLine(hoverX, plotTop, hoverX, plotBottom);
+
+		String[] lines;
+		if (mode == Mode.VOLUME)
+		{
+			double[] vols = new double[visible.size()];
+			for (int i = 0; i < visible.size(); i++)
+			{
+				WikiRealtimePriceClient.PricePoint p = visible.get(i);
+				vols[i] = p.getHighPriceVolume() + p.getLowPriceVolume();
+			}
+			double[] ma = ema(vols, Math.max(2, visible.size() / 10));
+			lines = new String[]{
+					"V: " + NUMBER_FORMAT.format(closest.getHighPriceVolume() + closest.getLowPriceVolume()),
+					"MA: " + NUMBER_FORMAT.format(Math.round(ma[idx])),
+			};
+		}
+		else
+		{
+			lines = new String[]{
+					"H: " + NUMBER_FORMAT.format(closest.getAvgHighPrice()),
+					"L: " + NUMBER_FORMAT.format(closest.getAvgLowPrice()),
+					"A: " + NUMBER_FORMAT.format(midpoint(closest)),
+			};
+		}
+		drawTooltip(g2, fm, lines, plotLeft, plotTop, plotRight);
 	}
 
 	private void paintPrice(Graphics2D g2, FontMetrics fm,
@@ -282,7 +393,7 @@ public class PriceGraphPanel extends JPanel
 			return;
 		}
 
-		double[] axis = niceAxis(min, max, 4, 6);
+		double[] axis = niceAxis(min, max, expanded ? 7 : 4, expanded ? 12 : 6);
 		double axisMin = axis[0], axisMax = axis[1];
 		int ticks = (int) axis[2];
 		double axisRange = Math.max(1, axisMax - axisMin);
@@ -341,25 +452,6 @@ public class PriceGraphPanel extends JPanel
 			g2.setColor(CURRENT_LINE_COLOR);
 			g2.drawLine(plotLeft, cy, plotRight, cy);
 		}
-
-		// Hover crosshair + tooltip (full-form values)
-		if (hoverX >= plotLeft && hoverX <= plotRight)
-		{
-			int idx = closestIndex(visible, plotLeft, plotW, startSec, span);
-			if (idx >= 0)
-			{
-				WikiRealtimePriceClient.PricePoint closest = visible.get(idx);
-				g2.setStroke(new BasicStroke(1));
-				g2.setColor(new Color(255, 255, 255, 120));
-				g2.drawLine(hoverX, plotTop, hoverX, plotBottom);
-				String[] lines = {
-						"H: " + NUMBER_FORMAT.format(closest.getAvgHighPrice()),
-						"L: " + NUMBER_FORMAT.format(closest.getAvgLowPrice()),
-						"A: " + NUMBER_FORMAT.format(midpoint(closest)),
-				};
-				drawTooltip(g2, fm, lines, plotLeft, plotTop, plotRight);
-			}
-		}
 	}
 
 	private void paintVolume(Graphics2D g2, FontMetrics fm,
@@ -380,30 +472,33 @@ public class PriceGraphPanel extends JPanel
 			return;
 		}
 
-		// Cap the Y axis at the 95th percentile so a rare spike doesn't flatten
+		// Cap the Y axis at the 90th percentile so a rare spike doesn't flatten
 		// every other bar; bars above the cap are clipped and flagged with an arrow.
+		// The expanded pop-out shows the full range instead (no cap).
 		List<Long> vols = new ArrayList<>(visible.size());
 		for (WikiRealtimePriceClient.PricePoint p : visible)
 		{
 			vols.add(p.getHighPriceVolume() + p.getLowPriceVolume());
 		}
-		long cap = percentile(vols, 0.90);
+		long cap = expanded ? maxVol : percentile(vols, 0.90);
 		if (cap <= 0)
 		{
 			cap = maxVol;
 		}
 
-		// Decluttered Y axis: ~5 round increments with faint gridlines.
-		final int intervals = 5;
-		long step = niceVolumeStep(cap, intervals);
-		long axisMax = step * intervals;
-		for (int i = 0; i <= intervals; i++)
+		// Y axis hugs the data: the top is the cap plus a little headroom, with
+		// round-number gridlines beneath. (In the capped sidebar view, taller
+		// spikes are clipped and flagged with an arrow.)
+		long axisMax = Math.max(1, (long) Math.ceil(cap * 1.05));
+		int targetLines = expanded ? 10 : 5;
+		long step = niceVolumeStep(axisMax, targetLines);
+		for (long v = 0; v <= axisMax; v += step)
 		{
-			int y = plotBottom - (int) ((double) plotH * i / intervals);
+			int y = plotBottom - (int) ((double) v / axisMax * plotH);
 			g2.setColor(GRID_COLOR);
 			g2.drawLine(plotLeft, y, plotRight, y);
 			g2.setColor(Color.GRAY);
-			g2.drawString(abbreviate(step * i), plotRight + 4, y + fm.getAscent() / 2);
+			g2.drawString(abbreviate(v), plotRight + 4, y + fm.getAscent() / 2);
 		}
 
 		// Bars (faint), with an up-arrow on any bar that exceeds the capped axis.
@@ -447,24 +542,6 @@ public class PriceGraphPanel extends JPanel
 		g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 		g2.setColor(MA_COLOR);
 		g2.draw(monotoneCubic(mxs, mys));
-
-		// Hover crosshair + tooltip with the moving average added.
-		if (hoverX >= plotLeft && hoverX <= plotRight)
-		{
-			int idx = closestIndex(visible, plotLeft, plotW, startSec, span);
-			if (idx >= 0)
-			{
-				WikiRealtimePriceClient.PricePoint closest = visible.get(idx);
-				g2.setStroke(new BasicStroke(1));
-				g2.setColor(new Color(255, 255, 255, 120));
-				g2.drawLine(hoverX, plotTop, hoverX, plotBottom);
-				String[] lines = {
-						"V: " + NUMBER_FORMAT.format(closest.getHighPriceVolume() + closest.getLowPriceVolume()),
-						"MA: " + NUMBER_FORMAT.format(Math.round(ma[idx])),
-				};
-				drawTooltip(g2, fm, lines, plotLeft, plotTop, plotRight);
-			}
-		}
 	}
 
 	private void drawTooltip(Graphics2D g2, FontMetrics fm, String[] lines, int plotLeft, int plotTop, int plotRight)
@@ -550,16 +627,29 @@ public class PriceGraphPanel extends JPanel
 			{
 				cal.set(Calendar.MINUTE, 0);
 				cal.set(Calendar.HOUR_OF_DAY, 0);
-				// Snap to the Sunday on or after the start.
-				while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
-						|| cal.getTimeInMillis() / 1000L < startSec)
+				if (expanded)
 				{
-					cal.add(Calendar.DAY_OF_MONTH, 1);
+					// Denser: every 3 days from the first midnight on/after the start.
+					if (cal.getTimeInMillis() / 1000L < startSec) cal.add(Calendar.DAY_OF_MONTH, 1);
+					while (cal.getTimeInMillis() / 1000L <= endSec)
+					{
+						ticks.add(new long[]{cal.getTimeInMillis() / 1000L});
+						cal.add(Calendar.DAY_OF_MONTH, 3);
+					}
 				}
-				while (cal.getTimeInMillis() / 1000L <= endSec)
+				else
 				{
-					ticks.add(new long[]{cal.getTimeInMillis() / 1000L});
-					cal.add(Calendar.DAY_OF_MONTH, 7);
+					// Snap to the Sunday on or after the start, then weekly.
+					while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
+							|| cal.getTimeInMillis() / 1000L < startSec)
+					{
+						cal.add(Calendar.DAY_OF_MONTH, 1);
+					}
+					while (cal.getTimeInMillis() / 1000L <= endSec)
+					{
+						ticks.add(new long[]{cal.getTimeInMillis() / 1000L});
+						cal.add(Calendar.DAY_OF_MONTH, 7);
+					}
 				}
 				break;
 			}
@@ -577,7 +667,7 @@ public class PriceGraphPanel extends JPanel
 			}
 			default: // H24
 			{
-				int incrementHours = 3;
+				int incrementHours = expanded ? 2 : 3;
 				cal.set(Calendar.MINUTE, 0);
 				int hour = cal.get(Calendar.HOUR_OF_DAY);
 				int rounded = ((hour + incrementHours - 1) / incrementHours) * incrementHours;

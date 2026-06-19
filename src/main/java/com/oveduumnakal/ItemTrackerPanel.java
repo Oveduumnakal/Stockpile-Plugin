@@ -52,6 +52,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -1504,15 +1506,20 @@ public class ItemTrackerPanel extends PluginPanel
 		ccvSection = buildDetailSection("Collection Current Values",
 				buildCurrentValuesBlock(ccvHigh, ccvLow, ccvAvg, ccvQuantity, ccvProfit));
 
-		priceOverviewSection = buildDetailSection("Price Overview", buildOverviewGrid());
+		priceOverviewSection = buildDetailSectionWithPopout("Price Overview",
+				this::openOverviewPopout, buildOverviewGrid());
 
 		priceGraph = new PriceGraphPanel(PriceGraphPanel.Mode.PRICE);
 		priceGraph.setAlignmentX(Component.LEFT_ALIGNMENT);
-		priceGraphSection = buildDetailSection("Price Graph", priceGraph, Box.createVerticalStrut(4));
+		priceGraphSection = buildDetailSectionWithPopout("Price Graph",
+				() -> openGraphPopout("Price Graph", PriceGraphPanel.Mode.PRICE, priceGraph),
+				priceGraph, Box.createVerticalStrut(4));
 
 		volumeGraph = new PriceGraphPanel(PriceGraphPanel.Mode.VOLUME);
 		volumeGraph.setAlignmentX(Component.LEFT_ALIGNMENT);
-		volumeGraphSection = buildDetailSection("Volume Graph", volumeGraph);
+		volumeGraphSection = buildDetailSectionWithPopout("Volume Graph",
+				() -> openGraphPopout("Volume Graph", PriceGraphPanel.Mode.VOLUME, volumeGraph),
+				volumeGraph);
 
 		marketInfoSection = buildDetailSection("Market Info", buildMarketInfoBlock());
 
@@ -1800,16 +1807,67 @@ public class ItemTrackerPanel extends PluginPanel
 	 */
 	private JPanel buildDetailSection(String title, Component... contents)
 	{
-		JPanel wrapper = new JPanel();
-		wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
-		wrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JPanel wrapper = newSectionWrapper();
 		wrapper.add(buildDetailSectionTitle(title, true));
 		for (Component c : contents)
 		{
 			wrapper.add(c);
 		}
 		return wrapper;
+	}
+
+	/** Like {@link #buildDetailSection} but with a pop-out button in the header. */
+	private JPanel buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)
+	{
+		JPanel wrapper = newSectionWrapper();
+		wrapper.add(buildDetailSectionTitleRow(title, onPopout));
+		for (Component c : contents)
+		{
+			wrapper.add(c);
+		}
+		return wrapper;
+	}
+
+	private JPanel newSectionWrapper()
+	{
+		JPanel wrapper = new JPanel();
+		wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
+		wrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return wrapper;
+	}
+
+	/** Section header with a centred title and a pop-out button on the right. */
+	private JComponent buildDetailSectionTitleRow(String title, Runnable onPopout)
+	{
+		JButton popBtn = buildPopoutButton(onPopout);
+
+		JPanel row = new JPanel(new BorderLayout())
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		// Top divider spanning the full width, matching buildDetailSectionTitle.
+		row.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createCompoundBorder(
+						new EmptyBorder(10, 0, 0, 0),
+						new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))),
+				new EmptyBorder(4, 0, 2, 0)));
+
+		JLabel label = new JLabel(title, SwingConstants.CENTER);
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setFont(FontManager.getRunescapeBoldFont());
+
+		// Equal-width strut on the left keeps the title visually centred.
+		row.add(Box.createHorizontalStrut(popBtn.getPreferredSize().width), BorderLayout.WEST);
+		row.add(label, BorderLayout.CENTER);
+		row.add(popBtn, BorderLayout.EAST);
+		return row;
 	}
 
 	/**
@@ -1977,7 +2035,18 @@ public class ItemTrackerPanel extends PluginPanel
 
 	private JPanel buildOverviewGrid()
 	{
-		overviewGrid = new JPanel(new GridBagLayout())
+		overviewGrid = createOverviewGrid(overviewLabels, overviewWindowLabels, 2);
+		return overviewGrid;
+	}
+
+	/**
+	 * Creates an empty Price Overview grid whose row/column separators are
+	 * painted from the supplied label maps. Shared by the sidebar grid and the
+	 * larger pop-out copy so both render identically from their own labels.
+	 */
+	private JPanel createOverviewGrid(Map<TimeWindow, JLabel[]> labels, List<JLabel> windowLabels, int sepGap)
+	{
+		JPanel grid = new JPanel(new GridBagLayout())
 		{
 			@Override
 			public Dimension getMaximumSize()
@@ -1989,17 +2058,17 @@ public class ItemTrackerPanel extends PluginPanel
 			protected void paintComponent(Graphics g)
 			{
 				super.paintComponent(g);
-				JLabel[] firstRow = overviewLabels.get(OVERVIEW_WINDOWS[0]);
+				JLabel[] firstRow = labels.get(OVERVIEW_WINDOWS[0]);
 				if (firstRow == null || firstRow[0] == null)
 				{
 					return;
 				}
-				// Vertical separator 2px to the right of the label column.
+				// Vertical separator sepGap px to the right of the label column.
 				int vx = firstRow[0].getX() - 3;
-				if (!overviewWindowLabels.isEmpty())
+				if (!windowLabels.isEmpty())
 				{
-					JLabel ref = overviewWindowLabels.get(0);
-					vx = ref.getX() + ref.getWidth() + 2;
+					JLabel ref = windowLabels.get(0);
+					vx = ref.getX() + ref.getWidth() + sepGap;
 				}
 				g.setColor(DIVIDER_COLOR);
 				g.drawLine(vx, 4, vx, getHeight() - 4);
@@ -2009,7 +2078,7 @@ public class ItemTrackerPanel extends PluginPanel
 				JLabel prev = null;
 				for (TimeWindow w : OVERVIEW_WINDOWS)
 				{
-					JLabel[] cells = overviewLabels.get(w);
+					JLabel[] cells = labels.get(w);
 					if (cells == null || cells[0] == null)
 					{
 						continue;
@@ -2024,10 +2093,10 @@ public class ItemTrackerPanel extends PluginPanel
 				}
 			}
 		};
-		overviewGrid.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		overviewGrid.setBorder(new EmptyBorder(6, 3, 2, 3));
-		overviewGrid.setAlignmentX(Component.LEFT_ALIGNMENT);
-		return overviewGrid;
+		grid.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		grid.setBorder(new EmptyBorder(6, 3, 2, 3));
+		grid.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return grid;
 	}
 
 	/**
@@ -2036,12 +2105,34 @@ public class ItemTrackerPanel extends PluginPanel
 	 */
 	private void populateOverviewGrid(Set<TimeWindow> rows)
 	{
-		overviewGrid.removeAll();
-		overviewLabels.clear();
-		overviewWindowLabels.clear();
+		fillOverviewGrid(overviewGrid, overviewLabels, overviewWindowLabels, rows,
+				FontManager.getRunescapeSmallFont(), false);
+	}
+
+	/**
+	 * (Re)builds a Price Overview grid's contents into the given label maps,
+	 * including only the rows in {@code rows} and using {@code font} for every
+	 * cell. The {@code expanded} pop-out gets a larger font, spelled-out
+	 * time-window labels ("5 Minute", "1 Hour", …) and roomier padding.
+	 */
+	private void fillOverviewGrid(JPanel grid, Map<TimeWindow, JLabel[]> labels,
+			List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)
+	{
+		grid.removeAll();
+		labels.clear();
+		windowLabels.clear();
+
+		// Roomier spacing for the pop-out; tight for the narrow sidebar.
+		int vPad = expanded ? 7 : 2;
+		int hPad = expanded ? 9 : 1;
+		int hPadSep = expanded ? 16 : 3; // larger gap on the column beside the separator
+		grid.setBorder(new EmptyBorder(expanded ? 10 : 6, expanded ? 14 : 3,
+				expanded ? 10 : 2, expanded ? 14 : 3));
+
+		// Right-align numeric columns in the pop-out so digits line up by place value.
+		int colAlign = expanded ? SwingConstants.RIGHT : SwingConstants.CENTER;
 
 		GridBagConstraints c = new GridBagConstraints();
-		c.insets = new Insets(2, 1, 2, 1);
 		c.fill = GridBagConstraints.HORIZONTAL;
 
 		String[] headers = {"", "High", "Low", "Avg", "Δ%", "Vol"};
@@ -2050,15 +2141,15 @@ public class ItemTrackerPanel extends PluginPanel
 				ColorScheme.LIGHT_GRAY_COLOR, COLOR_VOLUME};
 		for (int i = 0; i < headers.length; i++)
 		{
-			JLabel h = new JLabel(headers[i], SwingConstants.CENTER);
+			JLabel h = new JLabel(headers[i], i == 0 ? SwingConstants.CENTER : colAlign);
 			h.setForeground(headerColors[i]);
-			h.setFont(FontManager.getRunescapeSmallFont());
+			h.setFont(font);
 			c.gridx = i;
 			c.gridy = 0;
 			c.weightx = i == 0 ? 0 : 1;
-			// Extra left inset on the High column leaves 1px between it and the separator.
-			c.insets = new Insets(2, i == 1 ? 3 : 1, 2, 1);
-			overviewGrid.add(h, c);
+			// Extra left inset on the High column leaves a gap from the separator.
+			c.insets = new Insets(vPad, i == 1 ? hPadSep : hPad, vPad, hPad);
+			grid.add(h, c);
 		}
 
 		// 1px divider spanning the full width beneath the header row.
@@ -2072,8 +2163,8 @@ public class ItemTrackerPanel extends PluginPanel
 		dc.gridwidth = headers.length;
 		dc.weightx = 1;
 		dc.fill = GridBagConstraints.HORIZONTAL;
-		dc.insets = new Insets(1, 1, 2, 1);
-		overviewGrid.add(headerDivider, dc);
+		dc.insets = new Insets(1, hPad, 2, hPad);
+		grid.add(headerDivider, dc);
 
 		int y = 2;
 		Color[] cellColors = {COLOR_HIGH, COLOR_LOW, COLOR_AVG, COLOR_VOLUME, COLOR_VOLUME};
@@ -2083,34 +2174,251 @@ public class ItemTrackerPanel extends PluginPanel
 			{
 				continue;
 			}
-			JLabel windowLbl = new JLabel(w == TimeWindow.LIVE ? "5m" : w.toString(), SwingConstants.RIGHT);
+			String wLabel = expanded ? fullWindowLabel(w) : (w == TimeWindow.LIVE ? "5m" : w.toString());
+			JLabel windowLbl = new JLabel(wLabel, SwingConstants.RIGHT);
 			windowLbl.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-			windowLbl.setFont(FontManager.getRunescapeSmallFont());
+			windowLbl.setFont(font);
 			c.gridx = 0;
 			c.gridy = y;
 			c.weightx = 0;
 			c.anchor = GridBagConstraints.EAST;
-			overviewGrid.add(windowLbl, c);
-			overviewWindowLabels.add(windowLbl);
+			c.insets = new Insets(vPad, hPad, vPad, hPad);
+			grid.add(windowLbl, c);
+			windowLabels.add(windowLbl);
 
 			JLabel[] cells = new JLabel[5];
 			for (int i = 0; i < 5; i++)
 			{
-				cells[i] = new JLabel("—", SwingConstants.CENTER);
+				cells[i] = new JLabel("—", colAlign);
 				cells[i].setForeground(cellColors[i]);
-				cells[i].setFont(FontManager.getRunescapeSmallFont());
+				cells[i].setFont(font);
 				c.gridx = i + 1;
 				c.gridy = y;
 				c.weightx = 1;
 				c.anchor = GridBagConstraints.CENTER;
-				c.insets = new Insets(2, i == 0 ? 3 : 1, 2, 1);
-				overviewGrid.add(cells[i], c);
+				c.insets = new Insets(vPad, i == 0 ? hPadSep : hPad, vPad, hPad);
+				grid.add(cells[i], c);
 			}
-			overviewLabels.put(w, cells);
+			labels.put(w, cells);
 			y++;
 		}
-		overviewGrid.revalidate();
-		overviewGrid.repaint();
+		grid.revalidate();
+		grid.repaint();
+	}
+
+	/** Spelled-out time-window label for the pop-out's leftmost column. */
+	private static String fullWindowLabel(TimeWindow w)
+	{
+		switch (w)
+		{
+			case LIVE:   return "5 Minute";
+			case H1:     return "1 Hour";
+			case H3:     return "3 Hour";
+			case H6:     return "6 Hour";
+			case H12:    return "12 Hour";
+			case H24:    return "24 Hour";
+			case WEEK:   return "1 Week";
+			case MONTH:  return "1 Month";
+			case MONTH3: return "3 Month";
+			case MONTH6: return "6 Month";
+			case YEAR:   return "1 Year";
+			default:     return w.toString();
+		}
+	}
+
+	/**
+	 * Fills a Price Overview grid's value cells from the given item's stats.
+	 * When {@code full} is set (the pop-out view), prices show as full
+	 * comma-grouped numbers instead of the abbreviated sidebar form.
+	 */
+	private void populateOverviewLabels(Map<TimeWindow, JLabel[]> labels, TrackedItem item, boolean full)
+	{
+		for (TimeWindow w : OVERVIEW_WINDOWS)
+		{
+			JLabel[] cells = labels.get(w);
+			if (cells == null) continue;
+
+			if (w == TimeWindow.LIVE)
+			{
+				// First row shows the latest 5-minute bucket rather than live prices.
+				List<WikiRealtimePriceClient.PricePoint> s5 = item.getSeries5m();
+				WikiRealtimePriceClient.PricePoint last = s5.isEmpty() ? null : s5.get(s5.size() - 1);
+				long high = last == null ? 0 : last.getAvgHighPrice();
+				long low = last == null ? 0 : last.getAvgLowPrice();
+				long avg = last == null ? 0 : overviewMidpoint(last);
+				setPriceCell(cells[0], high, COLOR_HIGH, "High", TINT_HIGH, full);
+				setPriceCell(cells[1], low, COLOR_LOW, "Low", TINT_LOW, full);
+				setPriceCell(cells[2], avg, COLOR_AVG, "Avg", TINT_AVG, full);
+				setOverviewPlaceholder(cells[3]); // Δ% not meaningful for the 5m row
+				if (last == null)
+				{
+					setOverviewPlaceholder(cells[4]);
+				}
+				else
+				{
+					installVolumeValue(cells[4], last.getHighPriceVolume() + last.getLowPriceVolume(), full);
+				}
+				continue;
+			}
+
+			PriceStats s = item.getWindowStats().get(w);
+			setPriceCell(cells[0], s == null ? 0 : s.getHigh(), COLOR_HIGH, "High", TINT_HIGH, full);
+			setPriceCell(cells[1], s == null ? 0 : s.getLow(), COLOR_LOW, "Low", TINT_LOW, full);
+			setPriceCell(cells[2], s == null ? 0 : s.getAvg(), COLOR_AVG, "Avg", TINT_AVG, full);
+			applyDeltaPct(cells[3], item, w);
+
+			// Vol shows the real count, including 0 when nothing traded in the window.
+			if (s == null)
+			{
+				setOverviewPlaceholder(cells[4]);
+			}
+			else
+			{
+				installVolumeValue(cells[4], s.getVolume(), full);
+			}
+		}
+	}
+
+	// ---- Pop-out windows ----
+
+	/** A detached section window plus the callback that refreshes it from an item. */
+	private static final class PopoutHandle
+	{
+		final JFrame frame;
+		final Consumer<TrackedItem> refresher;
+
+		PopoutHandle(JFrame frame, Consumer<TrackedItem> refresher)
+		{
+			this.frame = frame;
+			this.refresher = refresher;
+		}
+	}
+
+	private final List<PopoutHandle> openPopouts = new ArrayList<>();
+
+	/** Pushes the on-screen detail item into every open pop-out window. */
+	private void refreshPopouts(TrackedItem item)
+	{
+		for (PopoutHandle h : new ArrayList<>(openPopouts))
+		{
+			h.refresher.accept(item);
+		}
+	}
+
+	/** Closes every pop-out, e.g. when leaving the detail view. */
+	private void closePopouts()
+	{
+		for (PopoutHandle h : new ArrayList<>(openPopouts))
+		{
+			h.frame.dispose();
+		}
+		openPopouts.clear();
+	}
+
+	/**
+	 * Opens {@code content} in a resizable window, seeds it from the current
+	 * detail item, and keeps it updated until it (or the detail view) closes.
+	 */
+	private void showPopout(String title, JComponent content, Consumer<TrackedItem> refresher)
+	{
+		JPanel holder = new JPanel(new BorderLayout());
+		holder.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		holder.setBorder(new EmptyBorder(8, 8, 8, 8));
+		holder.add(content, BorderLayout.CENTER);
+
+		JFrame frame = new JFrame(title);
+		frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+		frame.setContentPane(holder);
+
+		// Seed the content before packing so the window fits the real cell widths
+		// (full numbers) and the content's height exactly — no trailing whitespace.
+		TrackedItem current = currentItems.get(detailItemId);
+		if (current != null)
+		{
+			refresher.accept(current);
+		}
+		frame.pack();
+		frame.setLocationRelativeTo(SwingUtilities.getWindowAncestor(this));
+
+		PopoutHandle handle = new PopoutHandle(frame, refresher);
+		openPopouts.add(handle);
+		frame.addWindowListener(new WindowAdapter()
+		{
+			@Override
+			public void windowClosed(WindowEvent e)
+			{
+				openPopouts.remove(handle);
+			}
+		});
+
+		frame.setVisible(true);
+	}
+
+	/** Opens a larger, live copy of a price/volume graph on its current timeframe. */
+	private void openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)
+	{
+		PriceGraphPanel graph = new PriceGraphPanel(mode, true);
+		graph.setActiveWindow(source.getActiveWindow());
+		graph.setPreferredSize(new Dimension(640, mode == PriceGraphPanel.Mode.PRICE ? 460 : 360));
+		Consumer<TrackedItem> refresher = it -> graph.setData(
+				it.getSeries5m(), it.getSeries1h(), it.getSeries6h(), it.getSeries24h(), it.getAvgPrice());
+		showPopout(title, graph, refresher);
+	}
+
+	/** Opens a larger, live copy of the Price Overview table. */
+	private void openOverviewPopout()
+	{
+		Map<TimeWindow, JLabel[]> labels = new EnumMap<>(TimeWindow.class);
+		List<JLabel> windowLabels = new ArrayList<>();
+		JPanel grid = createOverviewGrid(labels, windowLabels, 12);
+		// The pixel RuneScape fonts get jagged when enlarged, so the pop-out uses a
+		// smooth monospaced font: legible at this size and aligns digits in columns.
+		Font big = new Font(Font.MONOSPACED, Font.PLAIN, 18);
+		// The pop-out always shows every window, regardless of the sidebar preset,
+		// with the time-window column spelled out in full.
+		fillOverviewGrid(grid, labels, windowLabels, OverviewPreset.DETAILED.getWindows(), big, true);
+
+		// Pin the grid to the top so it grows by row height, not by stretching cells.
+		JPanel top = new JPanel(new BorderLayout());
+		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		top.add(grid, BorderLayout.NORTH);
+		JScrollPane scroll = new JScrollPane(top);
+		scroll.setBorder(null);
+		scroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		Consumer<TrackedItem> refresher = it -> populateOverviewLabels(labels, it, true);
+		showPopout("Price Overview", scroll, refresher);
+	}
+
+	/** Small "open in a larger window" icon for a section header. */
+	private Icon buildPopoutIcon()
+	{
+		int s = 11;
+		BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(ColorScheme.LIGHT_GRAY_COLOR);
+		g.setStroke(new BasicStroke(1f));
+		// A small window in the lower-left with an arrow pointing out to the upper-right.
+		g.drawRect(0, 4, 6, 6);
+		g.drawLine(4, 6, s - 1, 0);   // arrow shaft
+		g.drawLine(s - 5, 0, s - 1, 0); // arrowhead, top edge
+		g.drawLine(s - 1, 0, s - 1, 4); // arrowhead, right edge
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	private JButton buildPopoutButton(Runnable onClick)
+	{
+		JButton btn = new JButton(buildPopoutIcon());
+		btn.setToolTipText("Open in a larger window");
+		btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		btn.setFocusPainted(false);
+		btn.setBorder(new EmptyBorder(2, 4, 2, 4));
+		btn.setContentAreaFilled(false);
+		btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		btn.addActionListener(e -> onClick.run());
+		return btn;
 	}
 
 	private JPanel buildMarketInfoBlock()
@@ -2316,6 +2624,7 @@ public class ItemTrackerPanel extends PluginPanel
 	private void showMain()
 	{
 		detailItemId = -1;
+		closePopouts();
 		cardLayout.show(cardsHost, CARD_MAIN);
 	}
 
@@ -2364,50 +2673,7 @@ public class ItemTrackerPanel extends PluginPanel
 		}
 
 		// --- Price Overview ---
-		for (TimeWindow w : OVERVIEW_WINDOWS)
-		{
-			JLabel[] cells = overviewLabels.get(w);
-			if (cells == null) continue;
-
-			if (w == TimeWindow.LIVE)
-			{
-				// First row shows the latest 5-minute bucket rather than live prices.
-				List<WikiRealtimePriceClient.PricePoint> s5 = item.getSeries5m();
-				WikiRealtimePriceClient.PricePoint last = s5.isEmpty() ? null : s5.get(s5.size() - 1);
-				long high = last == null ? 0 : last.getAvgHighPrice();
-				long low = last == null ? 0 : last.getAvgLowPrice();
-				long avg = last == null ? 0 : overviewMidpoint(last);
-				setPriceCell(cells[0], high, COLOR_HIGH, "High", TINT_HIGH);
-				setPriceCell(cells[1], low, COLOR_LOW, "Low", TINT_LOW);
-				setPriceCell(cells[2], avg, COLOR_AVG, "Avg", TINT_AVG);
-				setOverviewPlaceholder(cells[3]); // Δ% not meaningful for the 5m row
-				if (last == null)
-				{
-					setOverviewPlaceholder(cells[4]);
-				}
-				else
-				{
-					installVolumeValue(cells[4], last.getHighPriceVolume() + last.getLowPriceVolume());
-				}
-				continue;
-			}
-
-			PriceStats s = item.getWindowStats().get(w);
-			setPriceCell(cells[0], s == null ? 0 : s.getHigh(), COLOR_HIGH, "High", TINT_HIGH);
-			setPriceCell(cells[1], s == null ? 0 : s.getLow(), COLOR_LOW, "Low", TINT_LOW);
-			setPriceCell(cells[2], s == null ? 0 : s.getAvg(), COLOR_AVG, "Avg", TINT_AVG);
-			applyDeltaPct(cells[3], item, w);
-
-			// Vol shows the real count, including 0 when nothing traded in the window.
-			if (s == null)
-			{
-				setOverviewPlaceholder(cells[4]);
-			}
-			else
-			{
-				installVolumeValue(cells[4], s.getVolume());
-			}
-		}
+		populateOverviewLabels(overviewLabels, item, false);
 
 		// --- Graphs ---
 		if (priceGraph != null)
@@ -2465,6 +2731,9 @@ public class ItemTrackerPanel extends PluginPanel
 		applyTableRenderers();
 		acquisitionsTable.revalidate();
 		acquisitionsSection.setVisible(item.getMode() != TrackItemMode.VIEW);
+
+		// Keep any detached section windows in sync with the item on screen.
+		refreshPopouts(item);
 	}
 
 	/**
@@ -2480,17 +2749,36 @@ public class ItemTrackerPanel extends PluginPanel
 	/**
 	 * Sets a High/Low/Avg overview cell: the value in the column colour, or a
 	 * column-coloured "-" placeholder when the value is 0 (no trade of that type).
+	 * {@code full} renders the complete number instead of the abbreviated form.
 	 */
-	private void setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint)
+	private void setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)
 	{
 		label.setForeground(color);
-		if (value > 0)
+		if (value <= 0)
 		{
-			installItemValue(label, value, "", tooltipLabel, tint);
+			setOverviewPlaceholder(label);
+		}
+		else if (full)
+		{
+			removeHoverTint(label);
+			label.setText(NUMBER_FORMAT.format(value));
+			label.setToolTipText((tooltipLabel == null ? "" : tooltipLabel + ": ") + NUMBER_FORMAT.format(value) + " gp");
 		}
 		else
 		{
-			setOverviewPlaceholder(label);
+			installItemValue(label, value, "", tooltipLabel, tint);
+		}
+	}
+
+	/** Removes any hover-to-tint listener so a label can show plain static text. */
+	private static void removeHoverTint(JLabel label)
+	{
+		for (MouseListener ml : label.getMouseListeners())
+		{
+			if (ml instanceof HoverTintListener)
+			{
+				label.removeMouseListener(ml);
+			}
 		}
 	}
 
@@ -2508,19 +2796,19 @@ public class ItemTrackerPanel extends PluginPanel
 		return s == null ? 0 : s.getVolume();
 	}
 
-	private void installVolumeValue(JLabel label, long vol)
+	private void installVolumeValue(JLabel label, long vol, boolean full)
 	{
-		String text = formatItemShort(vol);
 		label.setForeground(COLOR_VOLUME);
-		label.setText(text);
 		label.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
-		for (MouseListener ml : label.getMouseListeners())
+		if (full)
 		{
-			if (ml instanceof HoverTintListener)
-			{
-				label.removeMouseListener(ml);
-			}
+			removeHoverTint(label);
+			label.setText(NUMBER_FORMAT.format(vol));
+			return;
 		}
+		String text = formatItemShort(vol);
+		label.setText(text);
+		removeHoverTint(label);
 		HoverTintListener listener = new HoverTintListener(label, text, TINT_VOLUME);
 		label.addMouseListener(listener);
 		SwingUtilities.invokeLater(listener::applyIfHovered);
