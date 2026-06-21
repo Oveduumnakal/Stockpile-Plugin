@@ -115,9 +115,12 @@ public class PriceGraphPanel extends JPanel
 
 	private static final int TAB_BAR_HEIGHT = 28;
 	private static final int RIGHT_AXIS_WIDTH = 38;
-	private static final int BOTTOM_AXIS_HEIGHT = 34;
+	private static final int BOTTOM_AXIS_HEIGHT = 40;
 	private static final int LEFT_PAD = 8;
 	private static final int TOP_PAD = 13;
+	// Gap below the plot before the x-axis labels start, leaving room for the
+	// downward clip-indicator triangles (which sit just under the plot bottom).
+	private static final int X_AXIS_LABEL_GAP = 12;
 
 	public PriceGraphPanel()
 	{
@@ -524,16 +527,39 @@ public class PriceGraphPanel extends JPanel
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
 			long startSec, long span)
 	{
-		long min = Long.MAX_VALUE, max = Long.MIN_VALUE;
+		// Collect every High/Low value so the axis can be scaled to the bulk of the
+		// data rather than to rare spikes, which otherwise leave most of the chart
+		// empty (the lines hug one edge). The expanded pop-out keeps the full range.
+		List<Long> values = new ArrayList<>(visible.size() * 2);
 		for (WikiRealtimePriceClient.PricePoint p : visible)
 		{
-			if (p.getAvgHighPrice() > 0) { max = Math.max(max, p.getAvgHighPrice()); min = Math.min(min, p.getAvgHighPrice()); }
-			if (p.getAvgLowPrice() > 0) { max = Math.max(max, p.getAvgLowPrice()); min = Math.min(min, p.getAvgLowPrice()); }
+			if (p.getAvgHighPrice() > 0) { values.add(p.getAvgHighPrice()); }
+			if (p.getAvgLowPrice() > 0) { values.add(p.getAvgLowPrice()); }
 		}
-		if (currentPrice > 0) { max = Math.max(max, currentPrice); min = Math.min(min, currentPrice); }
-		if (min == Long.MAX_VALUE || max == Long.MIN_VALUE)
+		if (values.isEmpty())
 		{
 			return;
+		}
+
+		long min, max;
+		if (expanded)
+		{
+			min = Collections.min(values);
+			max = Collections.max(values);
+			if (currentPrice > 0) { min = Math.min(min, currentPrice); max = Math.max(max, currentPrice); }
+		}
+		else
+		{
+			// Clip the rare spikes (2.5th/97.5th percentile); they get drawn against
+			// the chart edge below. Fall back to the true range when the band collapses
+			// (e.g. a near-flat series where most points share a value).
+			min = percentile(values, 0.025);
+			max = percentile(values, 0.975);
+			if (max <= min)
+			{
+				min = Collections.min(values);
+				max = Collections.max(values);
+			}
 		}
 
 		double[] axis = niceAxis(min, max, expanded ? 7 : 4, expanded ? 12 : 6);
@@ -562,16 +588,16 @@ public class PriceGraphPanel extends JPanel
 			int x = plotLeft + (int) ((double) (p.getTimestamp() - startSec) / span * plotW);
 			if (p.getAvgHighPrice() > 0)
 			{
-				hx[hc] = x; hy[hc] = plotBottom - (int) ((p.getAvgHighPrice() - axisMin) / axisRange * plotH); hc++;
+				hx[hc] = x; hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); hc++;
 			}
 			if (p.getAvgLowPrice() > 0)
 			{
-				lx[lc] = x; ly[lc] = plotBottom - (int) ((p.getAvgLowPrice() - axisMin) / axisRange * plotH); lc++;
+				lx[lc] = x; ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); lc++;
 			}
 			long avg = midpoint(p);
 			if (avg > 0)
 			{
-				ax[ac] = x; ay[ac] = plotBottom - (int) ((avg - axisMin) / axisRange * plotH); ac++;
+				ax[ac] = x; ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH); ac++;
 			}
 		}
 
@@ -594,14 +620,72 @@ public class PriceGraphPanel extends JPanel
 			g2.draw(buildSeriesPath(ax, ay, ac));
 		}
 
+		// Clip markers: a small triangle (with a gap above/below the clipped line)
+		// wherever a visible line leaves the chart, pointing up past the top or down
+		// past the bottom. Colour matches the line. Mirrors the volume over-cap arrow.
+		for (WikiRealtimePriceClient.PricePoint p : visible)
+		{
+			int x = plotLeft + (int) ((double) (p.getTimestamp() - startSec) / span * plotW);
+			if (showHighLow)
+			{
+				clipMarker(g2, x, p.getAvgHighPrice(), axisMin, axisMax, plotTop, plotBottom, COLOR_HIGH);
+				clipMarker(g2, x, p.getAvgLowPrice(), axisMin, axisMax, plotTop, plotBottom, COLOR_LOW);
+			}
+			if (showAvg)
+			{
+				clipMarker(g2, x, midpoint(p), axisMin, axisMax, plotTop, plotBottom, COLOR_AVG);
+			}
+		}
+
 		// Current average price: dashed blue-grey line drawn on top.
 		if (currentPrice > 0)
 		{
-			int cy = plotBottom - (int) ((currentPrice - axisMin) / axisRange * plotH);
+			int cy = priceY(currentPrice, axisMin, axisRange, plotTop, plotBottom, plotH);
 			g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
 					10f, new float[]{4f, 4f}, 0f));
 			g2.setColor(CURRENT_LINE_COLOR);
 			g2.drawLine(plotLeft, cy, plotRight, cy);
+		}
+	}
+
+	/**
+	 * Maps a price to its plot Y, clamped to the plot area so values outside the
+	 * (clipped) axis ride the top/bottom edge instead of drawing off-canvas.
+	 */
+	private static int priceY(long value, double axisMin, double axisRange,
+			int plotTop, int plotBottom, int plotH)
+	{
+		int y = plotBottom - (int) ((value - axisMin) / axisRange * plotH);
+		if (y < plotTop) { return plotTop; }
+		if (y > plotBottom) { return plotBottom; }
+		return y;
+	}
+
+	/**
+	 * Draws a small clip-indicator triangle when {@code value} falls outside the
+	 * axis: pointing up (just above the top, with a gap) when it exceeds the top,
+	 * or down (just below the bottom) when it falls under it. No-op otherwise.
+	 */
+	private static void clipMarker(Graphics2D g2, int cx, long value, double axisMin, double axisMax,
+			int plotTop, int plotBottom, Color color)
+	{
+		if (value <= 0 || (value <= axisMax && value >= axisMin))
+		{
+			return;
+		}
+		final int gap = 4;   // space between the clipped line edge and the triangle
+		final int halfW = 3;
+		final int height = 4;
+		g2.setColor(color);
+		if (value > axisMax)
+		{
+			int base = plotTop - gap;
+			g2.fillPolygon(new int[]{cx - halfW, cx + halfW, cx}, new int[]{base, base, base - height}, 3);
+		}
+		else
+		{
+			int base = plotBottom + gap;
+			g2.fillPolygon(new int[]{cx - halfW, cx + halfW, cx}, new int[]{base, base, base + height}, 3);
 		}
 	}
 
@@ -730,7 +814,7 @@ public class PriceGraphPanel extends JPanel
 			}
 			int x = plotLeft + (int) ((double) (ts - startSec) / span * plotW);
 			String label = labelForTick(ts);
-			drawVerticalLabel(g2, label, x, plotBottom + 3, fm);
+			drawVerticalLabel(g2, label, x, plotBottom + X_AXIS_LABEL_GAP, fm);
 		}
 	}
 

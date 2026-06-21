@@ -6,7 +6,6 @@ package com.oveduumnakal;
 
 import lombok.Data;
 
-import java.time.Instant;
 import java.util.Locale;
 import java.util.OptionalDouble;
 
@@ -21,8 +20,8 @@ import java.util.OptionalDouble;
  * comparison, keeping the panel (on edit) and the plugin (on evaluation) in
  * agreement.
  *
- * <p>The trigger bookkeeping ({@link #armed}, {@link #lastFired}) is transient:
- * it is not persisted and re-arms cleanly each session.
+ * <p>Rules are one-and-done: a rule fires exactly once and is then removed from
+ * its item's list.
  */
 @Data
 public class NotificationRule
@@ -32,11 +31,6 @@ public class NotificationRule
 	private TimeWindow timeWindow;
 	private NotificationOperation operation;
 	private String value = "";
-
-	/** True once the condition has fired and is awaiting a reset (condition false). */
-	private transient boolean armed;
-	/** When this rule last fired, used for the re-trigger cooldown. */
-	private transient Instant lastFired;
 
 	/**
 	 * Parses a numeric value entered in short form (commas, k/m/b suffixes,

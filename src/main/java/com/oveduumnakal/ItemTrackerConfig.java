@@ -68,12 +68,12 @@ public interface ItemTrackerConfig extends Config
 	String KEY_PRICE_OVERVIEW_ROWS = "priceOverviewPreset";
 	String KEY_AUTO_ADD_ITEMS = "autoAddItems";
 	String KEY_NOTIFICATION_STYLE = "notificationStyle";
-	String KEY_NOTIFICATION_COOLDOWN_MINUTES = "notificationCooldownMinutes";
 
 	// Section 4: GE Estimates Display
 	String KEY_SHOW_GE_ESTIMATES = "showGeEstimates";
 	String KEY_GE_ESTIMATES_POSITION = "geEstimatesPosition";
 	String KEY_GE_ESTIMATES_FORMAT = "geEstimatesFormat";
+	String KEY_GE_ESTIMATES_SPACING = "geEstimatesSpacing";
 	String KEY_SHOW_EST_HIGH = "showEstHigh";
 	String KEY_SHOW_EST_LOW = "showEstLow";
 	String KEY_SHOW_EST_AVG = "showEstAvg";
@@ -410,19 +410,6 @@ public interface ItemTrackerConfig extends Config
 		return Notification.ON;
 	}
 
-	@Range(min = 0)
-	@ConfigItem(
-			keyName = KEY_NOTIFICATION_COOLDOWN_MINUTES,
-			name = "Notif. Cooldown",
-			description = "Minimum minutes that must pass before the same rule can fire again after its condition resets",
-			section = detailViewSection,
-			position = 13
-	)
-	default int notificationCooldownMinutes()
-	{
-		return 5;
-	}
-
 	// ---- Section 4: GE Estimates Display ----
 
 	@ConfigItem(
@@ -462,11 +449,24 @@ public interface ItemTrackerConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = KEY_GE_ESTIMATES_SPACING,
+			name = "Spacing",
+			description = "Vertical spacing of the estimate rows. Default keeps the roomier layout; "
+					+ "Compact tightens the rows to match the tracked items list.",
+			section = geEstimatesSection,
+			position = 3
+	)
+	default EstimatesSpacing geEstimatesSpacing()
+	{
+		return EstimatesSpacing.DEFAULT;
+	}
+
+	@ConfigItem(
 			keyName = KEY_SHOW_EST_HIGH,
 			name = "Show High Estimate",
 			description = "Show the row containing the estimated high value",
 			section = geEstimatesSection,
-			position = 3
+			position = 4
 	)
 	default boolean showEstHigh()
 	{
@@ -478,7 +478,7 @@ public interface ItemTrackerConfig extends Config
 			name = "Show Low Estimate",
 			description = "Show the row containing the estimated low value",
 			section = geEstimatesSection,
-			position = 4
+			position = 5
 	)
 	default boolean showEstLow()
 	{
@@ -490,7 +490,7 @@ public interface ItemTrackerConfig extends Config
 			name = "Show Avg Estimate",
 			description = "Show the row containing the estimated average value",
 			section = geEstimatesSection,
-			position = 5
+			position = 6
 	)
 	default boolean showEstAvg()
 	{
@@ -502,7 +502,7 @@ public interface ItemTrackerConfig extends Config
 			name = "Show Profit",
 			description = "Show the row containing the estimated profit",
 			section = geEstimatesSection,
-			position = 6
+			position = 7
 	)
 	default boolean showEstProfit()
 	{

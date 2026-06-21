@@ -72,7 +72,6 @@ import javax.swing.*;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Type;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -193,7 +192,8 @@ public class ItemTrackerPlugin extends Plugin
 				this::onAcquisitionsEdited,
 				this::requestDetailData,
 				this::clearAcquisitions,
-				this::onNotificationsEdited
+				this::onNotificationsEdited,
+				this::clearAllTrackedItems
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
@@ -208,7 +208,13 @@ public class ItemTrackerPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 		overlayManager.add(highlightOverlay);
 		overlayManager.add(groundOverlay);
-		clientThread.invokeLater(this::loadPersistedItems);
+		clientThread.invokeLater(() ->
+		{
+			loadPersistedItems();
+			// Show the correct view immediately, including the logged-out placeholder
+			// or an empty (but logged-in) list where loadPersistedItems adds nothing.
+			refreshPanel();
+		});
 		executor.execute(this::fetchItemMappings);
 		scheduleRefresh();
 	}
@@ -381,6 +387,22 @@ public class ItemTrackerPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.remove(itemId);
+			persistTrackedItems();
+			refreshPanel();
+		});
+	}
+
+	/**
+	 * Removes every entry from the tracked list (both tracked and view-only),
+	 * which also discards their notifications and collection-log rows since those
+	 * live on the {@link TrackedItem}. Invoked from the panel's Clear button after
+	 * the user confirms.
+	 */
+	private void clearAllTrackedItems()
+	{
+		clientThread.invokeLater(() ->
+		{
+			trackedItems.clear();
 			persistTrackedItems();
 			refreshPanel();
 		});
@@ -939,6 +961,10 @@ public class ItemTrackerPlugin extends Plugin
 				loadPersistedItems();
 				refreshPanel();
 				break;
+			case LOGIN_SCREEN:
+				// Logged out: refresh so the panel shows the logged-out placeholder.
+				refreshPanel();
+				break;
 			default:
 				break;
 		}
@@ -1336,14 +1362,18 @@ public class ItemTrackerPlugin extends Plugin
 				? config.priceChangeIndicator()
 				: PriceIndicatorMode.OFF;
 		final List<TrackedItem> items = new ArrayList<>(trackedItems.values());
-		SwingUtilities.invokeLater(() -> panel.rebuild(items, refresh, indicatorMode));
+		// LOADING counts as in-game (region change) so the panel doesn't flash the
+		// logged-out placeholder while running around.
+		final GameState gs = client.getGameState();
+		final boolean loggedIn = gs == GameState.LOGGED_IN || gs == GameState.LOADING;
+		SwingUtilities.invokeLater(() -> panel.rebuild(items, refresh, indicatorMode, loggedIn));
 	}
 
 	/**
 	 * Evaluates every item's notification rules and fires those whose condition
-	 * has newly become true. A rule fires once, then stays "armed" until its
-	 * condition goes false again; even then it cannot re-fire until the
-	 * configured cooldown has elapsed since it last fired. Must run on the client
+	 * is met. Rules are one-and-done: a rule fires exactly once and is then
+	 * removed from its item's list. Removed rules are persisted and the panel is
+	 * refreshed so the change is reflected immediately. Must run on the client
 	 * thread (reads {@link #trackedItems}).
 	 */
 	private void evaluateNotifications()
@@ -1353,38 +1383,41 @@ public class ItemTrackerPlugin extends Plugin
 		{
 			return;
 		}
-		long cooldownSeconds = Math.max(0, config.notificationCooldownMinutes()) * 60L;
-		Instant now = Instant.now();
+		// Hold off while the user is editing a rule: firing removes the rule and
+		// refreshes the panel, which would wedge the open cell editor. Evaluation
+		// resumes on the next tick once they finish editing.
+		if (panel.isEditingNotifications())
+		{
+			return;
+		}
 
+		boolean changed = false;
 		for (TrackedItem item : trackedItems.values())
 		{
-			for (NotificationRule rule : item.getNotifications())
+			Iterator<NotificationRule> it = item.getNotifications().iterator();
+			while (it.hasNext())
 			{
+				NotificationRule rule = it.next();
 				Boolean condition = evaluateRule(item, rule);
 				if (condition == null)
 				{
-					// Required data not ready yet; leave trigger state untouched.
+					// Required data not ready yet, or a blank row; leave it in place.
 					continue;
 				}
 				if (condition)
 				{
-					if (!rule.isArmed())
-					{
-						boolean cooled = rule.getLastFired() == null
-								|| ChronoUnit.SECONDS.between(rule.getLastFired(), now) >= cooldownSeconds;
-						if (cooled)
-						{
-							notifier.notify(style, notificationText(item, rule));
-							rule.setLastFired(now);
-						}
-						rule.setArmed(true);
-					}
-				}
-				else
-				{
-					rule.setArmed(false);
+					// One-and-done: fire once, then drop the rule from the list.
+					notifier.notify(style, notificationText(item, rule));
+					it.remove();
+					changed = true;
 				}
 			}
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
 		}
 	}
 

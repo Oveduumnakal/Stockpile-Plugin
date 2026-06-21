@@ -95,6 +95,7 @@ public class ItemTrackerPanel extends PluginPanel
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
 	private final Consumer<Integer> onNotificationsEdited;
+	private final Runnable onClearAll;
 
 	private final CardLayout cardLayout = new CardLayout();
 	// CardLayout sizes to the largest card, which would make the (shorter) main
@@ -117,6 +118,7 @@ public class ItemTrackerPanel extends PluginPanel
 	};
 	private static final String CARD_MAIN = "main";
 	private static final String CARD_DETAIL = "detail";
+	private static final String CARD_LOGGED_OUT = "loggedOut";
 
 	private final Map<Integer, TrackedItem> currentItems = new HashMap<>();
 	private final Map<Integer, ImageIcon> rowIconCache = new HashMap<>();
@@ -168,6 +170,8 @@ public class ItemTrackerPanel extends PluginPanel
 	private JPanel acquisitionsSection;
 	private NotificationsTableModel notificationsModel;
 	private JTable notificationsTable;
+	/** True while a notifications cell editor is open; read off-EDT by the plugin. */
+	private volatile boolean editingNotifications;
 	private JPanel notificationsSection;
 	private static final int DEFAULT_NOTIFICATION_ROWS = 5;
 	// Collection-log pop-out: a second table sharing the same item data, plus the
@@ -219,6 +223,24 @@ public class ItemTrackerPanel extends PluginPanel
 					new EmptyBorder(10, 0, 12, 0));
 	private static final javax.swing.border.Border TITLE_BORDER_NO_DIVIDER =
 			new EmptyBorder(10, 0, 12, 0);
+	// Vertical padding for the GE Estimates value rows: roomier by default,
+	// tightened to the tracked-items list spacing when Compact is selected.
+	private static final javax.swing.border.Border ESTIMATE_ROW_BORDER_DEFAULT =
+			new EmptyBorder(3, 0, 3, 0);
+	private static final javax.swing.border.Border ESTIMATE_ROW_BORDER_COMPACT =
+			new EmptyBorder(1, 0, 1, 0);
+	private static final javax.swing.border.Border PROFIT_SECTION_BORDER_DEFAULT =
+			BorderFactory.createCompoundBorder(
+					BorderFactory.createCompoundBorder(
+							new EmptyBorder(4, 0, 0, 0),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
+					new EmptyBorder(4, 0, 0, 0));
+	private static final javax.swing.border.Border PROFIT_SECTION_BORDER_COMPACT =
+			BorderFactory.createCompoundBorder(
+					BorderFactory.createCompoundBorder(
+							new EmptyBorder(1, 0, 0, 0),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
+					new EmptyBorder(1, 0, 0, 0));
 
 	private final JLabel totalHighLabel;
 	private final JLabel totalLowLabel;
@@ -227,6 +249,10 @@ public class ItemTrackerPanel extends PluginPanel
 	private final JPanel totalLowRow;
 	private final JPanel totalAvgRow;
 	private final JLabel lastRefreshLabel;
+	/** Pinned footer (below the scroll area) holding the price-refresh counter; main view only. */
+	private final JPanel footerPanel = new JPanel(new BorderLayout());
+	/** Footer "Clear" button; disabled when the list is empty. */
+	private final JButton clearButton = new JButton("Clear");
 
 	private volatile Instant lastPriceRefresh = null;
 	private final java.util.Set<Integer> trackedItemIds = new java.util.HashSet<>();
@@ -278,7 +304,8 @@ public class ItemTrackerPanel extends PluginPanel
 			Consumer<Integer> onAcquisitionsEdited,
 			Consumer<Integer> onRequestDetailData,
 			Consumer<Integer> onClearAcquisitions,
-			Consumer<Integer> onNotificationsEdited)
+			Consumer<Integer> onNotificationsEdited,
+			Runnable onClearAll)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -288,6 +315,7 @@ public class ItemTrackerPanel extends PluginPanel
 		this.onRequestDetailData = onRequestDetailData;
 		this.onClearAcquisitions = onClearAcquisitions;
 		this.onNotificationsEdited = onNotificationsEdited;
+		this.onClearAll = onClearAll;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -381,10 +409,9 @@ public class ItemTrackerPanel extends PluginPanel
 		totalsRowsWrapper.add(totalsRows, wrapC);
 		totalsPanel.add(totalsRowsWrapper, BorderLayout.CENTER);
 
-		lastRefreshLabel = new JLabel("Prices not yet loaded");
+		lastRefreshLabel = new JLabel("Prices not yet loaded", SwingConstants.CENTER);
 		lastRefreshLabel.setForeground(new Color(150, 150, 150));
 		lastRefreshLabel.setFont(FontManager.getRunescapeSmallFont());
-		lastRefreshLabel.setBorder(new EmptyBorder(4, 0, 0, 0));
 
 		JLabel profitPrefixLabel = new JLabel("Est. Profit:");
 		profitPrefixLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -401,13 +428,7 @@ public class ItemTrackerPanel extends PluginPanel
 
 		profitSection = new JPanel(new BorderLayout());
 		profitSection.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		profitSection.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createCompoundBorder(
-				new EmptyBorder(4, 0, 0, 0),
-				new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
-			),
-			new EmptyBorder(4, 0, 0, 0)
-		));
+		profitSection.setBorder(PROFIT_SECTION_BORDER_DEFAULT);
 		profitSection.add(profitRow, BorderLayout.CENTER);
 		profitSection.setVisible(false);
 		totalsRows.add(profitSection);
@@ -417,12 +438,6 @@ public class ItemTrackerPanel extends PluginPanel
 		bottomPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		bottomPanel.add(totalsTitle, BorderLayout.NORTH);
 		bottomPanel.add(totalsPanel, BorderLayout.CENTER);
-
-		JPanel belowTotals = new JPanel();
-		belowTotals.setLayout(new BoxLayout(belowTotals, BoxLayout.Y_AXIS));
-		belowTotals.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		belowTotals.add(lastRefreshLabel);
-		bottomPanel.add(belowTotals, BorderLayout.SOUTH);
 
 		geEstimatesSlotTop.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		geEstimatesSlotBottom.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -451,10 +466,46 @@ public class ItemTrackerPanel extends PluginPanel
 
 		buildDetailCard();
 
+		JPanel loggedOutCard = new JPanel(new GridBagLayout());
+		loggedOutCard.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		JLabel loggedOutLabel = new JLabel("Log in to view tracked items");
+		loggedOutLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		loggedOutLabel.setFont(FontManager.getRunescapeSmallFont());
+		loggedOutLabel.setBorder(new EmptyBorder(10, 10, 10, 10));
+		loggedOutCard.add(loggedOutLabel);
+
 		cardsHost.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		cardsHost.add(mainCard, CARD_MAIN);
 		cardsHost.add(detailCard, CARD_DETAIL);
+		cardsHost.add(loggedOutCard, CARD_LOGGED_OUT);
 		add(cardsHost, BorderLayout.CENTER);
+
+		// Default to the logged-out placeholder until the first refresh; the plugin
+		// flips this based on game state (see rebuild).
+		cardLayout.show(cardsHost, CARD_LOGGED_OUT);
+
+		// Pin the refresh counter to a footer below the scroll area (via the
+		// PluginPanel wrapper) so it stays visible no matter how far the main
+		// view is scrolled. Hidden on the detail card (see showMain/showDetail).
+		footerPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		footerPanel.setBorder(BorderFactory.createCompoundBorder(
+				new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR),
+				new EmptyBorder(6, 10, 6, 10)));
+		footerPanel.add(lastRefreshLabel, BorderLayout.CENTER);
+
+		clearButton.setFont(FontManager.getRunescapeSmallFont());
+		clearButton.setForeground(COLOR_LOW);
+		clearButton.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		clearButton.setFocusPainted(false);
+		clearButton.setToolTipText("Remove all tracked items, including their notifications and collection log");
+		clearButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		clearButton.setEnabled(false);
+		clearButton.addActionListener(e -> confirmAndClearAll());
+		footerPanel.add(clearButton, BorderLayout.EAST);
+
+		// Hidden initially to match the logged-out placeholder shown on startup.
+		footerPanel.setVisible(false);
+		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
 
 		refreshAgeTimer = new Timer(1000, e -> updateRefreshLabel());
 		refreshAgeTimer.start();
@@ -490,6 +541,24 @@ public class ItemTrackerPanel extends PluginPanel
 		geEstimatesSlotBottom.revalidate();
 		geEstimatesSlotTop.repaint();
 		geEstimatesSlotBottom.repaint();
+	}
+
+	/**
+	 * Sets the vertical spacing of the GE Estimates value rows (High/Low/Avg and
+	 * Est. Profit). Compact tightens them to the tracked-items list spacing.
+	 */
+	private void applyEstimatesSpacing(EstimatesSpacing spacing)
+	{
+		boolean compact = spacing == EstimatesSpacing.COMPACT;
+		javax.swing.border.Border rowBorder = compact
+				? ESTIMATE_ROW_BORDER_COMPACT : ESTIMATE_ROW_BORDER_DEFAULT;
+		totalHighRow.setBorder(rowBorder);
+		totalLowRow.setBorder(rowBorder);
+		totalAvgRow.setBorder(rowBorder);
+		profitSection.setBorder(compact
+				? PROFIT_SECTION_BORDER_COMPACT : PROFIT_SECTION_BORDER_DEFAULT);
+		bottomPanel.revalidate();
+		bottomPanel.repaint();
 	}
 
 	private JPanel buildDividerStrip()
@@ -585,7 +654,7 @@ public class ItemTrackerPanel extends PluginPanel
 		JPanel row = new JPanel();
 		row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
 		row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		row.setBorder(new EmptyBorder(3, 0, 3, 0));
+		row.setBorder(ESTIMATE_ROW_BORDER_DEFAULT);
 		row.add(valueLabel);
 		row.add(Box.createHorizontalStrut(6));
 		row.add(pulseLabel);
@@ -772,7 +841,8 @@ public class ItemTrackerPanel extends PluginPanel
 		return row;
 	}
 
-	public void rebuild(List<TrackedItem> items, Instant newLastPriceRefresh, PriceIndicatorMode indicatorMode)
+	public void rebuild(List<TrackedItem> items, Instant newLastPriceRefresh,
+			PriceIndicatorMode indicatorMode, boolean loggedIn)
 	{
 		this.lastPriceRefresh = newLastPriceRefresh;
 		trackedItemIds.clear();
@@ -783,6 +853,21 @@ public class ItemTrackerPanel extends PluginPanel
 			currentItems.put(item.getItemId(), item);
 		}
 		rowIconCache.keySet().retainAll(trackedItemIds);
+
+		if (!loggedIn)
+		{
+			// Hide everything behind the placeholder and reset to the main view so
+			// re-logging in lands on the list rather than a stale detail view.
+			SwingUtilities.invokeLater(() ->
+			{
+				detailItemId = -1;
+				closePopouts();
+				footerPanel.setVisible(false);
+				cardLayout.show(cardsHost, CARD_LOGGED_OUT);
+			});
+			return;
+		}
+
 		if (detailItemId > 0)
 		{
 			TrackedItem detail = currentItems.get(detailItemId);
@@ -798,10 +883,21 @@ public class ItemTrackerPanel extends PluginPanel
 				SwingUtilities.invokeLater(this::showMain);
 			}
 		}
+		else
+		{
+			// On the main view: make sure we're showing it (e.g. returning from the
+			// logged-out placeholder) with the footer visible.
+			SwingUtilities.invokeLater(() ->
+			{
+				footerPanel.setVisible(true);
+				cardLayout.show(cardsHost, CARD_MAIN);
+			});
+		}
 		SwingUtilities.invokeLater(() ->
 		{
 			loadingLabels.clear();
 			pulseEntries.clear();
+			clearButton.setEnabled(!trackedItemIds.isEmpty());
 			totalHighDeltaLabel.setText("");
 			totalLowDeltaLabel.setText("");
 			totalAvgDeltaLabel.setText("");
@@ -882,6 +978,7 @@ public class ItemTrackerPanel extends PluginPanel
 			equalizeTotalsLabelWidths();
 			bottomPanel.setVisible(config.showGeEstimates());
 			applyEstimatesPosition(config.geEstimatesPosition());
+			applyEstimatesSpacing(config.geEstimatesSpacing());
 
 			updateCoinsIcon(hasPrices ? totalAvg : 0);
 
@@ -1902,6 +1999,10 @@ public class ItemTrackerPanel extends PluginPanel
 		notificationsTable.getTableHeader().setFont(FontManager.getRunescapeSmallFont());
 		notificationsTable.getTableHeader().setReorderingAllowed(false);
 		notificationsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+		// Track when a cell editor is open so the plugin can hold off firing (and
+		// removing) notifications mid-edit, which would otherwise wedge the editor.
+		notificationsTable.addPropertyChangeListener("tableCellEditor",
+				e -> editingNotifications = notificationsTable.isEditing());
 		applyNotificationRenderers();
 
 		JScrollPane tableScroll = new JScrollPane(notificationsTable);
@@ -2172,6 +2273,12 @@ public class ItemTrackerPanel extends PluginPanel
 	public int getDetailItemId()
 	{
 		return detailItemId;
+	}
+
+	/** True while the user has a notifications cell editor open. Thread-safe. */
+	public boolean isEditingNotifications()
+	{
+		return editingNotifications;
 	}
 
 	public void setAlchRunePrices(long naturePrice, long firePrice)
@@ -3130,6 +3237,7 @@ public class ItemTrackerPanel extends PluginPanel
 		if (item == null) return;
 		detailItemId = itemId;
 		populateDetail(item);
+		footerPanel.setVisible(false);
 		cardLayout.show(cardsHost, CARD_DETAIL);
 		if (onRequestDetailData != null)
 		{
@@ -3141,7 +3249,32 @@ public class ItemTrackerPanel extends PluginPanel
 	{
 		detailItemId = -1;
 		closePopouts();
+		footerPanel.setVisible(true);
 		cardLayout.show(cardsHost, CARD_MAIN);
+	}
+
+	/**
+	 * Footer Clear action: confirms with the user, then asks the plugin to remove
+	 * every tracked item (along with its notifications and collection log).
+	 */
+	private void confirmAndClearAll()
+	{
+		int count = currentItems.size();
+		if (count == 0)
+		{
+			return;
+		}
+		int choice = JOptionPane.showConfirmDialog(
+				this,
+				"Remove all " + count + " tracked item" + (count == 1 ? "" : "s")
+						+ ", including their notifications and collection log?\nThis cannot be undone.",
+				"Clear tracked items",
+				JOptionPane.YES_NO_OPTION,
+				JOptionPane.WARNING_MESSAGE);
+		if (choice == JOptionPane.YES_OPTION && onClearAll != null)
+		{
+			onClearAll.run();
+		}
 	}
 
 	private void populateDetail(TrackedItem item)
@@ -3800,7 +3933,6 @@ public class ItemTrackerPanel extends PluginPanel
 						rule.setOperation(NotificationOperation.GTE);
 					}
 					rule.setValue(m.isCategorical() ? m.getOptions().get(0) : "");
-					resetTrigger(rule);
 					fireTableRowsUpdated(r, r);
 					break;
 				case 1:
@@ -3809,7 +3941,6 @@ public class ItemTrackerPanel extends PluginPanel
 						return;
 					}
 					rule.setTimeWindow((TimeWindow) value);
-					resetTrigger(rule);
 					break;
 				case 2:
 					if (!(value instanceof NotificationOperation))
@@ -3817,11 +3948,9 @@ public class ItemTrackerPanel extends PluginPanel
 						return;
 					}
 					rule.setOperation((NotificationOperation) value);
-					resetTrigger(rule);
 					break;
 				case 3:
 					applyValueEdit(rule, value == null ? "" : value.toString());
-					resetTrigger(rule);
 					fireTableRowsUpdated(r, r);
 					break;
 				default:
@@ -3854,11 +3983,6 @@ public class ItemTrackerPanel extends PluginPanel
 			}
 		}
 
-		private void resetTrigger(NotificationRule rule)
-		{
-			rule.setArmed(false);
-			rule.setLastFired(null);
-		}
 	}
 
 	/** Value-column editor: a dropdown for categorical metrics, a text field otherwise. */
