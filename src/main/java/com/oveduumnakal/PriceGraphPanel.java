@@ -57,9 +57,9 @@ public class PriceGraphPanel extends JPanel
 	/** Which price lines to draw: all three, just high/low, or just the average. */
 	public enum LineSet
 	{
-		ALL("All"),
+		ALL("ALL"),
 		HIGH_LOW("H/L"),
-		AVG("Avg");
+		AVG("AVG");
 
 		final String label;
 
@@ -74,6 +74,7 @@ public class PriceGraphPanel extends JPanel
 	private static final Color COLOR_HIGH = new Color(100, 220, 100);
 	private static final Color COLOR_LOW = new Color(220, 100, 100);
 	private static final Color COLOR_AVG = new Color(255, 200, 0);
+	private static final Color COLOR_NEUTRAL = Color.LIGHT_GRAY;
 	private static final Color GRID_COLOR = new Color(70, 70, 70, 90);
 	private static final Color SEPARATOR_COLOR = new Color(80, 80, 80);
 
@@ -114,7 +115,8 @@ public class PriceGraphPanel extends JPanel
 	private java.util.function.Consumer<Boolean> smoothListener;
 
 	private LineSet lineSet = LineSet.ALL;
-	private JLabel linesToggle;
+	private JPanel linesToggle;
+	private MouseAdapter linesToggleClick;
 	private java.util.function.Consumer<LineSet> lineSetListener;
 
 	private transient BufferedImage plotCache;
@@ -196,23 +198,21 @@ public class PriceGraphPanel extends JPanel
 		if (mode == Mode.PRICE)
 		{
 			int togglePad = expanded ? 4 : 2;
-			linesToggle = new JLabel(lineSet.label);
-			linesToggle.setForeground(Color.WHITE);
-			linesToggle.setFont(baseFont);
-			linesToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-			linesToggle.setBorder(new EmptyBorder(2, togglePad, 2, togglePad));
-			linesToggle.setToolTipText("Cycle visible lines: All / High & Low / Avg");
-			linesToggle.addMouseListener(new MouseAdapter()
+			linesToggleClick = new MouseAdapter()
 			{
 				@Override
 				public void mouseClicked(MouseEvent e)
 				{
-					LineSet[] all = LineSet.values();
-					setLineSet(all[(lineSet.ordinal() + 1) % all.length]);
-					if (lineSetListener != null)
-						lineSetListener.accept(lineSet);
+					cycleLineSet();
 				}
-			});
+			};
+			linesToggle = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+			linesToggle.setBackground(BG_COLOR);
+			linesToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			linesToggle.setBorder(new EmptyBorder(2, togglePad, 2, togglePad));
+			linesToggle.setToolTipText("Cycle visible lines: All / High & Low / Avg");
+			linesToggle.addMouseListener(linesToggleClick);
+			rebuildLinesToggle();
 
 			smoothToggle = new JLabel("Smooth");
 			smoothToggle.setFont(baseFont);
@@ -318,11 +318,63 @@ public class PriceGraphPanel extends JPanel
 			return;
 
 		lineSet = set;
-		if (linesToggle != null)
-			linesToggle.setText(lineSet.label);
+		rebuildLinesToggle();
 
 		plotCacheDirty = true;
 		repaint();
+	}
+
+	/** Advances the line set to the next option in the cycle and notifies the listener. */
+	private void cycleLineSet()
+	{
+		LineSet[] all = LineSet.values();
+		setLineSet(all[(lineSet.ordinal() + 1) % all.length]);
+		if (lineSetListener != null)
+			lineSetListener.accept(lineSet);
+	}
+
+	/**
+	 * Rebuilds the line-set toggle as a row of per-letter labels coloured to match the
+	 * lines they represent (High green, Low red, Avg gold), so the active set is obvious
+	 * at a glance: ALL = green/gold/red, H/L = green/red, AVG = gold.
+	 */
+	private void rebuildLinesToggle()
+	{
+		if (linesToggle == null)
+			return;
+
+		final String[] texts;
+		final Color[] colors;
+		switch (lineSet)
+		{
+			case HIGH_LOW:
+				texts = new String[]{"H", "/", "L"};
+				colors = new Color[]{COLOR_HIGH, COLOR_NEUTRAL, COLOR_LOW};
+				break;
+			case AVG:
+				texts = new String[]{"AVG"};
+				colors = new Color[]{COLOR_AVG};
+				break;
+			case ALL:
+			default:
+				texts = new String[]{"A", "L", "L"};
+				colors = new Color[]{COLOR_HIGH, COLOR_AVG, COLOR_LOW};
+				break;
+		}
+
+		linesToggle.removeAll();
+		for (int i = 0; i < texts.length; i++)
+		{
+			JLabel segment = new JLabel(texts[i]);
+			segment.setForeground(colors[i]);
+			segment.setFont(baseFont);
+			segment.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			segment.addMouseListener(linesToggleClick);
+			linesToggle.add(segment);
+		}
+
+		linesToggle.revalidate();
+		linesToggle.repaint();
 	}
 
 	/** Registers a callback fired when the user changes the line set, so a sibling chart can stay in sync. */
