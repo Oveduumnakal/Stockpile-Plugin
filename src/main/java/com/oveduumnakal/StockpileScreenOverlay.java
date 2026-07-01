@@ -41,7 +41,9 @@ public class StockpileScreenOverlay extends Overlay
 	private static final Color VOLUME_COLOR = new Color(190, 130, 220);
 	private static final Color MUTED_COLOR = new Color(150, 150, 150);
 	private static final Color BACKGROUND = ComponentConstants.STANDARD_BACKGROUND_COLOR;
-	private static final Color BORDER = Color.BLACK;
+
+	/** Dark brown border matching RuneLite's tan overlay background (rather than a stark black). */
+	private static final Color BORDER = new Color(56, 48, 35);
 
 	private static final int PAD = 6;
 	private static final int ICON = 18;
@@ -78,13 +80,19 @@ public class StockpileScreenOverlay extends Overlay
 		this.itemManager = itemManager;
 		this.slot = slot;
 		setPosition(OverlayPosition.TOP_LEFT);
-		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
 
+	/** @return the overlay layer: above interfaces when configured on top, otherwise behind windows (bank, GE, ...). */
+	@Override
+	public OverlayLayer getLayer()
+	{
+		return config.screenOverlayOnTop() ? OverlayLayer.ABOVE_WIDGETS : OverlayLayer.UNDER_WIDGETS;
+	}
+
+	/** @return a per-slot unique name so each box persists (and is dragged) independently. */
 	@Override
 	public String getName()
 	{
-		// Unique per slot so each box persists (and is dragged) independently.
 		return "stockpileScreenOverlay" + slot;
 	}
 

@@ -67,6 +67,7 @@ public interface StockpileConfig extends Config
 	String KEY_COMPACT_VIEW = "compactView";
 	String KEY_SHOW_SCREEN_OVERLAY = "showScreenOverlay";
 	String KEY_SCREEN_OVERLAY_LAYOUT = "screenOverlayLayout";
+	String KEY_SCREEN_OVERLAY_ON_TOP = "screenOverlayOnTop";
 
 	String KEY_SHOW_ITEM_VALUES = "showItemValues";
 	String KEY_SHOW_COLLECTION_VALUES = "showCollectionValues";
@@ -643,5 +644,18 @@ public interface StockpileConfig extends Config
 	default OverlayLayout screenOverlayLayout()
 	{
 		return OverlayLayout.STANDARD;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SCREEN_OVERLAY_ON_TOP,
+			name = "Overlay Always On Top",
+			description = "Keep the overlay above open interfaces. When off, it renders behind windows "
+					+ "like the bank or Grand Exchange.",
+			section = overlaySection,
+			position = 2
+	)
+	default boolean screenOverlayOnTop()
+	{
+		return false;
 	}
 }

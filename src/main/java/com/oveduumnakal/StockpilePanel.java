@@ -1520,7 +1520,6 @@ public class StockpilePanel extends PluginPanel
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g.setColor(color);
 
-		// Screen body (outlined rectangle) with a short central stand.
 		g.drawRect(2, 2, size - 5, size - 8);
 		g.fillRect(size / 2 - 2, size - 5, 4, 2);
 		g.fillRect(size / 2 - 4, size - 3, 8, 1);
@@ -2069,7 +2068,10 @@ public class StockpilePanel extends PluginPanel
 		boolean on = item.isOnOverlay();
 		boolean atCap = !on && overlayCount() >= StockpilePlugin.OVERLAY_MAX;
 
-		JLabel toggle = new JLabel(overlayIcon(on ? COLOR_AVG : (atCap ? new Color(80, 80, 80) : STAR_DIM)));
+		final Color restColor = on ? COLOR_AVG : (atCap ? new Color(80, 80, 80) : STAR_DIM);
+		final Color hoverColor = on ? STAR_DIM : COLOR_AVG;
+
+		JLabel toggle = new JLabel(overlayIcon(restColor));
 		toggle.setAlignmentX(Component.CENTER_ALIGNMENT);
 		toggle.setToolTipText(on ? "Remove from on-screen overlay"
 				: atCap ? "Overlay is full (" + StockpilePlugin.OVERLAY_MAX + " max)" : "Show on the on-screen overlay");
@@ -2084,6 +2086,18 @@ public class StockpilePanel extends PluginPanel
 				{
 					if (onSetOnOverlay != null)
 						onSetOnOverlay.accept(item.getItemId(), !item.isOnOverlay());
+				}
+
+				@Override
+				public void mouseEntered(MouseEvent e)
+				{
+					toggle.setIcon(overlayIcon(hoverColor));
+				}
+
+				@Override
+				public void mouseExited(MouseEvent e)
+				{
+					toggle.setIcon(overlayIcon(restColor));
 				}
 			});
 		}
@@ -2168,7 +2182,6 @@ public class StockpilePanel extends PluginPanel
 		removeBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 		favStar.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-		// Hover-revealed overlay-select button under the star, mirroring the remove/star reveal.
 		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
 
 		JPanel eastPanel = new JPanel();

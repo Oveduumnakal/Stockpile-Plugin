@@ -1195,9 +1195,19 @@ public class StockpilePlugin extends Plugin
 			case StockpileConfig.KEY_PRICE_REFRESH_SECONDS:
 				scheduleRefresh();
 				return;
+			case StockpileConfig.KEY_SCREEN_OVERLAY_ON_TOP:
+				rebucketScreenOverlays();
+				return;
 			default:
 				refreshPanel();
 		}
+	}
+
+	/** Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. */
+	private void rebucketScreenOverlays()
+	{
+		screenOverlays.forEach(overlayManager::remove);
+		screenOverlays.forEach(overlayManager::add);
 	}
 
 	private static final java.util.Set<String> SECTION_SLOT_KEYS = java.util.Set.of(
