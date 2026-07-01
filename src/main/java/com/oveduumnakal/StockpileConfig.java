@@ -94,6 +94,8 @@ public interface StockpileConfig extends Config
 	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
 	String KEY_HIGHLIGHT_COLOR = "highlightColor";
 	String KEY_GLOW_EFFECT = "glowEffect";
+	String KEY_GE_INTEGRATION = "geIntegration";
+	String KEY_GE_FOCUS_PANEL = "geFocusPanel";
 
 	/** Top-level panel behavior: price refresh, change indicator, and global toggles. */
 	@ConfigSection(
@@ -609,5 +611,31 @@ public interface StockpileConfig extends Config
 	default GlowSpeed glowEffect()
 	{
 		return GlowSpeed.MEDIUM;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_INTEGRATION,
+			name = "GE Integration",
+			description = "Open the current Grand Exchange offer item in Stockpile's view-only mode: "
+					+ "via an injected button, automatically, or off",
+			section = trackingSection,
+			position = 6
+	)
+	default GeIntegrationMode geIntegration()
+	{
+		return GeIntegrationMode.OFF;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_FOCUS_PANEL,
+			name = "GE Opens Panel",
+			description = "When a GE offer opens the item in Stockpile, switch to and focus the Stockpile "
+					+ "panel. When off, the item is loaded silently (shown next time you open Stockpile).",
+			section = trackingSection,
+			position = 7
+	)
+	default boolean geFocusPanel()
+	{
+		return true;
 	}
 }
