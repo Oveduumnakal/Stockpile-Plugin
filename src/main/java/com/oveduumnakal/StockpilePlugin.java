@@ -54,6 +54,8 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetPositionMode;
+import net.runelite.api.widgets.WidgetTextAlignment;
 import net.runelite.api.widgets.WidgetType;
 import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.api.gameval.VarbitID;
@@ -1072,6 +1074,8 @@ public class StockpilePlugin extends Plugin
 			WikiRealtimePriceClient.ItemPrices prices = all.get(previewItem.getItemId());
 			if (prices != null)
 				applyLivePrices(previewItem, prices);
+			else if (!previewItem.hasPrices() && previewItem.isTradeable() && mappingsLoaded)
+				previewItem.setPriceLoadFailed(true);
 		}
 
 		if (fetchFailed)
@@ -1381,11 +1385,11 @@ public class StockpilePlugin extends Plugin
 			currentGeItem = item;
 			geButton = null;
 
-			if (item > 0 && mode == GeIntegrationMode.AUTO)
+			if (item > 0 && (mode == GeIntegrationMode.AUTO || mode == GeIntegrationMode.BOTH))
 				openGeItemInStockpile(item);
 		}
 
-		if (mode == GeIntegrationMode.BUTTON && item > 0 && geButton == null)
+		if ((mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH) && item > 0 && geButton == null)
 			injectGeButton();
 	}
 
@@ -1428,13 +1432,13 @@ public class StockpilePlugin extends Plugin
 		return scanForItem(container);
 	}
 
-	/** Recursively searches a widget subtree for the first child holding an item id. */
+	/** Recursively searches a widget subtree for the first child holding a real item id. */
 	private int scanForItem(Widget widget)
 	{
 		if (widget == null)
 			return -1;
 
-		if (widget.getItemId() > 0)
+		if (widget.getItemId() > 0 && isRealItem(widget.getItemId()))
 			return widget.getItemId();
 
 		Widget[][] groups = {widget.getStaticChildren(), widget.getDynamicChildren(), widget.getNestedChildren()};
@@ -1452,6 +1456,17 @@ public class StockpilePlugin extends Plugin
 		}
 
 		return -1;
+	}
+
+	/**
+	 * @return whether {@code itemId} resolves to a real, defined item. Empty widget
+	 * slots are backed by placeholder items (e.g. id 6512) whose composition name is
+	 * the literal string "null"; those must not open a preview.
+	 */
+	private boolean isRealItem(int itemId)
+	{
+		String name = itemManager.getItemComposition(itemId).getName();
+		return name != null && !name.isEmpty() && !"null".equalsIgnoreCase(name);
 	}
 
 	/** Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. */
@@ -1480,6 +1495,8 @@ public class StockpilePlugin extends Plugin
 		button.setFontId(495);
 		button.setTextColor(0xff981f);
 		button.setTextShadowed(true);
+		button.setXPositionMode(WidgetPositionMode.ABSOLUTE_RIGHT);
+		button.setXTextAlignment(WidgetTextAlignment.RIGHT);
 		button.setOriginalX(10);
 		button.setOriginalY(10);
 		button.setOriginalWidth(120);

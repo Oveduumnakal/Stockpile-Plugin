@@ -137,6 +137,14 @@ public interface StockpileConfig extends Config
 	)
 	String detailViewSection = "detailView";
 
+	/** How the open Grand Exchange offer ties into the Stockpile view. */
+	@ConfigSection(
+			name = "GE Integration",
+			description = "How the open Grand Exchange offer ties into the Stockpile view",
+			position = 5
+	)
+	String geIntegrationSection = "geIntegration";
+
 	@Range(min = 30)
 	@ConfigItem(
 			keyName = KEY_PRICE_REFRESH_SECONDS,
@@ -615,24 +623,24 @@ public interface StockpileConfig extends Config
 
 	@ConfigItem(
 			keyName = KEY_GE_INTEGRATION,
-			name = "GE Integration",
+			name = "Interaction",
 			description = "Open the current Grand Exchange offer item in Stockpile's view-only mode: "
-					+ "via an injected button, automatically, or off",
-			section = trackingSection,
-			position = 6
+					+ "via an injected button, automatically, both, or off",
+			section = geIntegrationSection,
+			position = 0
 	)
 	default GeIntegrationMode geIntegration()
 	{
-		return GeIntegrationMode.OFF;
+		return GeIntegrationMode.BOTH;
 	}
 
 	@ConfigItem(
 			keyName = KEY_GE_FOCUS_PANEL,
-			name = "GE Opens Panel",
+			name = "Force Focus",
 			description = "When a GE offer opens the item in Stockpile, switch to and focus the Stockpile "
 					+ "panel. When off, the item is loaded silently (shown next time you open Stockpile).",
-			section = trackingSection,
-			position = 7
+			section = geIntegrationSection,
+			position = 1
 	)
 	default boolean geFocusPanel()
 	{
