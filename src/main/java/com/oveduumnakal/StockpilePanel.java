@@ -237,6 +237,8 @@ public class StockpilePanel extends PluginPanel
 
 	private final JLabel miBuyLimit = new JLabel();
 	private final JLabel miGeTax = new JLabel();
+	private final JLabel miLastBought = new JLabel();
+	private final JLabel miLastSold = new JLabel();
 	private final JLabel miVolatility = new JLabel();
 	private final JLabel miLiquidity = new JLabel();
 	private PriceRangeBar priceRangeBar;
@@ -811,7 +813,11 @@ public class StockpilePanel extends PluginPanel
 		footerPanel.setVisible(false);
 		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
 
-		refreshAgeTimer = new Timer(1000, e -> updateRefreshLabel());
+		refreshAgeTimer = new Timer(1000, e ->
+		{
+			updateRefreshLabel();
+			updateMarketInfoTimes();
+		});
 		refreshAgeTimer.start();
 
 		loadingGlowTimer = new Timer(50, e -> updateLoadingGlow());
@@ -2801,6 +2807,27 @@ public class StockpilePanel extends PluginPanel
 		return (hours / 24) + "d ago";
 	}
 
+	/** Live-updates the Market Info last-bought / last-sold relative times for the shown detail item. */
+	private void updateMarketInfoTimes()
+	{
+		TrackedItem item = currentItems.get(detailItemId);
+		if (item == null && previewItem != null && previewItem.getItemId() == detailItemId)
+			item = previewItem;
+
+		if (item == null)
+			return;
+
+		applyTradeTime(miLastBought, item.getLatestHighTime());
+		applyTradeTime(miLastSold, item.getLatestLowTime());
+	}
+
+	/** Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip. */
+	private void applyTradeTime(JLabel label, long epochSeconds)
+	{
+		label.setText(formatAge(epochSeconds));
+		label.setToolTipText(epochSeconds > 0 ? new java.util.Date(epochSeconds * 1000L).toString() : null);
+	}
+
 	private void clearItemValue(JLabel label, String text)
 	{
 		for (MouseListener ml : label.getMouseListeners())
@@ -4366,10 +4393,14 @@ public class StockpilePanel extends PluginPanel
 
 		miBuyLimit.setHorizontalAlignment(SwingConstants.CENTER);
 		miGeTax.setHorizontalAlignment(SwingConstants.CENTER);
+		miLastBought.setHorizontalAlignment(SwingConstants.CENTER);
+		miLastSold.setHorizontalAlignment(SwingConstants.CENTER);
 		miVolatility.setHorizontalAlignment(SwingConstants.CENTER);
 		miLiquidity.setHorizontalAlignment(SwingConstants.CENTER);
 
 		block.add(buildMarketInfoPair("Buy Limit", miBuyLimit, "GE Tax", miGeTax));
+		block.add(Box.createVerticalStrut(6));
+		block.add(buildMarketInfoPair("Last Bought", miLastBought, "Last Sold", miLastSold));
 		block.add(Box.createVerticalStrut(6));
 		block.add(buildMarketInfoPair("Volatility", miVolatility, "Liquidity", miLiquidity));
 
@@ -4684,6 +4715,8 @@ public class StockpilePanel extends PluginPanel
 		miBuyLimit.setText(item.getBuyLimit() > 0 ? NUMBER_FORMAT.format(item.getBuyLimit()) : "N/A");
 		long tax = geTax(item.getAvgPrice());
 		miGeTax.setText(hasPrices ? "~" + formatTotalGp(tax, full) : "—");
+		applyTradeTime(miLastBought, item.getLatestHighTime());
+		applyTradeTime(miLastSold, item.getLatestLowTime());
 		applyVolatility(item);
 		applyLiquidity(vol24);
 		if (priceRangeBar != null)
