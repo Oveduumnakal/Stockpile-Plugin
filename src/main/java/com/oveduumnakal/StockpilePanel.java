@@ -4620,9 +4620,17 @@ public class StockpilePanel extends PluginPanel
 	/** Builds the Links detail section's content: Wiki and Live Prices buttons for the current item. */
 	private JPanel buildLinksBlock()
 	{
-		JPanel block = new JPanel(new GridLayout(1, 2, 6, 0));
+		JPanel block = new JPanel(new GridLayout(1, 2, 6, 0))
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
 		block.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		block.setBorder(new EmptyBorder(4, 8, 6, 8));
+		block.setAlignmentX(Component.LEFT_ALIGNMENT);
 		block.add(buildLinkButton("Wiki", "Open the OSRS Wiki page for this item", this::openWikiLink));
 		block.add(buildLinkButton("Live Prices", "Open the live prices page for this item", this::openPricesLink));
 

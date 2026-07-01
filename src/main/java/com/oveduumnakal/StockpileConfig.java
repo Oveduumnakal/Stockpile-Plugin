@@ -410,7 +410,7 @@ public interface StockpileConfig extends Config
 	)
 	default SectionSlot showNotifications()
 	{
-		return SectionSlot.EIGHTH;
+		return SectionSlot.NINTH;
 	}
 
 	@ConfigItem(
@@ -422,7 +422,7 @@ public interface StockpileConfig extends Config
 	)
 	default SectionSlot showItemLog()
 	{
-		return SectionSlot.NINTH;
+		return SectionSlot.TENTH;
 	}
 
 	@ConfigItem(
@@ -434,7 +434,7 @@ public interface StockpileConfig extends Config
 	)
 	default SectionSlot showLinks()
 	{
-		return SectionSlot.TENTH;
+		return SectionSlot.EIGHTH;
 	}
 
 	@ConfigItem(
