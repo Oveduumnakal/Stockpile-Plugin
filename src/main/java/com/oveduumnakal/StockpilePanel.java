@@ -329,6 +329,8 @@ public class StockpilePanel extends PluginPanel
 	private EstimatesPosition currentEstimatesPosition;
 
 	private static final Color DIVIDER_COLOR = new Color(80, 80, 80);
+	/** Fainter divider above the footer's Report/Request row: dimmer than {@link #DIVIDER_COLOR} but still visible over the (40,40,40) background. */
+	private static final Color FOOTER_DIVIDER_COLOR = new Color(60, 60, 60);
 	private static final Color OVERVIEW_ROW_DIVIDER = new Color(45, 45, 45);
 	private static final javax.swing.border.Border TITLE_BORDER_WITH_TOP_DIVIDER =
 			BorderFactory.createCompoundBorder(
@@ -847,8 +849,10 @@ public class StockpilePanel extends PluginPanel
 		JPanel linksRow = new JPanel(new GridLayout(1, 2, 6, 0));
 		linksRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		linksRow.setBorder(BorderFactory.createCompoundBorder(
-				new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR),
-				new EmptyBorder(6, 0, 0, 0)));
+				new EmptyBorder(6, 0, 0, 0),
+				BorderFactory.createCompoundBorder(
+						new MatteBorder(1, 0, 0, 0, FOOTER_DIVIDER_COLOR),
+						new EmptyBorder(6, 0, 0, 0))));
 		linksRow.add(buildFooterLink("Report Issue", this::openReportIssueForm,
 				"Report a bug — fill it in here, then submit on GitHub"));
 		linksRow.add(buildFooterLink("Request Feature", this::openRequestFeatureForm,
@@ -1015,6 +1019,7 @@ public class StockpilePanel extends PluginPanel
 		button.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		button.setFocusPainted(false);
+		button.setMargin(new Insets(2, 2, 2, 2));
 		button.setToolTipText(tooltip);
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		button.addActionListener(e -> onClick.run());
@@ -1022,20 +1027,48 @@ public class StockpilePanel extends PluginPanel
 		return button;
 	}
 
-	/** A single free-text field in an issue form: its GitHub form {@code id}, display {@code label}, and height. */
+	/**
+	 * A single field in an issue form mapped to a GitHub form {@code id}. A {@code null}
+	 * {@link #options} makes it a free-text area {@link #rows} tall; a non-null one makes it
+	 * a dropdown whose entries must match the template's option labels exactly.
+	 */
 	private static final class IssueField
 	{
 		final String id;
 		final String label;
 		final int rows;
+		final String[] options;
 
 		IssueField(String id, String label, int rows)
+		{
+			this(id, label, rows, null);
+		}
+
+		IssueField(String id, String label, String[] options)
+		{
+			this(id, label, 0, options);
+		}
+
+		private IssueField(String id, String label, int rows, String[] options)
 		{
 			this.id = id;
 			this.label = label;
 			this.rows = rows;
+			this.options = options;
 		}
 	}
+
+	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */
+	private static final String[] FEATURE_AREAS = {
+			"Item tracking (adding / auto-add / consolidation / collection log)",
+			"Live pricing (GE / wiki realtime / time-window values)",
+			"Profit tracking (cost basis / acquisitions / portfolio total)",
+			"Detail view & charts (graphs, timeframes, pop-out windows)",
+			"Notifications / price alerts",
+			"Panel / overlays (ground or inventory highlights)",
+			"Configuration / settings",
+			"New / other"
+	};
 
 	/** Opens the in-plugin "Report a bug" form. */
 	private void openReportIssueForm()
@@ -1052,7 +1085,10 @@ public class StockpilePanel extends PluginPanel
 	{
 		openIssueForm("Request a Feature", FEATURE_TEMPLATE, "[Feature]: ", Arrays.asList(
 				new IssueField("problem", "Problem or motivation", 3),
-				new IssueField("solution", "Proposed solution", 4)));
+				new IssueField("solution", "Proposed solution", 4),
+				new IssueField("area", "Related area", FEATURE_AREAS),
+				new IssueField("alternatives", "Alternatives considered", 3),
+				new IssueField("context", "Additional context", 3)));
 	}
 
 	/**
@@ -1072,20 +1108,32 @@ public class StockpilePanel extends PluginPanel
 		JTextField titleField = new JTextField();
 		addFormRow(form, "Title", titleField);
 
-		Map<IssueField, JTextArea> areas = new java.util.LinkedHashMap<>();
+		Map<IssueField, JComponent> inputs = new java.util.LinkedHashMap<>();
 		for (IssueField field : fields)
 		{
-			JTextArea area = new JTextArea(field.rows, 28);
-			area.setLineWrap(true);
-			area.setWrapStyleWord(true);
-			areas.put(field, area);
-			addFormRow(form, field.label, new JScrollPane(area));
+			if (field.options != null)
+			{
+				JComboBox<String> combo = new JComboBox<>(field.options);
+				combo.insertItemAt("", 0);
+				combo.setSelectedIndex(0);
+				combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, combo.getPreferredSize().height));
+				inputs.put(field, combo);
+				addFormRow(form, field.label, combo);
+			}
+			else
+			{
+				JTextArea area = new JTextArea(field.rows, 28);
+				area.setLineWrap(true);
+				area.setWrapStyleWord(true);
+				inputs.put(field, area);
+				addFormRow(form, field.label, new JScrollPane(area));
+			}
 		}
 
 		JButton submit = new JButton("Open on GitHub");
 		submit.addActionListener(e ->
 		{
-			LinkBrowser.browse(buildIssueUrl(template, titlePrefix, titleField.getText(), fields, areas));
+			LinkBrowser.browse(buildIssueUrl(template, titlePrefix, titleField.getText(), fields, inputs));
 			dialog.dispose();
 		});
 
@@ -1119,7 +1167,7 @@ public class StockpilePanel extends PluginPanel
 
 	/** Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params. */
 	private static String buildIssueUrl(String template, String titlePrefix, String title,
-			List<IssueField> fields, Map<IssueField, JTextArea> areas)
+			List<IssueField> fields, Map<IssueField, JComponent> inputs)
 	{
 		StringBuilder url = new StringBuilder(GITHUB_NEW_ISSUE).append("?template=").append(template);
 
@@ -1129,12 +1177,27 @@ public class StockpilePanel extends PluginPanel
 
 		for (IssueField field : fields)
 		{
-			String value = areas.get(field).getText().trim();
+			String value = fieldValue(inputs.get(field)).trim();
 			if (!value.isEmpty())
 				url.append('&').append(field.id).append('=').append(encode(value));
 		}
 
 		return url.toString();
+	}
+
+	/** @return the current text of an issue-form input (text area or dropdown selection). */
+	private static String fieldValue(JComponent input)
+	{
+		if (input instanceof JTextArea)
+			return ((JTextArea) input).getText();
+
+		if (input instanceof JComboBox)
+		{
+			Object selected = ((JComboBox<?>) input).getSelectedItem();
+			return selected == null ? "" : selected.toString();
+		}
+
+		return "";
 	}
 
 	/** URL-encodes a value for a query parameter (spaces as %20, not +). */
