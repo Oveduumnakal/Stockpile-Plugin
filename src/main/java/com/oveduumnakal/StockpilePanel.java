@@ -24,32 +24,30 @@
  */
 package com.oveduumnakal;
 
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.client.game.ItemManager;
-import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.FontManager;
-import net.runelite.client.ui.PluginPanel;
-import net.runelite.client.ui.components.IconTextField;
-import net.runelite.client.ui.components.PluginErrorPanel;
-import net.runelite.client.util.AsyncBufferedImage;
-import net.runelite.client.util.LinkBrowser;
-import net.runelite.http.api.item.ItemPrice;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.border.MatteBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.TableCellEditor;
-import javax.swing.table.JTableHeader;
-import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableColumn;
-import java.awt.*;
-import java.awt.image.BufferedImage;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.Insets;
+import java.awt.MouseInfo;
+import java.awt.Point;
+import java.awt.PointerInfo;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -60,21 +58,87 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import javax.swing.AbstractAction;
+import javax.swing.AbstractCellEditor;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultCellEditor;
+import javax.swing.DefaultListModel;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JDialog;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollBar;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.JViewport;
+import javax.swing.KeyStroke;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.ToolTipManager;
+import javax.swing.WindowConstants;
+import javax.swing.border.Border;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.MatteBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellEditor;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableColumnModel;
+
+import lombok.extern.slf4j.Slf4j;
+
+import net.runelite.api.gameval.ItemID;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.IconTextField;
+import net.runelite.client.ui.components.PluginErrorPanel;
+import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.LinkBrowser;
+import net.runelite.http.api.item.ItemPrice;
 
 /**
  * The plugin's side panel and its entire Swing UI.
@@ -97,9 +161,9 @@ public class StockpilePanel extends PluginPanel
 {
 	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 
-	private static final Color COLOR_HIGH = new Color(100, 220, 100);
-	private static final Color COLOR_LOW  = new Color(220, 100, 100);
-	private static final Color COLOR_AVG  = new Color(255, 200, 0);
+	private static final Color COLOR_HIGH = StockpileColors.HIGH;
+	private static final Color COLOR_LOW  = StockpileColors.LOW;
+	private static final Color COLOR_AVG  = StockpileColors.AVG;
 
 	private static final Color COLOR_HIGH_STALE = new Color(70, 110, 70);
 	private static final Color COLOR_LOW_STALE  = new Color(110, 70, 70);
@@ -153,7 +217,10 @@ public class StockpilePanel extends PluginPanel
 	private boolean favoritesCollapsed;
 	private boolean uncategorizedCollapsed;
 
-	/** Whether the list is currently grouped (favorites or categories active); disables drag reorder, which is global-order only. */
+	/**
+	 * Whether the list is currently grouped (favorites or categories active); disables drag
+	 * reorder, which is global-order only.
+	 */
 	private boolean groupingActive;
 
 	/** Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full plugin refresh. */
@@ -169,7 +236,11 @@ public class StockpilePanel extends PluginPanel
 	/** Header toggle that enters/exits reorder mode. */
 	private JLabel reorderToggle;
 
-	/** Header toggle that switches between the standard and compact row layouts. */
+	/**
+	 * Header toggle that switches between the standard and compact row layouts. Its
+	 * {@code ≣} glyph renders from a taller fallback font, so it uses a shrunken derived
+	 * font to match the other header icons.
+	 */
 	private JLabel compactToggle;
 
 	/** Header button (manage mode only) that opens the Manage Categories dialog. */
@@ -182,6 +253,13 @@ public class StockpilePanel extends PluginPanel
 
 	private final JPanel cardsHost = new JPanel(cardLayout)
 	{
+		/**
+		 * Sizes the host to the visible card, letting the logged-out placeholder and
+		 * loading spinner fill the viewport so they center vertically. The fill target
+		 * subtracts the scroll view's vertical insets (StockpilePanel's border) so the
+		 * card fills exactly the visible area; targeting the raw extent height would
+		 * overflow by the border and show a spurious scroll bar.
+		 */
 		@Override
 		public Dimension getPreferredSize()
 		{
@@ -196,7 +274,6 @@ public class StockpilePanel extends PluginPanel
 				}
 			}
 
-			// Let the logged-out placeholder and loading spinner fill the viewport so they center vertically.
 			if ((loggedOutCard != null && loggedOutCard.isVisible())
 					|| detailLoadingCard.isVisible())
 			{
@@ -204,9 +281,6 @@ public class StockpilePanel extends PluginPanel
 
 				if (viewport != null)
 				{
-					// Subtract the scroll view's vertical insets (StockpilePanel's border) so the card fills
-					// exactly the visible area; targeting the raw extent height overflows by the border and
-					// shows a spurious scroll bar.
 					Insets insets = StockpilePanel.this.getInsets();
 					int target = viewport.getExtentSize().height - insets.top - insets.bottom;
 
@@ -223,14 +297,20 @@ public class StockpilePanel extends PluginPanel
 	private static final String CARD_LOGGED_OUT = "loggedOut";
 
 	private final Map<Integer, TrackedItem> currentItems = new HashMap<>();
-	/** 18px row icons keyed by {@link #iconCacheKey} (item id + rendered stack size), so quantity-aware sprites are cached per stack. */
+	/**
+	 * 18px row icons keyed by {@link #iconCacheKey} (item id + rendered stack size), so
+	 * quantity-aware sprites are cached per stack.
+	 */
 	private final Map<Long, ImageIcon> rowIconCache = new HashMap<>();
 	private int detailItemId = -1;
 
 	/** The logged-out placeholder card; tracked so {@link #cardsHost} can fill the viewport while it shows. */
 	private JPanel loggedOutCard;
 
-	/** A transient, read-only item shown in the detail view via {@link #showPreview} but never added to the tracked list. */
+	/**
+	 * A transient, read-only item shown in the detail view via {@link #showPreview} but
+	 * never added to the tracked list.
+	 */
 	private TrackedItem previewItem;
 
 	/** Placeholder card showing a spinner while a preview item's prices are still being fetched. */
@@ -339,30 +419,33 @@ public class StockpilePanel extends PluginPanel
 	private final JPanel geEstimatesSlotBottom = new JPanel(new BorderLayout());
 	private EstimatesPosition currentEstimatesPosition;
 
-	private static final Color DIVIDER_COLOR = new Color(80, 80, 80);
-	/** Fainter divider above the footer's Report/Request row: dimmer than {@link #DIVIDER_COLOR} but still visible over the (40,40,40) background. */
-	private static final Color FOOTER_DIVIDER_COLOR = new Color(60, 60, 60);
+	private static final Color DIVIDER_COLOR = StockpileColors.DIVIDER;
+	/**
+	 * Fainter divider above the footer's Report/Request row: dimmer than
+	 * {@link #DIVIDER_COLOR} but still visible over the (40,40,40) background.
+	 */
+	private static final Color FOOTER_DIVIDER_COLOR = StockpileColors.TABLE_GRID;
 	private static final Color OVERVIEW_ROW_DIVIDER = new Color(45, 45, 45);
-	private static final javax.swing.border.Border TITLE_BORDER_WITH_TOP_DIVIDER =
+	private static final Border TITLE_BORDER_WITH_TOP_DIVIDER =
 			BorderFactory.createCompoundBorder(
 					BorderFactory.createCompoundBorder(
 							new EmptyBorder(10, 0, 0, 0),
 							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
 					new EmptyBorder(10, 0, 12, 0));
-	private static final javax.swing.border.Border TITLE_BORDER_NO_DIVIDER =
+	private static final Border TITLE_BORDER_NO_DIVIDER =
 			new EmptyBorder(10, 0, 12, 0);
 
-	private static final javax.swing.border.Border ESTIMATE_ROW_BORDER_DEFAULT =
+	private static final Border ESTIMATE_ROW_BORDER_DEFAULT =
 			new EmptyBorder(3, 0, 3, 0);
-	private static final javax.swing.border.Border ESTIMATE_ROW_BORDER_COMPACT =
+	private static final Border ESTIMATE_ROW_BORDER_COMPACT =
 			new EmptyBorder(1, 0, 1, 0);
-	private static final javax.swing.border.Border PROFIT_SECTION_BORDER_DEFAULT =
+	private static final Border PROFIT_SECTION_BORDER_DEFAULT =
 			BorderFactory.createCompoundBorder(
 					BorderFactory.createCompoundBorder(
 							new EmptyBorder(4, 0, 0, 0),
 							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
 					new EmptyBorder(4, 0, 0, 0));
-	private static final javax.swing.border.Border PROFIT_SECTION_BORDER_COMPACT =
+	private static final Border PROFIT_SECTION_BORDER_COMPACT =
 			BorderFactory.createCompoundBorder(
 					BorderFactory.createCompoundBorder(
 							new EmptyBorder(1, 0, 0, 0),
@@ -391,7 +474,7 @@ public class StockpilePanel extends PluginPanel
 	private final JButton clearButton = new JButton("Clear");
 
 	private volatile Instant lastPriceRefresh = null;
-	private final java.util.Set<Integer> trackedItemIds = new java.util.HashSet<>();
+	private final Set<Integer> trackedItemIds = new HashSet<>();
 
 	private int hoveredItemId = -1;
 	private final Timer refreshAgeTimer;
@@ -408,7 +491,7 @@ public class StockpilePanel extends PluginPanel
 	private Timer dragScrollTimer;
 	/** Autoscroll direction while dragging: -1 up, +1 down, 0 none. */
 	private int dragScrollDir = 0;
-	private static final Color DRAG_LINE_COLOR = new Color(255, 200, 0);
+	private static final Color DRAG_LINE_COLOR = StockpileColors.AVG;
 	private static final int DRAG_SCROLL_MARGIN = 28;
 	private static final int DRAG_SCROLL_STEP = 12;
 	/** Client property on each row card holding its item id, used to map drag positions to list indices. */
@@ -421,7 +504,7 @@ public class StockpilePanel extends PluginPanel
 	private static final String BUG_TEMPLATE = "bug_report.yml";
 	private static final String FEATURE_TEMPLATE = "feature_request.yml";
 
-	private static final Color LOADING_COLOR = new Color(150, 150, 150);
+	private static final Color LOADING_COLOR = StockpileColors.MUTED;
 	private static final Color DESCRIPTION_COLOR = new Color(160, 160, 160);
 	private static final long LOADING_GLOW_PERIOD_MS = 2000;
 	private static final float LOADING_GLOW_MIN_ALPHA = 0.2f;
@@ -460,7 +543,8 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Builds the panel and its two cards (main list and detail view).
+	 * Builds the panel and its two cards (main list and detail view). The header toggles
+	 * sit on their own right-justified row above the Tracked Items label.
 	 *
 	 * @param itemManager           for item names, icons, and prices
 	 * @param config                the plugin configuration
@@ -538,9 +622,20 @@ public class StockpilePanel extends PluginPanel
 		searchField.addClearListener(() -> searchResultsPanel.setVisible(false));
 		searchField.getDocument().addDocumentListener(new DocumentListener()
 		{
-			public void insertUpdate(DocumentEvent e) { onSearch(searchField.getText()); }
-			public void removeUpdate(DocumentEvent e) { onSearch(searchField.getText()); }
-			public void changedUpdate(DocumentEvent e) { onSearch(searchField.getText()); }
+			public void insertUpdate(DocumentEvent e)
+			{
+				onSearch(searchField.getText());
+			}
+
+			public void removeUpdate(DocumentEvent e)
+			{
+				onSearch(searchField.getText());
+			}
+
+			public void changedUpdate(DocumentEvent e)
+			{
+				onSearch(searchField.getText());
+			}
 		});
 
 		trackedFilterField = new IconTextField();
@@ -553,9 +648,20 @@ public class StockpilePanel extends PluginPanel
 		trackedFilterField.addClearListener(this::onTrackedFilterChanged);
 		trackedFilterField.getDocument().addDocumentListener(new DocumentListener()
 		{
-			public void insertUpdate(DocumentEvent e) { onTrackedFilterChanged(); }
-			public void removeUpdate(DocumentEvent e) { onTrackedFilterChanged(); }
-			public void changedUpdate(DocumentEvent e) { onTrackedFilterChanged(); }
+			public void insertUpdate(DocumentEvent e)
+			{
+				onTrackedFilterChanged();
+			}
+
+			public void removeUpdate(DocumentEvent e)
+			{
+				onTrackedFilterChanged();
+			}
+
+			public void changedUpdate(DocumentEvent e)
+			{
+				onTrackedFilterChanged();
+			}
 		});
 
 		trackedItemsPanel = new JPanel()
@@ -599,7 +705,6 @@ public class StockpilePanel extends PluginPanel
 		compactToggle = new JLabel("≣", SwingConstants.CENTER);
 		compactToggle.setVerticalAlignment(SwingConstants.TOP);
 		compactToggle.setAlignmentY(Component.TOP_ALIGNMENT);
-		// The ≣ glyph renders from a taller fallback font, so shrink it to match the other header icons.
 		compactToggle.setFont(FontManager.getRunescapeBoldFont().deriveFont(14f));
 		compactToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		compactToggle.setBorder(new EmptyBorder(6, 0, 4, 6));
@@ -657,7 +762,6 @@ public class StockpilePanel extends PluginPanel
 		headerToggles.add(compactToggle);
 		headerToggles.add(reorderToggle);
 
-		// Icons sit on their own top row (right-justified) above the section label, 2px apart.
 		JPanel togglesRow = new JPanel(new BorderLayout());
 		togglesRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		togglesRow.add(headerToggles, BorderLayout.EAST);
@@ -751,7 +855,7 @@ public class StockpilePanel extends PluginPanel
 		totalsPanel.add(totalsRowsWrapper, BorderLayout.CENTER);
 
 		lastRefreshLabel = new JLabel("Prices not yet loaded", SwingConstants.CENTER);
-		lastRefreshLabel.setForeground(new Color(150, 150, 150));
+		lastRefreshLabel.setForeground(StockpileColors.MUTED);
 		lastRefreshLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JLabel profitPrefixLabel = new JLabel("Est. Profit:");
@@ -927,7 +1031,7 @@ public class StockpilePanel extends PluginPanel
 	private void applyEstimatesSpacing(EstimatesSpacing spacing)
 	{
 		boolean compact = spacing == EstimatesSpacing.COMPACT;
-		javax.swing.border.Border rowBorder = compact
+		Border rowBorder = compact
 				? ESTIMATE_ROW_BORDER_COMPACT : ESTIMATE_ROW_BORDER_DEFAULT;
 		totalHighRow.setBorder(rowBorder);
 		totalLowRow.setBorder(rowBorder);
@@ -938,6 +1042,7 @@ public class StockpilePanel extends PluginPanel
 		bottomPanel.repaint();
 	}
 
+	/** Builds the horizontal divider strip drawn between the totals block and the footer. */
 	private JPanel buildDividerStrip()
 	{
 		JPanel strip = new JPanel(new BorderLayout());
@@ -961,6 +1066,11 @@ public class StockpilePanel extends PluginPanel
 
 	private static final Dimension DELTA_LABEL_SIZE = new Dimension(12, 12);
 
+	/**
+	 * Updates the totals coin icon to the stack sprite for the given gp value, loading it
+	 * asynchronously and caching per quantity. A stale async load is discarded if the value
+	 * has moved on by the time the image arrives.
+	 */
 	private void updateCoinsIcon(long value)
 	{
 		int quantity = (int) Math.max(1, Math.min(value, Integer.MAX_VALUE));
@@ -976,7 +1086,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 		}
 
-		AsyncBufferedImage img = itemManager.getImage(net.runelite.api.gameval.ItemID.COINS, quantity, false);
+		AsyncBufferedImage img = itemManager.getImage(ItemID.COINS, quantity, false);
 		img.onLoaded(() ->
 		{
 			ImageIcon icon = new ImageIcon(img);
@@ -1021,7 +1131,8 @@ public class StockpilePanel extends PluginPanel
 
 		compactTotalsValueLabel.setText("<html><span style='color:" + toHex(COLOR_AVG) + "'>" + avgText
 				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + toHex(profitColor)
-				+ "'>" + sign + GpFormat.shortValue(profit) + "</span><span style='color:" + grey + "'>)</span></html>");
+				+ "'>" + sign + GpFormat.shortValue(profit) + "</span>"
+				+ "<span style='color:" + grey + "'>)</span></html>");
 		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
 				+ sign + NUMBER_FORMAT.format(profit) + " gp</html>");
 	}
@@ -1123,7 +1234,7 @@ public class StockpilePanel extends PluginPanel
 		JTextField titleField = new JTextField();
 		addFormRow(form, "Title", titleField);
 
-		Map<IssueField, JComponent> inputs = new java.util.LinkedHashMap<>();
+		Map<IssueField, JComponent> inputs = new LinkedHashMap<>();
 		for (IssueField field : fields)
 		{
 			if (field.options != null)
@@ -1194,7 +1305,10 @@ public class StockpilePanel extends PluginPanel
 		{
 			String value = fieldValue(inputs.get(field)).trim();
 			if (!value.isEmpty())
-				url.append('&').append(field.id).append('=').append(encode(value));
+				url.append('&')
+						.append(field.id)
+						.append('=')
+						.append(encode(value));
 		}
 
 		return url.toString();
@@ -1221,6 +1335,7 @@ public class StockpilePanel extends PluginPanel
 		return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
 	}
 
+	/** Fixes the three totals value labels to the widest one's width so the columns stay aligned. */
 	private void equalizeTotalsLabelWidths()
 	{
 		JLabel[] labels = {totalHighLabel, totalLowLabel, totalAvgLabel};
@@ -1241,6 +1356,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Builds one estimate row pairing a totals value label with its pulse-indicator label. */
 	private JPanel buildTotalsRow(JLabel valueLabel, JLabel pulseLabel)
 	{
 		JPanel row = new JPanel();
@@ -1254,6 +1370,7 @@ public class StockpilePanel extends PluginPanel
 		return row;
 	}
 
+	/** Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value. */
 	private JLabel createDeltaLabel()
 	{
 		JLabel label = new JLabel();
@@ -1265,6 +1382,7 @@ public class StockpilePanel extends PluginPanel
 		return label;
 	}
 
+	/** Starts a price pulse on the label unless the configured indicator mode suppresses it. */
 	private void pulseIfShown(JLabel label, int delta, PriceIndicatorMode mode)
 	{
 		if (mode == PriceIndicatorMode.OFF || (mode == PriceIndicatorMode.CHANGE && delta == 0))
@@ -1289,7 +1407,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 
 		long now = System.currentTimeMillis();
-		java.util.Iterator<PulseEntry> it = pulseEntries.iterator();
+		Iterator<PulseEntry> it = pulseEntries.iterator();
 		while (it.hasNext())
 		{
 			PulseEntry p = it.next();
@@ -1308,6 +1426,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Timer tick that breathes the shared glow colour across every label still awaiting prices. */
 	private void updateLoadingGlow()
 	{
 		if (loadingLabels.isEmpty())
@@ -1328,7 +1447,9 @@ public class StockpilePanel extends PluginPanel
 	private void updateRefreshLabel()
 	{
 		if (lastPriceRefresh == null)
+		{
 			lastRefreshLabel.setText("Prices not yet loaded");
+		}
 		else
 		{
 			long secondsAgo = ChronoUnit.SECONDS.between(lastPriceRefresh, Instant.now());
@@ -1427,10 +1548,16 @@ public class StockpilePanel extends PluginPanel
 		row.addMouseListener(new MouseAdapter()
 		{
 			@Override
-			public void mouseEntered(MouseEvent e) { row.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR); }
+			public void mouseEntered(MouseEvent e)
+			{
+				row.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+			}
 
 			@Override
-			public void mouseExited(MouseEvent e) { row.setBackground(ColorScheme.DARKER_GRAY_COLOR); }
+			public void mouseExited(MouseEvent e)
+			{
+				row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			}
 		});
 		row.setCursor(Cursor.getDefaultCursor());
 
@@ -1467,7 +1594,6 @@ public class StockpilePanel extends PluginPanel
 
 		if (!loggedIn)
 		{
-
 			SwingUtilities.invokeLater(() ->
 			{
 				detailItemId = -1;
@@ -1495,13 +1621,11 @@ public class StockpilePanel extends PluginPanel
 			}
 			else if (!currentItems.isEmpty())
 			{
-
 				SwingUtilities.invokeLater(this::showMain);
 			}
 		}
 		else
 		{
-
 			SwingUtilities.invokeLater(() ->
 			{
 				footerPanel.setVisible(true);
@@ -1600,11 +1724,15 @@ public class StockpilePanel extends PluginPanel
 				String sign = profit > 0 ? "+" : "";
 				profitLabel.setText(sign + formatTotalGp(profit, totalFmt));
 				applyTotalTooltip(profitLabel, profit, totalFmt);
-				profitLabel.setForeground(profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW));
+				profitLabel.setForeground(profit == 0
+						? ColorScheme.LIGHT_GRAY_COLOR
+						: (profit > 0 ? COLOR_HIGH : COLOR_LOW));
 				profitSection.setVisible(true);
 			}
 			else
+			{
 				profitSection.setVisible(false);
+			}
 
 			boolean compact = config.compactView();
 			totalsRows.setVisible(!compact);
@@ -1641,7 +1769,9 @@ public class StockpilePanel extends PluginPanel
 			trackedItemsPanel.add(emptyWrapper);
 		}
 		else
+		{
 			renderGroupedRows(items, indicatorMode);
+		}
 
 		trackedItemsPanel.revalidate();
 		trackedItemsPanel.repaint();
@@ -1655,14 +1785,7 @@ public class StockpilePanel extends PluginPanel
 	 */
 	private void renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)
 	{
-		boolean hasFavorites = false;
-		for (TrackedItem item : items)
-			if (item.isFavorite())
-			{
-				hasFavorites = true;
-				break;
-			}
-
+		boolean hasFavorites = items.stream().anyMatch(TrackedItem::isFavorite);
 		groupingActive = hasFavorites || !categories.isEmpty();
 
 		if (!groupingActive)
@@ -1678,7 +1801,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 		}
 
-		Set<String> categoryNames = new java.util.HashSet<>();
+		Set<String> categoryNames = new HashSet<>();
 		for (CategoryState cat : categories)
 			categoryNames.add(cat.getName());
 
@@ -1708,7 +1831,8 @@ public class StockpilePanel extends PluginPanel
 				uncategorized.add(item);
 		}
 
-		renderGroup("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed, uncategorized, indicatorMode);
+		renderGroup("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed,
+				uncategorized, indicatorMode);
 	}
 
 	/** @return whether the item matches the active tracked-list name filter (always true when the filter is empty). */
@@ -1763,7 +1887,10 @@ public class StockpilePanel extends PluginPanel
 					? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR));
 	}
 
-	/** Paints a small monochrome funnel (filter) icon in the given colour. */
+	/**
+	 * Paints a small monochrome funnel (filter) icon in the given colour: a wide top bar
+	 * tapering to a narrow central stem.
+	 */
 	private static Icon filterIcon(Color color)
 	{
 		int size = 14;
@@ -1772,7 +1899,6 @@ public class StockpilePanel extends PluginPanel
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g.setColor(color);
 
-		// Funnel: a wide top bar tapering to a narrow central stem.
 		g.fillPolygon(
 				new int[]{1, size - 1, size / 2 + 1, size / 2 + 1, size / 2 - 1, size / 2 - 1},
 				new int[]{2, 2, size / 2, size - 1, size - 1, size / 2},
@@ -1799,7 +1925,10 @@ public class StockpilePanel extends PluginPanel
 		return new ImageIcon(img);
 	}
 
-	/** Renders one collapsible group: a clickable header plus its rows, unless empty (skipped) or collapsed (header only). */
+	/**
+	 * Renders one collapsible group: a clickable header plus its rows, unless empty
+	 * (skipped) or collapsed (header only).
+	 */
 	private void renderGroup(String title, String groupKey, boolean collapsed,
 			List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)
 	{
@@ -1837,7 +1966,10 @@ public class StockpilePanel extends PluginPanel
 		return -1;
 	}
 
-	/** Builds a clickable accordion header (chevron + title + group total value) that toggles the group's collapsed state. */
+	/**
+	 * Builds a clickable accordion header (chevron + title + group total value) that
+	 * toggles the group's collapsed state.
+	 */
 	private JPanel buildGroupHeader(String title, String groupKey, boolean collapsed, long groupTotal)
 	{
 		JPanel header = new JPanel(new BorderLayout(6, 0))
@@ -1867,7 +1999,7 @@ public class StockpilePanel extends PluginPanel
 		left.add(titleLabel);
 
 		JLabel totalLabel = new JLabel(GpFormat.shortValue(groupTotal));
-		totalLabel.setForeground(new Color(150, 150, 150));
+		totalLabel.setForeground(StockpileColors.MUTED);
 		totalLabel.setFont(FontManager.getRunescapeSmallFont());
 		totalLabel.setToolTipText(NUMBER_FORMAT.format(groupTotal) + " gp");
 
@@ -1887,6 +2019,7 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	private static final Color STAR_HIDDEN = new Color(0, 0, 0, 0);
+	private static final Color REMOVE_COLOR = new Color(200, 60, 60);
 	private static final Color STAR_DIM = new Color(110, 110, 110);
 	private static final Color STAR_PREVIEW = new Color(255, 235, 140);
 	private static final String STAR_ROW_HOVERED = "stockpile.starRowHovered";
@@ -2002,7 +2135,9 @@ public class StockpilePanel extends PluginPanel
 					categoryActions.setItemCategory(item.getItemId(), name.trim());
 				}
 				else
+				{
 					picker.setSelectedItem(currentSelection);
+				}
 
 				return;
 			}
@@ -2227,8 +2362,8 @@ public class StockpilePanel extends PluginPanel
 	/** Builds the left reorder column (up/down, plus a drag handle when the list isn't grouped) for the manage row. */
 	private JPanel buildReorderStrip(TrackedItem item, List<TrackedItem> groupItems)
 	{
-		final Color controlColor = new Color(150, 150, 150);
-		final Color controlDim = new Color(80, 80, 80);
+		final Color controlColor = StockpileColors.MUTED;
+		final Color controlDim = DIVIDER_COLOR;
 
 		final int groupPos = indexOfItem(groupItems, item.getItemId());
 		final boolean canUp = groupPos > 0;
@@ -2284,7 +2419,7 @@ public class StockpilePanel extends PluginPanel
 		removeBtn.setMaximumSize(new Dimension(20, 20));
 		removeBtn.setMargin(new Insets(0, 0, 0, 0));
 		removeBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		removeBtn.setForeground(new Color(200, 60, 60));
+		removeBtn.setForeground(REMOVE_COLOR);
 		removeBtn.setFont(FontManager.getRunescapeSmallFont());
 		removeBtn.setFocusPainted(false);
 		removeBtn.setBorderPainted(false);
@@ -2351,13 +2486,16 @@ public class StockpilePanel extends PluginPanel
 		boolean on = item.isOnOverlay();
 		boolean atCap = !on && overlayCount() >= StockpilePlugin.OVERLAY_MAX;
 
-		final Color restColor = on ? COLOR_AVG : (atCap ? new Color(80, 80, 80) : STAR_DIM);
+		final Color restColor = on ? COLOR_AVG : (atCap ? DIVIDER_COLOR : STAR_DIM);
 		final Color hoverColor = on ? STAR_DIM : COLOR_AVG;
 
 		JLabel toggle = new JLabel(overlayIcon(restColor));
 		toggle.setAlignmentX(Component.CENTER_ALIGNMENT);
-		toggle.setToolTipText(on ? "Remove from on-screen overlay"
-				: atCap ? "Overlay is full (" + StockpilePlugin.OVERLAY_MAX + " max)" : "Show on the on-screen overlay");
+		toggle.setToolTipText(on
+				? "Remove from on-screen overlay"
+				: atCap
+						? "Overlay is full (" + StockpilePlugin.OVERLAY_MAX + " max)"
+						: "Show on the on-screen overlay");
 
 		if (!atCap)
 		{
@@ -2435,13 +2573,11 @@ public class StockpilePanel extends PluginPanel
 		iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
 		applyRowIcon(iconLabel, item);
 
-		final Color REMOVE_COLOR = new Color(200, 60, 60);
-		final Color REMOVE_HIDDEN = new Color(0, 0, 0, 0);
 		JButton removeBtn = new JButton("✕");
 		removeBtn.setPreferredSize(new Dimension(20, 20));
 		removeBtn.setMargin(new Insets(0, 0, 0, 0));
 		removeBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		removeBtn.setForeground(hovered ? REMOVE_COLOR : REMOVE_HIDDEN);
+		removeBtn.setForeground(hovered ? REMOVE_COLOR : STAR_HIDDEN);
 		removeBtn.setFont(FontManager.getRunescapeSmallFont());
 		removeBtn.setFocusPainted(false);
 		removeBtn.setBorderPainted(false);
@@ -2498,7 +2634,7 @@ public class StockpilePanel extends PluginPanel
 		{
 			centerPanel.add(buildCompactValueRow(item));
 			card.add(centerPanel, BorderLayout.CENTER);
-			installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, REMOVE_HIDDEN);
+			installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, STAR_HIDDEN);
 			return card;
 		}
 
@@ -2512,7 +2648,7 @@ public class StockpilePanel extends PluginPanel
 			if (!item.isTradeable())
 			{
 				loading = new JLabel("Item not tradeable");
-				loading.setForeground(new Color(150, 150, 150));
+				loading.setForeground(StockpileColors.MUTED);
 			}
 			else if (item.isPriceLoadFailed())
 			{
@@ -2701,7 +2837,7 @@ public class StockpilePanel extends PluginPanel
 				itemProfitSection.setBorder(BorderFactory.createCompoundBorder(
 						BorderFactory.createCompoundBorder(
 								new EmptyBorder(4, 0, 0, 0),
-								new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
+								new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)
 						),
 						new EmptyBorder(4, 10, 0, 0)
 				));
@@ -2711,7 +2847,7 @@ public class StockpilePanel extends PluginPanel
 		}
 
 		card.add(centerPanel, BorderLayout.CENTER);
-		installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, REMOVE_HIDDEN);
+		installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, STAR_HIDDEN);
 
 		return card;
 	}
@@ -2784,7 +2920,7 @@ public class StockpilePanel extends PluginPanel
 		if (!item.hasPrices())
 		{
 			JLabel placeholder = new JLabel(!item.isTradeable() ? "Item not tradeable" : "—");
-			placeholder.setForeground(new Color(150, 150, 150));
+			placeholder.setForeground(StockpileColors.MUTED);
 			placeholder.setFont(FontManager.getRunescapeSmallFont());
 			row.add(placeholder);
 			return row;
@@ -3094,11 +3230,13 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Installs a compact gp value on a label with no tooltip caption. */
 	private void installItemValue(JLabel label, long value, String prefix, Color tint)
 	{
 		installItemValue(label, value, prefix, null, tint);
 	}
 
+	/** Installs a prefixed compact gp value on a label via {@link #installShortValue}. */
 	private void installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)
 	{
 		installShortValue(label, value, prefix + GpFormat.shortValue(value), tooltipLabel, tint);
@@ -3149,7 +3287,10 @@ public class StockpilePanel extends PluginPanel
 		return ageSec > (long) config.stalePriceThresholdMinutes() * 60L;
 	}
 
-	/** Formats an epoch-second timestamp's age as a compact relative string, e.g. {@code "5s"}, {@code "5m"}, {@code "3hr"}, {@code "2d ago"}. */
+	/**
+	 * Formats an epoch-second timestamp's age as a compact relative string,
+	 * e.g. {@code "5s"}, {@code "5m"}, {@code "3hr"}, {@code "2d ago"}.
+	 */
 	private static String formatAge(long epochSeconds)
 	{
 		if (epochSeconds <= 0)
@@ -3188,9 +3329,10 @@ public class StockpilePanel extends PluginPanel
 	private void applyTradeTime(JLabel label, long epochSeconds)
 	{
 		label.setText(formatAge(epochSeconds));
-		label.setToolTipText(epochSeconds > 0 ? new java.util.Date(epochSeconds * 1000L).toString() : null);
+		label.setToolTipText(epochSeconds > 0 ? new Date(epochSeconds * 1000L).toString() : null);
 	}
 
+	/** Resets a value label to plain text, dropping its tooltip and any hover-tint listener. */
 	private void clearItemValue(JLabel label, String text)
 	{
 		for (MouseListener ml : label.getMouseListeners())
@@ -3282,6 +3424,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** @return the colour as a {@code #rrggbb} hex string for inline HTML styling. */
 	private static String toHex(Color c)
 	{
 		return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
@@ -3303,8 +3446,10 @@ public class StockpilePanel extends PluginPanel
 			this.label = label;
 			this.shortText = shortText;
 			this.tint = tint;
-			this.highlightedText = tint == null ? shortText
-					: "<html><nobr><span style='background-color:" + toHex(tint) + "'>" + shortText + "</span></nobr></html>";
+			this.highlightedText = tint == null
+					? shortText
+					: "<html><nobr><span style='background-color:" + toHex(tint) + "'>"
+							+ shortText + "</span></nobr></html>";
 		}
 
 		@Override
@@ -3344,6 +3489,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise. */
 	private void applyTotalTooltip(JLabel label, long value, ValueFormat fmt)
 	{
 		if (fmt == ValueFormat.ABBREVIATED)
@@ -3452,13 +3598,15 @@ public class StockpilePanel extends PluginPanel
 		priceGraph = new PriceGraphPanel(PriceGraphPanel.Mode.PRICE);
 		priceGraph.setAlignmentX(Component.LEFT_ALIGNMENT);
 		priceGraph.setSmooth(graphSmooth);
-		priceGraph.setSmoothListener(b -> {
+		priceGraph.setSmoothListener(b ->
+		{
 			graphSmooth = b;
 			if (pricePopoutGraph != null)
 				pricePopoutGraph.setSmooth(b);
 		});
 		priceGraph.setLineSet(graphLineSet);
-		priceGraph.setLineSetListener(set -> {
+		priceGraph.setLineSetListener(set ->
+		{
 			graphLineSet = set;
 			if (pricePopoutGraph != null)
 				pricePopoutGraph.setLineSet(set);
@@ -3544,7 +3692,7 @@ public class StockpilePanel extends PluginPanel
 		acquisitionsTable.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		acquisitionsTable.setForeground(Color.WHITE);
 		acquisitionsTable.setFont(FontManager.getRunescapeSmallFont());
-		acquisitionsTable.setGridColor(new Color(60, 60, 60));
+		acquisitionsTable.setGridColor(StockpileColors.TABLE_GRID);
 		acquisitionsTable.setRowHeight(22);
 		acquisitionsTable.setFillsViewportHeight(true);
 		acquisitionsTable.getTableHeader().setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -3601,7 +3749,7 @@ public class StockpilePanel extends PluginPanel
 
 		JScrollPane tableScroll = new JScrollPane(acquisitionsTable);
 		tableScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		tableScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60)));
+		tableScroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
 		acquisitionsScroll = tableScroll;
 
 		JButton addRowBtn = new JButton("+ Add");
@@ -3611,7 +3759,8 @@ public class StockpilePanel extends PluginPanel
 		addRowBtn.setFont(FontManager.getRunescapeSmallFont());
 		addRowBtn.setMargin(new Insets(2, 5, 2, 5));
 		addRowBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		addRowBtn.addActionListener(e -> {
+		addRowBtn.addActionListener(e ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null)
 				return;
@@ -3633,7 +3782,8 @@ public class StockpilePanel extends PluginPanel
 		removeRowBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		removeRowBtn.setEnabled(false);
 
-		Runnable removeSelectedRows = () -> {
+		Runnable removeSelectedRows = () ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null)
 				return;
@@ -3647,7 +3797,7 @@ public class StockpilePanel extends PluginPanel
 				return;
 
 			List<AcquisitionRecord> records = t.getAcquisitions();
-			java.util.Arrays.sort(selected);
+			Arrays.sort(selected);
 			for (int i = selected.length - 1; i >= 0; i--)
 			{
 				int idx = selected[i];
@@ -3682,7 +3832,8 @@ public class StockpilePanel extends PluginPanel
 		cleanBtn.setFocusPainted(false);
 		cleanBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		cleanBtn.setMargin(new Insets(2, 4, 2, 4));
-		cleanBtn.addActionListener(e -> {
+		cleanBtn.addActionListener(e ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null)
 				return;
@@ -3699,12 +3850,13 @@ public class StockpilePanel extends PluginPanel
 		JButton clearBtn = new JButton("Clear");
 		clearBtn.setToolTipText("Remove every row from the collection log");
 		clearBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		clearBtn.setForeground(new Color(220, 100, 100));
+		clearBtn.setForeground(COLOR_LOW);
 		clearBtn.setFocusPainted(false);
 		clearBtn.setFont(FontManager.getRunescapeSmallFont());
 		clearBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		clearBtn.setMargin(new Insets(2, 5, 2, 5));
-		clearBtn.addActionListener(e -> {
+		clearBtn.addActionListener(e ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null || t.getAcquisitions().isEmpty())
 				return;
@@ -3789,7 +3941,7 @@ public class StockpilePanel extends PluginPanel
 		notificationsTable.setFillsViewportHeight(true);
 		notificationsTable.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		notificationsTable.setForeground(Color.WHITE);
-		notificationsTable.setGridColor(new Color(60, 60, 60));
+		notificationsTable.setGridColor(StockpileColors.TABLE_GRID);
 		notificationsTable.setRowHeight(22);
 		notificationsTable.setFont(FontManager.getRunescapeSmallFont());
 		notificationsTable.getTableHeader().setFont(FontManager.getRunescapeSmallFont());
@@ -3804,11 +3956,12 @@ public class StockpilePanel extends PluginPanel
 
 		JScrollPane tableScroll = new JScrollPane(notificationsTable);
 		tableScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		tableScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60)));
+		tableScroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
 
 		JButton addRowBtn = new JButton("+ Add");
 		styleNotifButton(addRowBtn, Color.WHITE);
-		addRowBtn.addActionListener(e -> {
+		addRowBtn.addActionListener(e ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null)
 				return;
@@ -3822,7 +3975,8 @@ public class StockpilePanel extends PluginPanel
 		JButton removeRowBtn = new JButton("− Remove");
 		styleNotifButton(removeRowBtn, Color.WHITE);
 		removeRowBtn.setEnabled(false);
-		Runnable removeSelected = () -> {
+		Runnable removeSelected = () ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null)
 				return;
@@ -3836,7 +3990,7 @@ public class StockpilePanel extends PluginPanel
 				return;
 
 			List<NotificationRule> rules = t.getNotifications();
-			java.util.Arrays.sort(selected);
+			Arrays.sort(selected);
 			for (int i = selected.length - 1; i >= 0; i--)
 			{
 				int idx = selected[i];
@@ -3866,9 +4020,10 @@ public class StockpilePanel extends PluginPanel
 		});
 
 		JButton clearBtn = new JButton("Clear");
-		styleNotifButton(clearBtn, new Color(220, 100, 100));
+		styleNotifButton(clearBtn, COLOR_LOW);
 		clearBtn.setToolTipText("Remove every notification rule");
-		clearBtn.addActionListener(e -> {
+		clearBtn.addActionListener(e ->
+		{
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t == null || t.getNotifications().isEmpty())
 				return;
@@ -3904,6 +4059,7 @@ public class StockpilePanel extends PluginPanel
 		notificationsSection.add(tableButtons, BorderLayout.SOUTH);
 	}
 
+	/** Applies the shared small-button styling to a notifications-section button. */
 	private void styleNotifButton(JButton btn, Color fg)
 	{
 		btn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -3914,13 +4070,17 @@ public class StockpilePanel extends PluginPanel
 		btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 	}
 
-	/** Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. */
+	/**
+	 * Notifies the plugin (via callback) that the current item's notification rules
+	 * changed, so it can persist them.
+	 */
 	private void notifyNotificationsEdited()
 	{
 		if (onNotificationsEdited != null && detailItemId > 0)
 			onNotificationsEdited.accept(detailItemId);
 	}
 
+	/** Builds a titled detail-view section containing the given components. */
 	private JPanel buildDetailSection(String title, Component... contents)
 	{
 		JPanel wrapper = newSectionWrapper();
@@ -3931,6 +4091,7 @@ public class StockpilePanel extends PluginPanel
 		return wrapper;
 	}
 
+	/** Builds a titled detail-view section whose title row carries a pop-out button. */
 	private JPanel buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)
 	{
 		JPanel wrapper = newSectionWrapper();
@@ -3941,6 +4102,7 @@ public class StockpilePanel extends PluginPanel
 		return wrapper;
 	}
 
+	/** @return an empty vertical wrapper panel used to stack a detail section's rows. */
 	private JPanel newSectionWrapper()
 	{
 		JPanel wrapper = new JPanel();
@@ -3950,11 +4112,17 @@ public class StockpilePanel extends PluginPanel
 		return wrapper;
 	}
 
+	/** Builds a section title row with a pop-out button wired to the given action. */
 	private JComponent buildDetailSectionTitleRow(String title, Runnable onPopout)
 	{
 		return buildDetailSectionTitleRow(title, buildPopoutButton(onPopout));
 	}
 
+	/**
+	 * Builds a divider-topped section title row with the title centred between a strut
+	 * matching the pop-out button's width (so the title stays optically centred) and the
+	 * button itself.
+	 */
 	private JComponent buildDetailSectionTitleRow(String title, JButton popBtn)
 	{
 		JPanel row = new JPanel(new BorderLayout())
@@ -3971,7 +4139,7 @@ public class StockpilePanel extends PluginPanel
 		row.setBorder(BorderFactory.createCompoundBorder(
 				BorderFactory.createCompoundBorder(
 						new EmptyBorder(10, 0, 0, 0),
-						new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))),
+						new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
 				new EmptyBorder(4, 0, 2, 0)));
 
 		JLabel label = new JLabel(title, SwingConstants.CENTER);
@@ -4079,6 +4247,7 @@ public class StockpilePanel extends PluginPanel
 			populateDetail(item);
 	}
 
+	/** Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. */
 	private void scrollAcquisitionsToBottom()
 	{
 		if (acquisitionsScroll == null)
@@ -4091,6 +4260,11 @@ public class StockpilePanel extends PluginPanel
 		});
 	}
 
+	/**
+	 * Builds the stacked current-values block (high/low/avg plus a fourth metric row),
+	 * colouring each label by metric and appending a divider-topped profit row when a
+	 * profit label is supplied.
+	 */
 	private JPanel buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)
 	{
 		JPanel block = new JPanel()
@@ -4129,7 +4303,7 @@ public class StockpilePanel extends PluginPanel
 			profitRow.setBorder(BorderFactory.createCompoundBorder(
 					BorderFactory.createCompoundBorder(
 							new EmptyBorder(4, 0, 0, 0),
-							new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
 					new EmptyBorder(4, 0, 0, 0)));
 			block.add(profitRow);
 		}
@@ -4137,12 +4311,18 @@ public class StockpilePanel extends PluginPanel
 		return block;
 	}
 
+	/** Builds (and remembers) the sidebar overview grid. */
 	private JPanel buildOverviewGrid()
 	{
 		overviewGrid = createOverviewGrid(overviewLabels, overviewWindowLabels, 2);
 		return overviewGrid;
 	}
 
+	/**
+	 * Creates an overview grid panel that custom-paints its own dividers: a vertical rule
+	 * after the window-label column and a horizontal rule between consecutive rows, both
+	 * derived from the live label positions so they track layout changes.
+	 */
 	private JPanel createOverviewGrid(Map<TimeWindow, JLabel[]> labels, List<JLabel> windowLabels, int sepGap)
 	{
 		JPanel grid = new JPanel(new GridBagLayout())
@@ -4293,6 +4473,7 @@ public class StockpilePanel extends PluginPanel
 		grid.repaint();
 	}
 
+	/** @return the long-form window name used by the pop-out overview grid. */
 	private static String fullWindowLabel(TimeWindow w)
 	{
 		return w.getLongLabel();
@@ -4309,7 +4490,6 @@ public class StockpilePanel extends PluginPanel
 
 			if (w == TimeWindow.LIVE)
 			{
-
 				List<WikiRealtimePriceClient.PricePoint> s5 = item.getSeries5m();
 				WikiRealtimePriceClient.PricePoint last = s5.isEmpty() ? null : s5.get(s5.size() - 1);
 				long high = last == null ? 0 : last.getAvgHighPrice();
@@ -4425,19 +4605,21 @@ public class StockpilePanel extends PluginPanel
 		Runnable onClose = null;
 		if (mode == PriceGraphPanel.Mode.PRICE)
 		{
-
 			graph.setSmooth(graphSmooth);
-			graph.setSmoothListener(b -> {
+			graph.setSmoothListener(b ->
+			{
 				graphSmooth = b;
 				source.setSmooth(b);
 			});
 			graph.setLineSet(graphLineSet);
-			graph.setLineSetListener(set -> {
+			graph.setLineSetListener(set ->
+			{
 				graphLineSet = set;
 				source.setLineSet(set);
 			});
 			pricePopoutGraph = graph;
-			onClose = () -> {
+			onClose = () ->
+			{
 				if (pricePopoutGraph == graph)
 					pricePopoutGraph = null;
 			};
@@ -4470,6 +4652,7 @@ public class StockpilePanel extends PluginPanel
 		showPopout("Price Overview", scroll, refresher, null);
 	}
 
+	/** Hides the acquisitions pop-out button while its pop-out window is already open. */
 	private void updateAcqPopoutButton()
 	{
 		if (acqPopoutButton == null)
@@ -4490,7 +4673,7 @@ public class StockpilePanel extends PluginPanel
 		final AcquisitionsTableModel model = acqPopoutModel;
 		table.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		table.setForeground(Color.WHITE);
-		table.setGridColor(new Color(60, 60, 60));
+		table.setGridColor(StockpileColors.TABLE_GRID);
 		table.setFillsViewportHeight(true);
 		table.getTableHeader().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		table.getTableHeader().setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -4513,7 +4696,7 @@ public class StockpilePanel extends PluginPanel
 
 		JScrollPane scroll = new JScrollPane(table);
 		scroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		scroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60)));
+		scroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
 		scroll.setPreferredSize(new Dimension(560, 380));
 		acqPopoutScroll = scroll;
 
@@ -4545,7 +4728,7 @@ public class StockpilePanel extends PluginPanel
 		cleanBtn.setMargin(new Insets(2, 4, 2, 4));
 		cleanBtn.addActionListener(e -> acqClean(model));
 
-		JButton clearBtn = acqTextButton("Clear", new Color(220, 100, 100));
+		JButton clearBtn = acqTextButton("Clear", COLOR_LOW);
 		clearBtn.setToolTipText("Remove every row from the collection log");
 		clearBtn.addActionListener(e -> acqClear());
 
@@ -4570,7 +4753,8 @@ public class StockpilePanel extends PluginPanel
 
 		updateAcqPopoutButton();
 
-		showPopout("Item Collection Log", content, it -> { }, () -> {
+		showPopout("Item Collection Log", content, it -> { }, () ->
+		{
 			acqPopoutModel = null;
 			acqPopoutTable = null;
 			acqPopoutScroll = null;
@@ -4578,6 +4762,7 @@ public class StockpilePanel extends PluginPanel
 		});
 	}
 
+	/** Builds a small flat text button used by the acquisitions pop-out toolbar. */
 	private JButton acqTextButton(String text, Color fg)
 	{
 		JButton b = new JButton(text);
@@ -4638,7 +4823,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 
 		List<AcquisitionRecord> records = t.getAcquisitions();
-		java.util.Arrays.sort(selected);
+		Arrays.sort(selected);
 		for (int i = selected.length - 1; i >= 0; i--)
 		{
 			if (selected[i] >= 0 && selected[i] < records.size())
@@ -4685,6 +4870,7 @@ public class StockpilePanel extends PluginPanel
 			onClearAcquisitions.accept(detailItemId);
 	}
 
+	/** Paints the small box-with-arrow "open in new window" icon used by pop-out buttons. */
 	private Icon buildPopoutIcon()
 	{
 		int s = 11;
@@ -4702,6 +4888,7 @@ public class StockpilePanel extends PluginPanel
 		return new ImageIcon(img);
 	}
 
+	/** Builds a borderless pop-out button that runs the given action when clicked. */
 	private JButton buildPopoutButton(Runnable onClick)
 	{
 		JButton btn = new JButton(buildPopoutIcon());
@@ -4728,13 +4915,14 @@ public class StockpilePanel extends PluginPanel
 		JComboBox<NotificationOperation> opCombo = new JComboBox<>(NotificationOperation.values());
 		opCombo.setFont(f);
 
-		notificationsTable.getColumnModel().getColumn(0).setCellEditor(new DefaultCellEditor(metricCombo));
-		notificationsTable.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(timeCombo));
-		notificationsTable.getColumnModel().getColumn(2).setCellEditor(new DefaultCellEditor(opCombo));
-		notificationsTable.getColumnModel().getColumn(3).setCellEditor(new NotificationValueEditor());
+		TableColumnModel columns = notificationsTable.getColumnModel();
+		columns.getColumn(0).setCellEditor(new DefaultCellEditor(metricCombo));
+		columns.getColumn(1).setCellEditor(new DefaultCellEditor(timeCombo));
+		columns.getColumn(2).setCellEditor(new DefaultCellEditor(opCombo));
+		columns.getColumn(3).setCellEditor(new NotificationValueEditor());
 
 		for (int i = 0; i < notificationsTable.getColumnCount(); i++)
-			notificationsTable.getColumnModel().getColumn(i).setCellRenderer(renderer);
+			columns.getColumn(i).setCellRenderer(renderer);
 
 		TableCellRenderer hr = notificationsTable.getTableHeader().getDefaultRenderer();
 		if (hr instanceof DefaultTableCellRenderer)
@@ -4844,6 +5032,7 @@ public class StockpilePanel extends PluginPanel
 		return block;
 	}
 
+	/** Builds a two-column grid pairing two captioned values side by side (Market Info / alch rows). */
 	private JPanel buildMarketInfoPair(String leftLabel, JLabel leftValue, String rightLabel, JLabel rightValue)
 	{
 		JPanel grid = new JPanel(new GridBagLayout());
@@ -4866,14 +5055,21 @@ public class StockpilePanel extends PluginPanel
 		rightValue.setFont(FontManager.getRunescapeSmallFont());
 		rightValue.setForeground(Color.WHITE);
 
-		c.gridx = 0; c.gridy = 0; grid.add(lh, c);
-		c.gridx = 1; c.gridy = 0; grid.add(rh, c);
-		c.gridx = 0; c.gridy = 1; grid.add(leftValue, c);
-		c.gridx = 1; c.gridy = 1; grid.add(rightValue, c);
+		c.gridx = 0;
+		c.gridy = 0;
+		grid.add(lh, c);
+		c.gridx = 1;
+		c.gridy = 0;
+		grid.add(rh, c);
+		c.gridx = 0;
+		c.gridy = 1;
+		grid.add(leftValue, c);
+		c.gridx = 1;
+		c.gridy = 1;
+		grid.add(rightValue, c);
 		return grid;
 	}
 
-	/** Builds the alch-info section (high/low alch values and the high-alch profit estimate). */
 	private static final String WIKI_BASE = "https://oldschool.runescape.wiki/w/";
 	private static final String PRICES_BASE = "https://prices.runescape.wiki/osrs/item/";
 
@@ -4943,6 +5139,7 @@ public class StockpilePanel extends PluginPanel
 		return item;
 	}
 
+	/** Builds the alch-info section (high/low alch values and the high-alch profit estimate). */
 	private JPanel buildAlchBlock()
 	{
 		JPanel block = new JPanel()
@@ -4979,7 +5176,7 @@ public class StockpilePanel extends PluginPanel
 		alchEstProfitRow.setBorder(BorderFactory.createCompoundBorder(
 				BorderFactory.createCompoundBorder(
 						new EmptyBorder(6, 0, 0, 0),
-						new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))),
+						new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
 				new EmptyBorder(4, 0, 0, 0)));
 		alchEstProfitRow.add(estPrefix);
 		alchEstProfitRow.add(alchEstProfit);
@@ -4987,6 +5184,7 @@ public class StockpilePanel extends PluginPanel
 		return block;
 	}
 
+	/** Paints the small left-pointing triangle used by the detail view's Back button. */
 	private Icon buildLeftArrowIcon()
 	{
 		int w = 9;
@@ -5008,7 +5206,7 @@ public class StockpilePanel extends PluginPanel
 	{
 		try
 		{
-			BufferedImage img = net.runelite.client.util.ImageUtil.loadImageResource(getClass(), "eye.png");
+			BufferedImage img = ImageUtil.loadImageResource(getClass(), "eye.png");
 			return new ImageIcon(img.getScaledInstance(size, size, Image.SCALE_SMOOTH));
 		}
 		catch (Exception ex)
@@ -5017,11 +5215,12 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Loads the bundled {@code broom.png} scaled to a 12px icon for the clear-acquisitions button. */
 	private Icon buildBrushIcon()
 	{
 		try
 		{
-			BufferedImage img = net.runelite.client.util.ImageUtil.loadImageResource(getClass(), "broom.png");
+			BufferedImage img = ImageUtil.loadImageResource(getClass(), "broom.png");
 			return new ImageIcon(img.getScaledInstance(12, 12, Image.SCALE_SMOOTH));
 		}
 		catch (Exception ex)
@@ -5030,6 +5229,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** Builds a centred bold section title, optionally topped with a divider rule. */
 	private JLabel buildDetailSectionTitle(String text, boolean withDivider)
 	{
 		JLabel title = new JLabel(text, SwingConstants.CENTER)
@@ -5044,15 +5244,11 @@ public class StockpilePanel extends PluginPanel
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		if (withDivider)
-		{
 			title.setBorder(BorderFactory.createCompoundBorder(
-				BorderFactory.createCompoundBorder(
-					new EmptyBorder(10, 0, 0, 0),
-					new MatteBorder(1, 0, 0, 0, new Color(80, 80, 80))
-				),
-				new EmptyBorder(10, 0, 6, 0)
-			));
-		}
+					BorderFactory.createCompoundBorder(
+							new EmptyBorder(10, 0, 0, 0),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)),
+					new EmptyBorder(10, 0, 6, 0)));
 		else
 			title.setBorder(new EmptyBorder(10, 0, 6, 0));
 
@@ -5209,6 +5405,12 @@ public class StockpilePanel extends PluginPanel
 				.replace(">", "&gt;");
 	}
 
+	/**
+	 * Fills every detail section from an item's current state: header name/icon/quantity,
+	 * item and collection values, overview grid, charts, market info (times, volatility,
+	 * liquidity, range, pressure), alch figures, notifications, and the acquisitions log.
+	 * Called whenever the shown item's data changes.
+	 */
 	private void populateDetail(TrackedItem item)
 	{
 		final boolean viewOnly = item.getMode() == TrackItemMode.VIEW;
@@ -5264,10 +5466,12 @@ public class StockpilePanel extends PluginPanel
 		populateOverviewLabels(overviewLabels, item, false);
 
 		if (priceGraph != null)
-			priceGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(), item.getSeries24h(), item.getAvgPrice());
+			priceGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
+					item.getSeries24h(), item.getAvgPrice());
 
 		if (volumeGraph != null)
-			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(), item.getSeries24h(), item.getAvgPrice());
+			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
+					item.getSeries24h(), item.getAvgPrice());
 
 		miBuyLimit.setText(item.getBuyLimit() > 0 ? NUMBER_FORMAT.format(item.getBuyLimit()) : "N/A");
 		long tax = geTax(item.getAvgPrice());
@@ -5356,6 +5560,7 @@ public class StockpilePanel extends PluginPanel
 		refreshPopouts(item);
 	}
 
+	/** Resets an overview cell to the {@code "-"} placeholder. */
 	private void setOverviewPlaceholder(JLabel label)
 	{
 		clearItemValue(label, "-");
@@ -5366,17 +5571,23 @@ public class StockpilePanel extends PluginPanel
 	{
 		label.setForeground(color);
 		if (value <= 0)
+		{
 			setOverviewPlaceholder(label);
+		}
 		else if (full)
 		{
 			removeHoverTint(label);
 			label.setText(NUMBER_FORMAT.format(value));
-			label.setToolTipText((tooltipLabel == null ? "" : tooltipLabel + ": ") + NUMBER_FORMAT.format(value) + " gp");
+			String tooltipPrefix = tooltipLabel == null ? "" : tooltipLabel + ": ";
+			label.setToolTipText(tooltipPrefix + NUMBER_FORMAT.format(value) + " gp");
 		}
 		else
+		{
 			installShortValue(label, value, GpFormat.shortValue1dp(value), tooltipLabel, tint);
+		}
 	}
 
+	/** Detaches any hover-tint listener from a label before its value is replaced. */
 	private static void removeHoverTint(JLabel label)
 	{
 		for (MouseListener ml : label.getMouseListeners())
@@ -5386,6 +5597,7 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
+	/** @return the high/low midpoint of a price point, or whichever side is known when one is missing. */
 	private static long overviewMidpoint(WikiRealtimePriceClient.PricePoint p)
 	{
 		long h = p.getAvgHighPrice();
@@ -5471,9 +5683,10 @@ public class StockpilePanel extends PluginPanel
 		SwingUtilities.invokeLater(listener::applyIfHovered);
 	}
 
+	/** @return the window's long label lower-cased for use mid-sentence in tooltips. */
 	private static String spelledInterval(TimeWindow window)
 	{
-		return window.getLongLabel().toLowerCase(java.util.Locale.ROOT);
+		return window.getLongLabel().toLowerCase(Locale.ROOT);
 	}
 
 	/** Sets a profit label to a signed, colored gp figure, or a placeholder when the profit is unknown. */
@@ -5491,6 +5704,7 @@ public class StockpilePanel extends PluginPanel
 		label.setForeground(profit == 0 ? Color.WHITE : (profit > 0 ? COLOR_HIGH : COLOR_LOW));
 	}
 
+	/** @return the value as a comma-grouped gp string with an explicit {@code +} when positive. */
 	private static String signedGp(long v)
 	{
 		return (v > 0 ? "+" : "") + NUMBER_FORMAT.format(v) + " gp";
@@ -5621,7 +5835,7 @@ public class StockpilePanel extends PluginPanel
 		{
 			buySellBar.setRatio(-1);
 			pressureMarketLabel.setText("No data");
-			pressureMarketLabel.setForeground(new Color(150, 150, 150));
+			pressureMarketLabel.setForeground(StockpileColors.MUTED);
 			buyPressureLabel.setText("");
 			buyPressureLabel.setVolume(-1);
 			sellPressureLabel.setText("");
@@ -5662,6 +5876,7 @@ public class StockpilePanel extends PluginPanel
 		return MarketClassifier.thirtyDayRange(item.getSeriesFor(TimeWindow.MONTH));
 	}
 
+	/** Applies the acquisitions renderers to the sidebar (compact) table. */
 	private void applyTableRenderers()
 	{
 		applyAcqRenderers(acquisitionsTable, acquisitionsModel, false);
@@ -5669,6 +5884,10 @@ public class StockpilePanel extends PluginPanel
 
 	private static final String[] ACQ_FULL_HEADERS = {"Quantity", "Bought Price", "Sold Price", "Profit"};
 
+	/**
+	 * Wires an acquisitions table's fonts, row height, per-column renderers/editors, and
+	 * headers for either the compact sidebar table or the expanded pop-out table.
+	 */
 	private void applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)
 	{
 		Font f = expanded ? new Font(Font.MONOSPACED, Font.PLAIN, 18) : FontManager.getRunescapeSmallFont();
@@ -5699,6 +5918,7 @@ public class StockpilePanel extends PluginPanel
 		table.getTableHeader().repaint();
 	}
 
+	/** @return the tooltip caption for an acquisitions-table column. */
 	private static String acqTooltipLabel(int col)
 	{
 		switch (col)
@@ -5728,15 +5948,35 @@ public class StockpilePanel extends PluginPanel
 			fireTableStructureChanged();
 		}
 
+		/** @return the active column set, including the profit column only when configured. */
 		private String[] cols()
 		{
 			return config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
 		}
 
-		@Override public int getRowCount() { return item == null ? 0 : item.getAcquisitions().size(); }
-		@Override public int getColumnCount() { return cols().length; }
-		@Override public String getColumnName(int c) { return cols()[c]; }
-		@Override public boolean isCellEditable(int r, int c) { return c < 3; }
+		@Override
+		public int getRowCount()
+		{
+			return item == null ? 0 : item.getAcquisitions().size();
+		}
+
+		@Override
+		public int getColumnCount()
+		{
+			return cols().length;
+		}
+
+		@Override
+		public String getColumnName(int c)
+		{
+			return cols()[c];
+		}
+
+		@Override
+		public boolean isCellEditable(int r, int c)
+		{
+			return c < 3;
+		}
 
 		long rowProfit(AcquisitionRecord rec)
 		{
@@ -5818,9 +6058,23 @@ public class StockpilePanel extends PluginPanel
 			fireTableStructureChanged();
 		}
 
-		@Override public int getRowCount() { return item == null ? 0 : item.getNotifications().size(); }
-		@Override public int getColumnCount() { return COLS.length; }
-		@Override public String getColumnName(int c) { return COLS[c]; }
+		@Override
+		public int getRowCount()
+		{
+			return item == null ? 0 : item.getNotifications().size();
+		}
+
+		@Override
+		public int getColumnCount()
+		{
+			return COLS.length;
+		}
+
+		@Override
+		public String getColumnName(int c)
+		{
+			return COLS[c];
+		}
 
 		@Override
 		public boolean isCellEditable(int r, int c)
@@ -5828,7 +6082,9 @@ public class StockpilePanel extends PluginPanel
 			if (item == null || r < 0 || r >= item.getNotifications().size())
 				return false;
 
-			NotificationMetric m = item.getNotifications().get(r).getMetric();
+			NotificationMetric m = item.getNotifications()
+					.get(r)
+					.getMetric();
 			switch (c)
 			{
 				case 1: return m == null || (!m.isTimeframeDisabled() && !m.locksTimeframeToMonth());
@@ -5906,6 +6162,11 @@ public class StockpilePanel extends PluginPanel
 			notifyNotificationsEdited();
 		}
 
+		/**
+		 * Normalises an edited value into the rule: categorical values are stored as
+		 * typed, while percent and numeric inputs are parsed and reformatted
+		 * (e.g. {@code "5000000"} &rarr; {@code "5m"}), ignored when unparseable.
+		 */
 		private void applyValueEdit(NotificationRule rule, String raw)
 		{
 			NotificationMetric m = rule.getMetric();
@@ -5918,18 +6179,17 @@ public class StockpilePanel extends PluginPanel
 
 			if (m.getKind() == NotificationMetric.Kind.PERCENT)
 			{
-				java.util.OptionalDouble v = NotificationRule.parsePercent(raw);
+				OptionalDouble v = NotificationRule.parsePercent(raw);
 				if (v.isPresent())
 					rule.setValue(NotificationRule.formatPercent(v.getAsDouble()));
 
 				return;
 			}
 
-			java.util.OptionalDouble v = NotificationRule.parseNumeric(raw);
+			OptionalDouble v = NotificationRule.parseNumeric(raw);
 			if (v.isPresent())
 				rule.setValue(GpFormat.shortValue((long) v.getAsDouble()));
 		}
-
 	}
 
 	/**
@@ -5951,12 +6211,15 @@ public class StockpilePanel extends PluginPanel
 		}
 
 		@Override
-		public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column)
+		public Component getTableCellEditorComponent(JTable table, Object value,
+				boolean isSelected, int row, int column)
 		{
 			NotificationMetric metric = null;
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t != null && row >= 0 && row < t.getNotifications().size())
-				metric = t.getNotifications().get(row).getMetric();
+				metric = t.getNotifications()
+						.get(row)
+						.getMetric();
 
 			if (metric != null && metric.isCategorical())
 			{
@@ -6059,14 +6322,18 @@ public class StockpilePanel extends PluginPanel
 
 			boolean hovered = shortForm && row == acqHoverRow && column == acqHoverCol;
 			if (isSelected)
+			{
 				setBackground(table.getSelectionBackground());
+			}
 			else if (hovered)
 			{
 				setForeground(fg);
 				setBackground(profit ? (v >= 0 ? TINT_HIGH : TINT_LOW) : TINT_VOLUME);
 			}
 			else
+			{
 				setBackground(table.getBackground());
+			}
 
 			return this;
 		}
@@ -6140,6 +6407,10 @@ public class StockpilePanel extends PluginPanel
 			this.volume = volume;
 		}
 
+		/**
+		 * Shows the full-volume tooltip only while the pointer is over the parenthetical,
+		 * measuring the rendered text with font metrics to find its on-screen extent.
+		 */
 		@Override
 		public String getToolTipText(MouseEvent event)
 		{
@@ -6177,8 +6448,8 @@ public class StockpilePanel extends PluginPanel
 	/** Custom-painted horizontal bar split green (buy fraction, left) and red (sell fraction, right). */
 	private static final class BuySellBar extends JPanel
 	{
-		private static final Color BAR_GREEN = new Color(100, 220, 100);
-		private static final Color BAR_RED = new Color(220, 100, 100);
+		private static final Color BAR_GREEN = StockpileColors.HIGH;
+		private static final Color BAR_RED = StockpileColors.LOW;
 		private static final int BAR_H = 5;
 		private static final int BAR_ARC = 3;
 
@@ -6204,6 +6475,10 @@ public class StockpilePanel extends PluginPanel
 			repaint();
 		}
 
+		/**
+		 * Paints the bar, grey when no ratio is known. The green/red split is clipped to
+		 * the rounded bar outline so both ends stay cleanly rounded.
+		 */
 		@Override
 		protected void paintComponent(Graphics g)
 		{
@@ -6217,13 +6492,12 @@ public class StockpilePanel extends PluginPanel
 
 				if (buyFraction < 0)
 				{
-					g2.setColor(new Color(80, 80, 80));
+					g2.setColor(DIVIDER_COLOR);
 					g2.fillRoundRect(0, y, w, BAR_H, BAR_ARC, BAR_ARC);
 					return;
 				}
 
-				// Clip to the rounded bar so the green/red split has clean rounded ends.
-				g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, y, w, BAR_H, BAR_ARC, BAR_ARC));
+				g2.setClip(new RoundRectangle2D.Float(0, y, w, BAR_H, BAR_ARC, BAR_ARC));
 				int buyW = (int) Math.round(w * Math.max(0, Math.min(1, buyFraction)));
 				g2.setColor(BAR_GREEN);
 				g2.fillRect(0, y, buyW, BAR_H);
@@ -6240,9 +6514,9 @@ public class StockpilePanel extends PluginPanel
 	/** Small custom-painted bar showing where the live price sits within its 30-day low/high range. */
 	private static final class PriceRangeBar extends JPanel
 	{
-		private static final Color RANGE_RED = new Color(220, 100, 100);
-		private static final Color RANGE_GOLD = new Color(255, 200, 0);
-		private static final Color RANGE_GREEN = new Color(100, 220, 100);
+		private static final Color RANGE_RED = StockpileColors.LOW;
+		private static final Color RANGE_GOLD = StockpileColors.AVG;
+		private static final Color RANGE_GREEN = StockpileColors.HIGH;
 		private static final int TRIANGLE_H = 9;
 		private static final int BAR_H = 5;
 		private static final int BAR_ARC = 3;
@@ -6272,6 +6546,7 @@ public class StockpilePanel extends PluginPanel
 			repaint();
 		}
 
+		/** @return the linear interpolation between two colours at {@code t} in 0..1. */
 		private static Color lerp(Color a, Color b, double t)
 		{
 			return new Color(
@@ -6280,6 +6555,7 @@ public class StockpilePanel extends PluginPanel
 					(int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
 		}
 
+		/** @return the gradient colour at fraction {@code f}: red through gold (0.5) to green. */
 		private static Color colorAt(double f)
 		{
 			f = Math.max(0, Math.min(1, f));
@@ -6289,6 +6565,11 @@ public class StockpilePanel extends PluginPanel
 			return lerp(RANGE_GOLD, RANGE_GREEN, (f - 0.5) / 0.5);
 		}
 
+		/**
+		 * Paints the red-to-green gradient range bar with min/max labels and a triangle
+		 * marker at the live price's position, or a grey "No data" bar when the range is
+		 * unknown. The gradient is clipped to the rounded bar outline.
+		 */
 		@Override
 		protected void paintComponent(Graphics g)
 		{
@@ -6306,7 +6587,7 @@ public class StockpilePanel extends PluginPanel
 				boolean hasData = max > min;
 				if (!hasData)
 				{
-					g2.setColor(new Color(80, 80, 80));
+					g2.setColor(DIVIDER_COLOR);
 					g2.fillRoundRect(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC);
 					g2.setColor(Color.GRAY);
 					String msg = "No data";
@@ -6315,7 +6596,7 @@ public class StockpilePanel extends PluginPanel
 				}
 
 				Shape oldClip = g2.getClip();
-				g2.setClip(new java.awt.geom.RoundRectangle2D.Double(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC));
+				g2.setClip(new RoundRectangle2D.Double(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC));
 				for (int x = 0; x < barW; x++)
 				{
 					g2.setColor(colorAt((double) x / Math.max(1, barW - 1)));

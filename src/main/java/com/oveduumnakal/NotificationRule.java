@@ -4,10 +4,10 @@
  */
 package com.oveduumnakal;
 
-import lombok.Data;
-
 import java.util.Locale;
 import java.util.OptionalDouble;
+
+import lombok.Data;
 
 /**
  * One user-defined alert condition on a tracked item: when {@code metric} over
@@ -22,7 +22,6 @@ import java.util.OptionalDouble;
 @Data
 public class NotificationRule
 {
-
 	private NotificationMetric metric;
 	private TimeWindow timeWindow;
 	private NotificationOperation operation;
@@ -40,7 +39,9 @@ public class NotificationRule
 		if (text == null)
 			return OptionalDouble.empty();
 
-		String s = text.trim().toLowerCase(Locale.US).replace(",", "");
+		String s = text.trim()
+				.toLowerCase(Locale.US)
+				.replace(",", "");
 		if (s.isEmpty())
 			return OptionalDouble.empty();
 

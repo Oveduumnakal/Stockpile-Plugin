@@ -25,6 +25,7 @@
 package com.oveduumnakal;
 
 import java.awt.Color;
+
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -465,8 +466,9 @@ public interface StockpileConfig extends Config
 	@ConfigItem(
 			keyName = KEY_AUTO_ADD_ITEMS,
 			name = "Auto Add Items",
-			description = "Automatically add collection-log entries from inventory/bank changes, and the price they buy in at. "
-					+ "High/Low/Avg use the latest matching price, Zero buys in at 0, Off disables auto-adds (manual edits still work).",
+			description = "Automatically add collection-log entries from inventory/bank changes, and the price "
+					+ "they buy in at. High/Low/Avg use the latest matching price, Zero buys in at 0, "
+					+ "Off disables auto-adds (manual edits still work).",
 			section = detailViewSection,
 			position = 11
 	)
@@ -504,7 +506,8 @@ public interface StockpileConfig extends Config
 	@ConfigItem(
 			keyName = KEY_GE_ESTIMATES_POSITION,
 			name = "Position",
-			description = "Top: under the search bar above the tracked items list. Bottom: below the tracked items list.",
+			description = "Top: under the search bar above the tracked items list. "
+					+ "Bottom: below the tracked items list.",
 			section = geEstimatesSection,
 			position = 1
 	)
@@ -516,7 +519,8 @@ public interface StockpileConfig extends Config
 	@ConfigItem(
 			keyName = KEY_GE_ESTIMATES_FORMAT,
 			name = "Price Format",
-			description = "How GE Estimate prices are formatted. Short abbreviates with k/m/b and shows a full-value tooltip on hover.",
+			description = "How GE Estimate prices are formatted. Short abbreviates with k/m/b and shows a "
+					+ "full-value tooltip on hover.",
 			section = geEstimatesSection,
 			position = 2
 	)
@@ -589,7 +593,8 @@ public interface StockpileConfig extends Config
 	@ConfigItem(
 			keyName = KEY_ADD_CONTEXT_MENU_OPTION,
 			name = "Add Context Menu Option",
-			description = "Add a \"Track Item\" / \"Stop Tracking\" entry to right-click menus on the ground, in the bank, or in the inventory",
+			description = "Add a \"Track Item\" / \"Stop Tracking\" entry to right-click menus on the ground, "
+					+ "in the bank, or in the inventory",
 			section = trackingSection,
 			position = 0
 	)

@@ -4,12 +4,12 @@
  */
 package com.oveduumnakal;
 
-import lombok.Data;
-
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+
+import lombok.Data;
 
 /**
  * The full state of one item being tracked: its identity and quantity, the
@@ -97,27 +97,34 @@ public class TrackedItem
 		}
 	}
 
-	/** @return the stack size to render this item's icon at: the tracked quantity for stackable items, else 1 (plain single sprite). */
+	/**
+	 * @return the stack size to render this item's icon at: the tracked quantity for
+	 *         stackable items, else 1 (plain single sprite)
+	 */
 	public int iconStackSize()
 	{
 		return stackable ? Math.max(1, quantity) : 1;
 	}
 
+	/** @return the tracked quantity valued at the high (instant-buy) price. */
 	public long getHighValue()
 	{
 		return (long) quantity * highPrice;
 	}
 
+	/** @return the tracked quantity valued at the low (instant-sell) price. */
 	public long getLowValue()
 	{
 		return (long) quantity * lowPrice;
 	}
 
+	/** @return the tracked quantity valued at the average price. */
 	public long getAvgValue()
 	{
 		return (long) quantity * avgPrice;
 	}
 
+	/** @return whether any live price is known for this item. */
 	public boolean hasPrices()
 	{
 		return highPrice > 0 || lowPrice > 0;

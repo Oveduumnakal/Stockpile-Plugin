@@ -24,16 +24,44 @@
  */
 package com.oveduumnakal;
 
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.OptionalDouble;
+import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
+import javax.inject.Inject;
+import javax.swing.SwingUtilities;
+
+import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import com.google.common.collect.ImmutableSet;
+
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
-import net.runelite.api.GameState;
 import net.runelite.api.EnumID;
+import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
@@ -52,19 +80,19 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetPositionMode;
 import net.runelite.api.widgets.WidgetTextAlignment;
 import net.runelite.api.widgets.WidgetType;
 import net.runelite.api.widgets.WidgetUtil;
-import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.Notifier;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -73,21 +101,6 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
-
-import javax.inject.Inject;
-import javax.swing.*;
-import java.awt.image.BufferedImage;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
-import java.util.zip.GZIPInputStream;
-import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 /**
@@ -195,7 +208,10 @@ public class StockpilePlugin extends Plugin
 	private boolean favoritesCollapsed;
 	private boolean uncategorizedCollapsed;
 
-	/** Transient, non-persisted item backing the read-only detail preview (view-only button); not in {@link #trackedItems}. */
+	/**
+	 * Transient, non-persisted item backing the read-only detail preview (view-only
+	 * button); not in {@link #trackedItems}.
+	 */
 	private TrackedItem previewItem;
 
 	/** The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). */
@@ -308,6 +324,7 @@ public class StockpilePlugin extends Plugin
 			screenOverlays.add(overlay);
 			overlayManager.add(overlay);
 		}
+
 		clientThread.invokeLater(() ->
 		{
 			loadCategories();
@@ -490,7 +507,8 @@ public class StockpilePlugin extends Plugin
 				{
 					for (PersistedItem p : list)
 					{
-						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications, p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
+						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
+							p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
 						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
 					}
 				}
@@ -503,7 +521,6 @@ public class StockpilePlugin extends Plugin
 				return;
 			}
 		}
-
 	}
 
 	/**
@@ -598,6 +615,7 @@ public class StockpilePlugin extends Plugin
 		addTrackedItem(itemId, TrackItemMode.TRACK);
 	}
 
+	/** Tracks an item by id in the given mode, routing {@link TrackItemMode#VIEW} to a read-only preview instead. */
 	private void addTrackedItem(int itemId, TrackItemMode mode)
 	{
 		if (mode == TrackItemMode.VIEW)
@@ -632,7 +650,10 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
-	/** @return the tracked item for {@code itemId}, or the transient preview item when it matches; otherwise {@code null}. */
+	/**
+	 * @return the tracked item for {@code itemId}, or the transient preview item when it
+	 *         matches; otherwise {@code null}
+	 */
 	private TrackedItem lookupItem(int itemId)
 	{
 		TrackedItem tracked = trackedItems.get(itemId);
@@ -642,7 +663,9 @@ public class StockpilePlugin extends Plugin
 		return tracked;
 	}
 
-	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)
+	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
+	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records,
+			boolean costBasisInitialized)
 	{
 		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, TrackItemMode.TRACK);
 	}
@@ -695,6 +718,7 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
+	/** Stops tracking an item, then persists and refreshes. Runs on the client thread. */
 	private void removeTrackedItem(int itemId)
 	{
 		clientThread.invokeLater(() ->
@@ -718,11 +742,13 @@ public class StockpilePlugin extends Plugin
 
 			int from = -1;
 			for (int i = 0; i < ordered.size(); i++)
+			{
 				if (ordered.get(i).getItemId() == itemId)
 				{
 					from = i;
 					break;
 				}
+			}
 
 			if (from < 0)
 				return;
@@ -787,7 +813,10 @@ public class StockpilePlugin extends Plugin
 	/** @return how many tracked items are currently flagged for the on-screen overlay. */
 	private int overlayItemCount()
 	{
-		return (int) trackedItems.values().stream().filter(TrackedItem::isOnOverlay).count();
+		return (int) trackedItems.values()
+				.stream()
+				.filter(TrackedItem::isOnOverlay)
+				.count();
 	}
 
 	/** @return the tracked items shown on the overlay (in tracked order), capped at {@link #OVERLAY_MAX}. */
@@ -796,7 +825,7 @@ public class StockpilePlugin extends Plugin
 		return trackedItems.values().stream()
 				.filter(TrackedItem::isOnOverlay)
 				.limit(OVERLAY_MAX)
-				.collect(java.util.stream.Collectors.toList());
+				.collect(Collectors.toList());
 	}
 
 	/** Sets a list group's collapsed state (a category name, or a special-group key), then persists and refreshes. */
@@ -906,11 +935,13 @@ public class StockpilePlugin extends Plugin
 		{
 			int from = -1;
 			for (int i = 0; i < categories.size(); i++)
+			{
 				if (categories.get(i).getName().equals(name))
 				{
 					from = i;
 					break;
 				}
+			}
 
 			if (from < 0)
 				return;
@@ -925,8 +956,12 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
-	/** Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. */
-	private void setGlobalOrder(java.util.List<Integer> orderedIds)
+	/**
+	 * Reorders the tracked items to match the given id order (drag reorder), then persists and
+	 * refreshes. Applies the new order only when it is a faithful permutation of the current
+	 * set, so a stale or partial drag result cannot drop items.
+	 */
+	private void setGlobalOrder(List<Integer> orderedIds)
 	{
 		clientThread.invokeLater(() ->
 		{
@@ -938,7 +973,6 @@ public class StockpilePlugin extends Plugin
 					reordered.put(id, tracked);
 			}
 
-			// Defensive: only apply when the new order is a faithful permutation of the current set.
 			if (reordered.size() != trackedItems.size())
 				return;
 
@@ -949,6 +983,7 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
+	/** Removes every tracked item, then persists and refreshes. Runs on the client thread. */
 	private void clearAllTrackedItems()
 	{
 		clientThread.invokeLater(() ->
@@ -1020,17 +1055,18 @@ public class StockpilePlugin extends Plugin
 	/** Rebuilds an item's per-window {@link PriceStats} from its current prices (LIVE) and history series. */
 	private void recomputeWindowStats(TrackedItem tracked)
 	{
-		Map<TimeWindow, PriceStats> stats = new java.util.EnumMap<>(TimeWindow.class);
+		Map<TimeWindow, PriceStats> stats = new EnumMap<>(TimeWindow.class);
 		for (TimeWindow w : TimeWindow.values())
 		{
 			if (w == TimeWindow.NONE)
 				continue;
 
 			if (w == TimeWindow.LIVE)
+			{
 				stats.put(w, new PriceStats(tracked.getHighPrice(), tracked.getLowPrice(), tracked.getAvgPrice(), 0));
+			}
 			else
 			{
-
 				List<WikiRealtimePriceClient.PricePoint> series = tracked.getSeriesFor(w);
 				if (series.isEmpty())
 					series = tracked.getSeries5m();
@@ -1149,7 +1185,6 @@ public class StockpilePlugin extends Plugin
 		{
 			if (item.isTradeable() && item.hasPrices())
 			{
-
 				if (item.getItemId() == detailId)
 					requestDetailData(item.getItemId());
 				else
@@ -1162,7 +1197,10 @@ public class StockpilePlugin extends Plugin
 			requestDetailData(previewItem.getItemId());
 	}
 
-	/** Applies a freshly fetched price set to an item: records per-side deltas, updates current prices, and refreshes its LIVE window stats. */
+	/**
+	 * Applies a freshly fetched price set to an item: records per-side deltas, updates
+	 * current prices, and refreshes its LIVE window stats.
+	 */
 	private void applyLivePrices(TrackedItem item, WikiRealtimePriceClient.ItemPrices prices)
 	{
 		if (item.hasPrices())
@@ -1226,7 +1264,7 @@ public class StockpilePlugin extends Plugin
 		screenOverlays.forEach(overlayManager::add);
 	}
 
-	private static final java.util.Set<String> SECTION_SLOT_KEYS = java.util.Set.of(
+	private static final Set<String> SECTION_SLOT_KEYS = Set.of(
 			StockpileConfig.KEY_SHOW_ITEM_VALUES,
 			StockpileConfig.KEY_SHOW_COLLECTION_VALUES,
 			StockpileConfig.KEY_SHOW_MARKET_INFO,
@@ -1420,7 +1458,9 @@ public class StockpilePlugin extends Plugin
 				trackedTakes.add(entry);
 			}
 			else
+			{
 				normal.add(entry);
+			}
 		}
 
 		if (trackedTakes.isEmpty())
@@ -1708,7 +1748,7 @@ public class StockpilePlugin extends Plugin
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 
 		int undoBudget = qty;
-		java.util.Iterator<AcquisitionRecord> it = records.iterator();
+		Iterator<AcquisitionRecord> it = records.iterator();
 		while (it.hasNext() && undoBudget > 0)
 		{
 			AcquisitionRecord r = it.next();
@@ -1771,7 +1811,7 @@ public class StockpilePlugin extends Plugin
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 		int remaining = amount;
 
-		java.util.Iterator<AcquisitionRecord> cancelIt = records.iterator();
+		Iterator<AcquisitionRecord> cancelIt = records.iterator();
 		while (cancelIt.hasNext() && remaining > 0)
 		{
 			AcquisitionRecord r = cancelIt.next();
@@ -1801,7 +1841,9 @@ public class StockpilePlugin extends Plugin
 				int closeQty = r.getQuantity();
 				remaining -= closeQty;
 				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
+				{
 					records.remove(i);
+				}
 				else
 				{
 					r.setSoldAt(soldAtPrice);
@@ -2080,14 +2122,10 @@ public class StockpilePlugin extends Plugin
 				NotificationRule rule = it.next();
 				Boolean condition = evaluateRule(item, rule);
 				if (condition == null)
-				{
-
 					continue;
-				}
 
 				if (condition)
 				{
-
 					notifier.notify(style, notificationText(item, rule));
 					it.remove();
 					changed = true;
@@ -2112,10 +2150,7 @@ public class StockpilePlugin extends Plugin
 	{
 		NotificationMetric metric = rule.getMetric();
 		if (metric == null || rule.getOperation() == null)
-		{
-
 			return null;
-		}
 
 		if (metric.isCategorical())
 		{
@@ -2169,7 +2204,8 @@ public class StockpilePlugin extends Plugin
 				if (avg <= 0 || item.getHighAlch() <= 0)
 					return OptionalDouble.empty();
 
-				return OptionalDouble.of(item.getHighAlch() - avg - runePrice(NATURE_RUNE_ID) - 5 * runePrice(FIRE_RUNE_ID));
+				return OptionalDouble.of(item.getHighAlch() - avg - runePrice(NATURE_RUNE_ID)
+						- 5 * runePrice(FIRE_RUNE_ID));
 			case DELTA_PCT:
 			{
 				long current = item.getAvgPrice();
@@ -2217,7 +2253,9 @@ public class StockpilePlugin extends Plugin
 		NotificationMetric metric = rule.getMetric();
 		String valueDisplay;
 		if (metric.isCategorical())
+		{
 			valueDisplay = rule.getValue();
+		}
 		else if (metric.getKind() == NotificationMetric.Kind.PERCENT)
 		{
 			OptionalDouble v = NotificationRule.parsePercent(rule.getValue());

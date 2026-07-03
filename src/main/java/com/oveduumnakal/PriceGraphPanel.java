@@ -4,12 +4,8 @@
  */
 package com.oveduumnakal;
 
-import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.FontManager;
-
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.BasicStroke;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -33,7 +29,15 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.swing.BorderFactory;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.border.EmptyBorder;
+
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 
 /**
  * Swing component that draws an item's price or volume history as a line/area
@@ -71,12 +75,12 @@ public class PriceGraphPanel extends JPanel
 
 	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 
-	private static final Color COLOR_HIGH = new Color(100, 220, 100);
-	private static final Color COLOR_LOW = new Color(220, 100, 100);
-	private static final Color COLOR_AVG = new Color(255, 200, 0);
+	private static final Color COLOR_HIGH = StockpileColors.HIGH;
+	private static final Color COLOR_LOW = StockpileColors.LOW;
+	private static final Color COLOR_AVG = StockpileColors.AVG;
 	private static final Color COLOR_NEUTRAL = Color.LIGHT_GRAY;
 	private static final Color GRID_COLOR = new Color(70, 70, 70, 90);
-	private static final Color SEPARATOR_COLOR = new Color(80, 80, 80);
+	private static final Color SEPARATOR_COLOR = StockpileColors.DIVIDER;
 
 	private static final Color VOLUME_COLOR = new Color(120, 140, 180, 110);
 
@@ -112,12 +116,12 @@ public class PriceGraphPanel extends JPanel
 	private boolean smooth = false;
 	private JLabel smoothToggle;
 
-	private java.util.function.Consumer<Boolean> smoothListener;
+	private Consumer<Boolean> smoothListener;
 
 	private LineSet lineSet = LineSet.ALL;
 	private JPanel linesToggle;
 	private MouseAdapter linesToggleClick;
-	private java.util.function.Consumer<LineSet> lineSetListener;
+	private Consumer<LineSet> lineSetListener;
 
 	private transient BufferedImage plotCache;
 	private boolean plotCacheDirty = true;
@@ -131,11 +135,13 @@ public class PriceGraphPanel extends JPanel
 
 	private static final int X_AXIS_LABEL_GAP = 12;
 
+	/** Builds a sidebar-sized price chart. */
 	public PriceGraphPanel()
 	{
 		this(Mode.PRICE, false);
 	}
 
+	/** Builds a sidebar-sized chart in the given mode. */
 	public PriceGraphPanel(Mode mode)
 	{
 		this(mode, false);
@@ -160,7 +166,7 @@ public class PriceGraphPanel extends JPanel
 		this.rightAxisWidth = axisFm.stringWidth("999.9K") + 8;
 		this.bottomAxisHeight = X_AXIS_LABEL_GAP + axisFm.stringWidth("99/99") + 4;
 
-		setLayout(new java.awt.BorderLayout());
+		setLayout(new BorderLayout());
 		setBackground(BG_COLOR);
 		setPreferredSize(mode == Mode.PRICE ? new Dimension(240, 250) : new Dimension(240, 182));
 
@@ -192,9 +198,9 @@ public class PriceGraphPanel extends JPanel
 			tabsBar.add(tab);
 		}
 
-		JPanel topRow = new JPanel(new java.awt.BorderLayout());
+		JPanel topRow = new JPanel(new BorderLayout());
 		topRow.setBackground(BG_COLOR);
-		topRow.add(tabsBar, java.awt.BorderLayout.WEST);
+		topRow.add(tabsBar, BorderLayout.WEST);
 		if (mode == Mode.PRICE)
 		{
 			int togglePad = expanded ? 4 : 2;
@@ -235,11 +241,11 @@ public class PriceGraphPanel extends JPanel
 			toggles.setBorder(new EmptyBorder(5, 0, 4, expanded ? 4 : 0));
 			toggles.add(linesToggle);
 			toggles.add(smoothToggle);
-			topRow.add(toggles, java.awt.BorderLayout.EAST);
+			topRow.add(toggles, BorderLayout.EAST);
 			updateSmoothToggle();
 		}
 
-		add(topRow, java.awt.BorderLayout.NORTH);
+		add(topRow, BorderLayout.NORTH);
 		updateTabHighlight();
 
 		addMouseMotionListener(new MouseMotionAdapter()
@@ -262,6 +268,7 @@ public class PriceGraphPanel extends JPanel
 		});
 	}
 
+	/** Restyles the timeframe tabs so only the active window is bold, coloured, and underlined. */
 	private void updateTabHighlight()
 	{
 		for (int i = 0; i < tabLabels.size(); i++)
@@ -284,6 +291,7 @@ public class PriceGraphPanel extends JPanel
 		}
 	}
 
+	/** Restyles the smoothing toggle to reflect whether smoothing is active. */
 	private void updateSmoothToggle()
 	{
 		if (smoothToggle == null)
@@ -306,7 +314,7 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** Registers a callback fired when the user toggles smoothing, so a sibling chart can stay in sync. */
-	public void setSmoothListener(java.util.function.Consumer<Boolean> listener)
+	public void setSmoothListener(Consumer<Boolean> listener)
 	{
 		this.smoothListener = listener;
 	}
@@ -378,7 +386,7 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** Registers a callback fired when the user changes the line set, so a sibling chart can stay in sync. */
-	public void setLineSetListener(java.util.function.Consumer<LineSet> listener)
+	public void setLineSetListener(Consumer<LineSet> listener)
 	{
 		this.lineSetListener = listener;
 	}
@@ -491,7 +499,8 @@ public class PriceGraphPanel extends JPanel
 			{
 				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 				g2.setFont(baseFont);
-				drawHover(g2, g2.getFontMetrics(), visible, plotLeft, plotTop, plotRight, plotBottom, plotW, startSec, span);
+				drawHover(g2, g2.getFontMetrics(), visible, plotLeft, plotTop, plotRight, plotBottom,
+						plotW, startSec, span);
 			}
 			finally
 			{
@@ -523,7 +532,6 @@ public class PriceGraphPanel extends JPanel
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
 			long startSec, long endSec, long span)
 	{
-
 		g2.setColor(SEPARATOR_COLOR);
 		g2.drawLine(0, TAB_BAR_HEIGHT, w, TAB_BAR_HEIGHT);
 
@@ -600,7 +608,6 @@ public class PriceGraphPanel extends JPanel
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
 			long startSec, long span)
 	{
-
 		List<Long> values = new ArrayList<>(visible.size() * 2);
 		for (WikiRealtimePriceClient.PricePoint p : visible)
 		{
@@ -627,7 +634,6 @@ public class PriceGraphPanel extends JPanel
 		}
 		else
 		{
-
 			min = percentile(values, 0.025);
 			max = percentile(values, 0.975);
 			if (max <= min)
@@ -662,18 +668,24 @@ public class PriceGraphPanel extends JPanel
 			int x = plotLeft + (int) ((double) (p.getTimestamp() - startSec) / span * plotW);
 			if (p.getAvgHighPrice() > 0)
 			{
-				hx[hc] = x; hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); hc++;
+				hx[hc] = x;
+				hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				hc++;
 			}
 
 			if (p.getAvgLowPrice() > 0)
 			{
-				lx[lc] = x; ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); lc++;
+				lx[lc] = x;
+				ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				lc++;
 			}
 
 			long avg = midpoint(p);
 			if (avg > 0)
 			{
-				ax[ac] = x; ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH); ac++;
+				ax[ac] = x;
+				ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH);
+				ac++;
 			}
 		}
 
@@ -811,7 +823,6 @@ public class PriceGraphPanel extends JPanel
 			g2.fillRect(x, plotBottom - barH, barW, barH);
 			if (v > axisMax)
 			{
-
 				int base = plotTop - 4;
 				int cx = x + barW / 2;
 				int[] xs = {cx - 3, cx + 3, cx};
@@ -943,7 +954,6 @@ public class PriceGraphPanel extends JPanel
 				cal.set(Calendar.HOUR_OF_DAY, 0);
 				if (expanded)
 				{
-
 					if (cal.getTimeInMillis() / 1000L < startSec)
 						cal.add(Calendar.DAY_OF_MONTH, 1);
 
@@ -955,7 +965,6 @@ public class PriceGraphPanel extends JPanel
 				}
 				else
 				{
-
 					while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
 							|| cal.getTimeInMillis() / 1000L < startSec)
 					{
@@ -1067,7 +1076,6 @@ public class PriceGraphPanel extends JPanel
 
 		if (smooth && n >= 2)
 		{
-
 			double[] sy = movingAverage(ys, n, 3);
 			int[] syi = new int[n];
 			for (int i = 0; i < n; i++)
@@ -1185,7 +1193,8 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** @return the index of the point whose x pixel is nearest {@link #hoverX}, or -1 if none. */
-	private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW, long startSec, long span)
+	private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW,
+			long startSec, long span)
 	{
 		int best = -1;
 		int bestDx = Integer.MAX_VALUE;
@@ -1263,7 +1272,6 @@ public class PriceGraphPanel extends JPanel
 	/** @return a rounded gridline step near {@code target/intervals} (1/2/5 × power of ten) for the volume axis. */
 	private static long niceVolumeStep(long target, int intervals)
 	{
-
 		double per = target / (double) intervals;
 		double[] niceMults = {1, 2, 2.5, 5};
 		for (int k = 0; k <= 12; k++)
@@ -1301,5 +1309,4 @@ public class PriceGraphPanel extends JPanel
 	{
 		return new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha);
 	}
-
 }
