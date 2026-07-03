@@ -721,11 +721,13 @@ public class StockpilePlugin extends Plugin
 
 			int from = -1;
 			for (int i = 0; i < ordered.size(); i++)
+			{
 				if (ordered.get(i).getItemId() == itemId)
 				{
 					from = i;
 					break;
 				}
+			}
 
 			if (from < 0)
 				return;
@@ -909,11 +911,13 @@ public class StockpilePlugin extends Plugin
 		{
 			int from = -1;
 			for (int i = 0; i < categories.size(); i++)
+			{
 				if (categories.get(i).getName().equals(name))
 				{
 					from = i;
 					break;
 				}
+			}
 
 			if (from < 0)
 				return;
@@ -1427,7 +1431,9 @@ public class StockpilePlugin extends Plugin
 				trackedTakes.add(entry);
 			}
 			else
+			{
 				normal.add(entry);
+			}
 		}
 
 		if (trackedTakes.isEmpty())
@@ -1808,7 +1814,9 @@ public class StockpilePlugin extends Plugin
 				int closeQty = r.getQuantity();
 				remaining -= closeQty;
 				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
+				{
 					records.remove(i);
+				}
 				else
 				{
 					r.setSoldAt(soldAtPrice);
@@ -2217,7 +2225,9 @@ public class StockpilePlugin extends Plugin
 		NotificationMetric metric = rule.getMetric();
 		String valueDisplay;
 		if (metric.isCategorical())
+		{
 			valueDisplay = rule.getValue();
+		}
 		else if (metric.getKind() == NotificationMetric.Kind.PERCENT)
 		{
 			OptionalDouble v = NotificationRule.parsePercent(rule.getValue());

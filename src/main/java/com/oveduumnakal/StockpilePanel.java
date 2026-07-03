@@ -1367,7 +1367,9 @@ public class StockpilePanel extends PluginPanel
 	private void updateRefreshLabel()
 	{
 		if (lastPriceRefresh == null)
+		{
 			lastRefreshLabel.setText("Prices not yet loaded");
+		}
 		else
 		{
 			long secondsAgo = ChronoUnit.SECONDS.between(lastPriceRefresh, Instant.now());
@@ -1643,12 +1645,14 @@ public class StockpilePanel extends PluginPanel
 				profitLabel.setText(sign + formatTotalGp(profit, totalFmt));
 				applyTotalTooltip(profitLabel, profit, totalFmt);
 				profitLabel.setForeground(profit == 0
-					? ColorScheme.LIGHT_GRAY_COLOR
-					: (profit > 0 ? COLOR_HIGH : COLOR_LOW));
+						? ColorScheme.LIGHT_GRAY_COLOR
+						: (profit > 0 ? COLOR_HIGH : COLOR_LOW));
 				profitSection.setVisible(true);
 			}
 			else
+			{
 				profitSection.setVisible(false);
+			}
 
 			boolean compact = config.compactView();
 			totalsRows.setVisible(!compact);
@@ -1685,7 +1689,9 @@ public class StockpilePanel extends PluginPanel
 			trackedItemsPanel.add(emptyWrapper);
 		}
 		else
+		{
 			renderGroupedRows(items, indicatorMode);
+		}
 
 		trackedItemsPanel.revalidate();
 		trackedItemsPanel.repaint();
@@ -1699,14 +1705,7 @@ public class StockpilePanel extends PluginPanel
 	 */
 	private void renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)
 	{
-		boolean hasFavorites = false;
-		for (TrackedItem item : items)
-			if (item.isFavorite())
-			{
-				hasFavorites = true;
-				break;
-			}
-
+		boolean hasFavorites = items.stream().anyMatch(TrackedItem::isFavorite);
 		groupingActive = hasFavorites || !categories.isEmpty();
 
 		if (!groupingActive)
@@ -2048,7 +2047,9 @@ public class StockpilePanel extends PluginPanel
 					categoryActions.setItemCategory(item.getItemId(), name.trim());
 				}
 				else
+				{
 					picker.setSelectedItem(currentSelection);
+				}
 
 				return;
 			}
@@ -5462,7 +5463,9 @@ public class StockpilePanel extends PluginPanel
 	{
 		label.setForeground(color);
 		if (value <= 0)
+		{
 			setOverviewPlaceholder(label);
+		}
 		else if (full)
 		{
 			removeHoverTint(label);
@@ -5471,7 +5474,9 @@ public class StockpilePanel extends PluginPanel
 			label.setToolTipText(tooltipPrefix + NUMBER_FORMAT.format(value) + " gp");
 		}
 		else
+		{
 			installShortValue(label, value, GpFormat.shortValue1dp(value), tooltipLabel, tint);
+		}
 	}
 
 	/** Detaches any hover-tint listener from a label before its value is replaced. */
@@ -6204,14 +6209,18 @@ public class StockpilePanel extends PluginPanel
 
 			boolean hovered = shortForm && row == acqHoverRow && column == acqHoverCol;
 			if (isSelected)
+			{
 				setBackground(table.getSelectionBackground());
+			}
 			else if (hovered)
 			{
 				setForeground(fg);
 				setBackground(profit ? (v >= 0 ? TINT_HIGH : TINT_LOW) : TINT_VOLUME);
 			}
 			else
+			{
 				setBackground(table.getBackground());
+			}
 
 			return this;
 		}

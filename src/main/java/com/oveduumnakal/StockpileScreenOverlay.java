@@ -155,9 +155,11 @@ public class StockpileScreenOverlay extends Overlay
 		}
 
 		if (compact)
+		{
 			lines.add(Arrays.asList(
 					new Seg(GpFormat.shortValue(item.getAvgValue()), AVG_COLOR),
 					new Seg(" (" + GpFormat.shortValue(item.getAvgPrice()) + ")", QTY_COLOR)));
+		}
 		else
 		{
 			for (TimeWindow window : Arrays.asList(config.row1Data(), config.row2Data(), config.row3Data()))
