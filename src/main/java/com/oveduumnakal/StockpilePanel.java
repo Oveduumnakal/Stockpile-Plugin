@@ -203,7 +203,15 @@ public class StockpilePanel extends PluginPanel
 				JViewport viewport = (JViewport) SwingUtilities.getAncestorOfClass(JViewport.class, this);
 
 				if (viewport != null)
-					return new Dimension(base.width, Math.max(base.height, viewport.getExtentSize().height));
+				{
+					// Subtract the scroll view's vertical insets (StockpilePanel's border) so the card fills
+					// exactly the visible area; targeting the raw extent height overflows by the border and
+					// shows a spurious scroll bar.
+					Insets insets = StockpilePanel.this.getInsets();
+					int target = viewport.getExtentSize().height - insets.top - insets.bottom;
+
+					return new Dimension(base.width, Math.max(base.height, target));
+				}
 			}
 
 			return base;
