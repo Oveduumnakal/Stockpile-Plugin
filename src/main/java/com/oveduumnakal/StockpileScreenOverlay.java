@@ -148,7 +148,9 @@ public class StockpileScreenOverlay extends Overlay
 
 		if (!item.hasPrices())
 		{
-			lines.add(Arrays.asList(new Seg(!item.isTradeable() ? "Item not tradeable" : "Prices loading…", MUTED_COLOR)));
+			lines.add(Arrays.asList(new Seg(!item.isTradeable()
+					? "Item not tradeable"
+					: "Prices loading…", MUTED_COLOR)));
 			return lines;
 		}
 

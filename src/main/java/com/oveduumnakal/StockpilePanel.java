@@ -1642,7 +1642,9 @@ public class StockpilePanel extends PluginPanel
 				String sign = profit > 0 ? "+" : "";
 				profitLabel.setText(sign + formatTotalGp(profit, totalFmt));
 				applyTotalTooltip(profitLabel, profit, totalFmt);
-				profitLabel.setForeground(profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW));
+				profitLabel.setForeground(profit == 0
+					? ColorScheme.LIGHT_GRAY_COLOR
+					: (profit > 0 ? COLOR_HIGH : COLOR_LOW));
 				profitSection.setVisible(true);
 			}
 			else
@@ -2400,8 +2402,11 @@ public class StockpilePanel extends PluginPanel
 
 		JLabel toggle = new JLabel(overlayIcon(restColor));
 		toggle.setAlignmentX(Component.CENTER_ALIGNMENT);
-		toggle.setToolTipText(on ? "Remove from on-screen overlay"
-				: atCap ? "Overlay is full (" + StockpilePlugin.OVERLAY_MAX + " max)" : "Show on the on-screen overlay");
+		toggle.setToolTipText(on
+				? "Remove from on-screen overlay"
+				: atCap
+						? "Overlay is full (" + StockpilePlugin.OVERLAY_MAX + " max)"
+						: "Show on the on-screen overlay");
 
 		if (!atCap)
 		{
@@ -3351,8 +3356,10 @@ public class StockpilePanel extends PluginPanel
 			this.label = label;
 			this.shortText = shortText;
 			this.tint = tint;
-			this.highlightedText = tint == null ? shortText
-					: "<html><nobr><span style='background-color:" + toHex(tint) + "'>" + shortText + "</span></nobr></html>";
+			this.highlightedText = tint == null
+					? shortText
+					: "<html><nobr><span style='background-color:" + toHex(tint) + "'>"
+							+ shortText + "</span></nobr></html>";
 		}
 
 		@Override
@@ -5460,7 +5467,8 @@ public class StockpilePanel extends PluginPanel
 		{
 			removeHoverTint(label);
 			label.setText(NUMBER_FORMAT.format(value));
-			label.setToolTipText((tooltipLabel == null ? "" : tooltipLabel + ": ") + NUMBER_FORMAT.format(value) + " gp");
+			String tooltipPrefix = tooltipLabel == null ? "" : tooltipLabel + ": ";
+			label.setToolTipText(tooltipPrefix + NUMBER_FORMAT.format(value) + " gp");
 		}
 		else
 			installShortValue(label, value, GpFormat.shortValue1dp(value), tooltipLabel, tint);
