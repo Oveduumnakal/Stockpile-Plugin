@@ -393,6 +393,8 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void resolveTradeable(TrackedItem item)
 	{
+		item.setStackable(itemManager.getItemComposition(item.getItemId()).isStackable());
+
 		if (!mappingsLoaded)
 			return;
 

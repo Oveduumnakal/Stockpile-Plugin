@@ -30,6 +30,7 @@ public class TrackedItem
 	private int quantity;
 
 	private boolean tradeable = true;
+	private boolean stackable;
 	private boolean priceLoadFailed;
 
 	private boolean favorite;
@@ -94,6 +95,12 @@ public class TrackedItem
 			default:
 				return series5m;
 		}
+	}
+
+	/** @return the stack size to render this item's icon at: the tracked quantity for stackable items, else 1 (plain single sprite). */
+	public int iconStackSize()
+	{
+		return stackable ? Math.max(1, quantity) : 1;
 	}
 
 	public long getHighValue()
