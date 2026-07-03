@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
@@ -35,11 +36,11 @@ public class StockpileScreenOverlay extends Overlay
 	private static final Color NAME_COLOR = Color.WHITE;
 	private static final Color QTY_COLOR = new Color(200, 200, 200);
 	private static final Color LABEL_COLOR = new Color(170, 170, 170);
-	private static final Color HIGH_COLOR = new Color(100, 220, 100);
-	private static final Color LOW_COLOR = new Color(220, 100, 100);
-	private static final Color AVG_COLOR = new Color(255, 200, 0);
+	private static final Color HIGH_COLOR = StockpileColors.HIGH;
+	private static final Color LOW_COLOR = StockpileColors.LOW;
+	private static final Color AVG_COLOR = StockpileColors.AVG;
 	private static final Color VOLUME_COLOR = new Color(190, 130, 220);
-	private static final Color MUTED_COLOR = new Color(150, 150, 150);
+	private static final Color MUTED_COLOR = StockpileColors.MUTED;
 	private static final Color BACKGROUND = ComponentConstants.STANDARD_BACKGROUND_COLOR;
 
 	/** Dark brown border matching RuneLite's tan overlay background (rather than a stark black). */

@@ -4,12 +4,8 @@
  */
 package com.oveduumnakal;
 
-import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.FontManager;
-
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.BasicStroke;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -33,7 +29,15 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.swing.BorderFactory;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.border.EmptyBorder;
+
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 
 /**
  * Swing component that draws an item's price or volume history as a line/area
@@ -71,12 +75,12 @@ public class PriceGraphPanel extends JPanel
 
 	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 
-	private static final Color COLOR_HIGH = new Color(100, 220, 100);
-	private static final Color COLOR_LOW = new Color(220, 100, 100);
-	private static final Color COLOR_AVG = new Color(255, 200, 0);
+	private static final Color COLOR_HIGH = StockpileColors.HIGH;
+	private static final Color COLOR_LOW = StockpileColors.LOW;
+	private static final Color COLOR_AVG = StockpileColors.AVG;
 	private static final Color COLOR_NEUTRAL = Color.LIGHT_GRAY;
 	private static final Color GRID_COLOR = new Color(70, 70, 70, 90);
-	private static final Color SEPARATOR_COLOR = new Color(80, 80, 80);
+	private static final Color SEPARATOR_COLOR = StockpileColors.DIVIDER;
 
 	private static final Color VOLUME_COLOR = new Color(120, 140, 180, 110);
 
@@ -112,12 +116,12 @@ public class PriceGraphPanel extends JPanel
 	private boolean smooth = false;
 	private JLabel smoothToggle;
 
-	private java.util.function.Consumer<Boolean> smoothListener;
+	private Consumer<Boolean> smoothListener;
 
 	private LineSet lineSet = LineSet.ALL;
 	private JPanel linesToggle;
 	private MouseAdapter linesToggleClick;
-	private java.util.function.Consumer<LineSet> lineSetListener;
+	private Consumer<LineSet> lineSetListener;
 
 	private transient BufferedImage plotCache;
 	private boolean plotCacheDirty = true;
@@ -162,7 +166,7 @@ public class PriceGraphPanel extends JPanel
 		this.rightAxisWidth = axisFm.stringWidth("999.9K") + 8;
 		this.bottomAxisHeight = X_AXIS_LABEL_GAP + axisFm.stringWidth("99/99") + 4;
 
-		setLayout(new java.awt.BorderLayout());
+		setLayout(new BorderLayout());
 		setBackground(BG_COLOR);
 		setPreferredSize(mode == Mode.PRICE ? new Dimension(240, 250) : new Dimension(240, 182));
 
@@ -194,9 +198,9 @@ public class PriceGraphPanel extends JPanel
 			tabsBar.add(tab);
 		}
 
-		JPanel topRow = new JPanel(new java.awt.BorderLayout());
+		JPanel topRow = new JPanel(new BorderLayout());
 		topRow.setBackground(BG_COLOR);
-		topRow.add(tabsBar, java.awt.BorderLayout.WEST);
+		topRow.add(tabsBar, BorderLayout.WEST);
 		if (mode == Mode.PRICE)
 		{
 			int togglePad = expanded ? 4 : 2;
@@ -237,11 +241,11 @@ public class PriceGraphPanel extends JPanel
 			toggles.setBorder(new EmptyBorder(5, 0, 4, expanded ? 4 : 0));
 			toggles.add(linesToggle);
 			toggles.add(smoothToggle);
-			topRow.add(toggles, java.awt.BorderLayout.EAST);
+			topRow.add(toggles, BorderLayout.EAST);
 			updateSmoothToggle();
 		}
 
-		add(topRow, java.awt.BorderLayout.NORTH);
+		add(topRow, BorderLayout.NORTH);
 		updateTabHighlight();
 
 		addMouseMotionListener(new MouseMotionAdapter()
@@ -310,7 +314,7 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** Registers a callback fired when the user toggles smoothing, so a sibling chart can stay in sync. */
-	public void setSmoothListener(java.util.function.Consumer<Boolean> listener)
+	public void setSmoothListener(Consumer<Boolean> listener)
 	{
 		this.smoothListener = listener;
 	}
@@ -382,7 +386,7 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** Registers a callback fired when the user changes the line set, so a sibling chart can stay in sync. */
-	public void setLineSetListener(java.util.function.Consumer<LineSet> listener)
+	public void setLineSetListener(Consumer<LineSet> listener)
 	{
 		this.lineSetListener = listener;
 	}

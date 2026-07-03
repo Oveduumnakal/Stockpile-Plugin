@@ -24,16 +24,44 @@
  */
 package com.oveduumnakal;
 
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.OptionalDouble;
+import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
+import javax.inject.Inject;
+import javax.swing.SwingUtilities;
+
+import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import com.google.common.collect.ImmutableSet;
+
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
-import net.runelite.api.GameState;
 import net.runelite.api.EnumID;
+import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
@@ -52,19 +80,19 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetPositionMode;
 import net.runelite.api.widgets.WidgetTextAlignment;
 import net.runelite.api.widgets.WidgetType;
 import net.runelite.api.widgets.WidgetUtil;
-import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.Notifier;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -73,21 +101,6 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
-
-import javax.inject.Inject;
-import javax.swing.*;
-import java.awt.image.BufferedImage;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
-import java.util.zip.GZIPInputStream;
-import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 /**
@@ -812,7 +825,7 @@ public class StockpilePlugin extends Plugin
 		return trackedItems.values().stream()
 				.filter(TrackedItem::isOnOverlay)
 				.limit(OVERLAY_MAX)
-				.collect(java.util.stream.Collectors.toList());
+				.collect(Collectors.toList());
 	}
 
 	/** Sets a list group's collapsed state (a category name, or a special-group key), then persists and refreshes. */
@@ -948,7 +961,7 @@ public class StockpilePlugin extends Plugin
 	 * refreshes. Applies the new order only when it is a faithful permutation of the current
 	 * set, so a stale or partial drag result cannot drop items.
 	 */
-	private void setGlobalOrder(java.util.List<Integer> orderedIds)
+	private void setGlobalOrder(List<Integer> orderedIds)
 	{
 		clientThread.invokeLater(() ->
 		{
@@ -1042,7 +1055,7 @@ public class StockpilePlugin extends Plugin
 	/** Rebuilds an item's per-window {@link PriceStats} from its current prices (LIVE) and history series. */
 	private void recomputeWindowStats(TrackedItem tracked)
 	{
-		Map<TimeWindow, PriceStats> stats = new java.util.EnumMap<>(TimeWindow.class);
+		Map<TimeWindow, PriceStats> stats = new EnumMap<>(TimeWindow.class);
 		for (TimeWindow w : TimeWindow.values())
 		{
 			if (w == TimeWindow.NONE)
@@ -1251,7 +1264,7 @@ public class StockpilePlugin extends Plugin
 		screenOverlays.forEach(overlayManager::add);
 	}
 
-	private static final java.util.Set<String> SECTION_SLOT_KEYS = java.util.Set.of(
+	private static final Set<String> SECTION_SLOT_KEYS = Set.of(
 			StockpileConfig.KEY_SHOW_ITEM_VALUES,
 			StockpileConfig.KEY_SHOW_COLLECTION_VALUES,
 			StockpileConfig.KEY_SHOW_MARKET_INFO,
@@ -1735,7 +1748,7 @@ public class StockpilePlugin extends Plugin
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 
 		int undoBudget = qty;
-		java.util.Iterator<AcquisitionRecord> it = records.iterator();
+		Iterator<AcquisitionRecord> it = records.iterator();
 		while (it.hasNext() && undoBudget > 0)
 		{
 			AcquisitionRecord r = it.next();
@@ -1798,7 +1811,7 @@ public class StockpilePlugin extends Plugin
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 		int remaining = amount;
 
-		java.util.Iterator<AcquisitionRecord> cancelIt = records.iterator();
+		Iterator<AcquisitionRecord> cancelIt = records.iterator();
 		while (cancelIt.hasNext() && remaining > 0)
 		{
 			AcquisitionRecord r = cancelIt.next();

@@ -4,10 +4,10 @@
  */
 package com.oveduumnakal;
 
-import lombok.Data;
-
 import java.util.Locale;
 import java.util.OptionalDouble;
+
+import lombok.Data;
 
 /**
  * One user-defined alert condition on a tracked item: when {@code metric} over

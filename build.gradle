@@ -34,6 +34,14 @@ tasks.withType(JavaCompile).configureEach {
 	options.release.set(11)
 }
 
+tasks.register('checkStyleRules', Exec) {
+	group = 'verification'
+	description = 'Checks the project coding standards (scripts/check-style.py).'
+	commandLine 'python3', 'scripts/check-style.py'
+}
+
+check.dependsOn checkStyleRules
+
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass

@@ -30,6 +30,7 @@ import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.util.Map;
 import javax.inject.Inject;
+
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.Tile;

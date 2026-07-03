@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -124,7 +125,7 @@ final class MarketClassifier
 	 * @param window how far back to aggregate
 	 * @return {@code {buyVolume, sellVolume}} (high/low price volumes), each 0 when absent
 	 */
-	static long[] buySellVolume(List<WikiRealtimePriceClient.PricePoint> series, java.time.Duration window)
+	static long[] buySellVolume(List<WikiRealtimePriceClient.PricePoint> series, Duration window)
 	{
 		long cutoff = System.currentTimeMillis() / 1000L - window.getSeconds();
 		long buy = 0;

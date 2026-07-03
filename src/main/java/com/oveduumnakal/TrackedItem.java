@@ -4,12 +4,12 @@
  */
 package com.oveduumnakal;
 
-import lombok.Data;
-
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+
+import lombok.Data;
 
 /**
  * The full state of one item being tracked: its identity and quantity, the
