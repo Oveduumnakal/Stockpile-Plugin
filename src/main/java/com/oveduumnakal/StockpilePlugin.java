@@ -792,7 +792,10 @@ public class StockpilePlugin extends Plugin
 	/** @return how many tracked items are currently flagged for the on-screen overlay. */
 	private int overlayItemCount()
 	{
-		return (int) trackedItems.values().stream().filter(TrackedItem::isOnOverlay).count();
+		return (int) trackedItems.values()
+				.stream()
+				.filter(TrackedItem::isOnOverlay)
+				.count();
 	}
 
 	/** @return the tracked items shown on the overlay (in tracked order), capped at {@link #OVERLAY_MAX}. */

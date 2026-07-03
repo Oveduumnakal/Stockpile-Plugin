@@ -48,6 +48,7 @@ import javax.swing.table.TableCellEditor;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableColumnModel;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.event.ActionEvent;
@@ -1228,7 +1229,10 @@ public class StockpilePanel extends PluginPanel
 		{
 			String value = fieldValue(inputs.get(field)).trim();
 			if (!value.isEmpty())
-				url.append('&').append(field.id).append('=').append(encode(value));
+				url.append('&')
+						.append(field.id)
+						.append('=')
+						.append(encode(value));
 		}
 
 		return url.toString();
@@ -4810,13 +4814,14 @@ public class StockpilePanel extends PluginPanel
 		JComboBox<NotificationOperation> opCombo = new JComboBox<>(NotificationOperation.values());
 		opCombo.setFont(f);
 
-		notificationsTable.getColumnModel().getColumn(0).setCellEditor(new DefaultCellEditor(metricCombo));
-		notificationsTable.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(timeCombo));
-		notificationsTable.getColumnModel().getColumn(2).setCellEditor(new DefaultCellEditor(opCombo));
-		notificationsTable.getColumnModel().getColumn(3).setCellEditor(new NotificationValueEditor());
+		TableColumnModel columns = notificationsTable.getColumnModel();
+		columns.getColumn(0).setCellEditor(new DefaultCellEditor(metricCombo));
+		columns.getColumn(1).setCellEditor(new DefaultCellEditor(timeCombo));
+		columns.getColumn(2).setCellEditor(new DefaultCellEditor(opCombo));
+		columns.getColumn(3).setCellEditor(new NotificationValueEditor());
 
 		for (int i = 0; i < notificationsTable.getColumnCount(); i++)
-			notificationsTable.getColumnModel().getColumn(i).setCellRenderer(renderer);
+			columns.getColumn(i).setCellRenderer(renderer);
 
 		TableCellRenderer hr = notificationsTable.getTableHeader().getDefaultRenderer();
 		if (hr instanceof DefaultTableCellRenderer)
@@ -5974,7 +5979,9 @@ public class StockpilePanel extends PluginPanel
 			if (item == null || r < 0 || r >= item.getNotifications().size())
 				return false;
 
-			NotificationMetric m = item.getNotifications().get(r).getMetric();
+			NotificationMetric m = item.getNotifications()
+					.get(r)
+					.getMetric();
 			switch (c)
 			{
 				case 1: return m == null || (!m.isTimeframeDisabled() && !m.locksTimeframeToMonth());
@@ -6106,7 +6113,9 @@ public class StockpilePanel extends PluginPanel
 			NotificationMetric metric = null;
 			TrackedItem t = currentItems.get(detailItemId);
 			if (t != null && row >= 0 && row < t.getNotifications().size())
-				metric = t.getNotifications().get(row).getMetric();
+				metric = t.getNotifications()
+						.get(row)
+						.getMetric();
 
 			if (metric != null && metric.isCategorical())
 			{

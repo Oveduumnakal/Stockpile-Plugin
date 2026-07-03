@@ -39,7 +39,9 @@ public class NotificationRule
 		if (text == null)
 			return OptionalDouble.empty();
 
-		String s = text.trim().toLowerCase(Locale.US).replace(",", "");
+		String s = text.trim()
+				.toLowerCase(Locale.US)
+				.replace(",", "");
 		if (s.isEmpty())
 			return OptionalDouble.empty();
 
