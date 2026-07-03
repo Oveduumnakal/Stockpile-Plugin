@@ -25,11 +25,7 @@
 package com.oveduumnakal;
 
 import java.awt.image.BufferedImage;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,7 +43,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 
@@ -243,10 +238,6 @@ public class StockpilePlugin extends Plugin
 
 	private volatile boolean mappingsLoaded;
 
-	private static final Type EXAMINE_TYPE = new TypeToken<Map<Integer, String>>(){}.getType();
-
-	private volatile Map<Integer, String> itemExamines = Collections.emptyMap();
-
 	/**
 	 * Builds the side panel (wiring its callbacks back to this plugin), registers
 	 * the nav button and overlays, restores persisted items, and kicks off the
@@ -333,43 +324,18 @@ public class StockpilePlugin extends Plugin
 			refreshPanel();
 		});
 		executor.execute(this::fetchItemMappings);
-		executor.execute(this::loadExamines);
 		scheduleRefresh();
 	}
 
 	/**
-	 * Loads the bundled item examine-text map ({@code examines.json.gz}) from
-	 * resources in the background. The dataset is read-only and only consulted when a
-	 * detail view is opened, so a missing or corrupt file degrades gracefully to no
-	 * description rather than failing.
+	 * @return the examine text for the given item id from the wiki mapping, or
+	 *         {@code null} when the item isn't GE-tradeable or the mapping hasn't
+	 *         loaded yet
 	 */
-	private void loadExamines()
-	{
-		try (InputStream in = getClass().getResourceAsStream("examines.json.gz"))
-		{
-			if (in == null)
-			{
-				log.warn("Bundled examines.json.gz not found");
-				return;
-			}
-
-			try (Reader reader = new InputStreamReader(new GZIPInputStream(in), StandardCharsets.UTF_8))
-			{
-				Map<Integer, String> examines = gson.fromJson(reader, EXAMINE_TYPE);
-				if (examines != null && !examines.isEmpty())
-					itemExamines = examines;
-			}
-		}
-		catch (Exception e)
-		{
-			log.warn("Failed to load item examine data", e);
-		}
-	}
-
-	/** @return the examine text for the given item id, or {@code null} if none is bundled. */
 	private String examineFor(int itemId)
 	{
-		return itemExamines.get(itemId);
+		WikiRealtimePriceClient.ItemMapping mapping = itemMappings.get(itemId);
+		return mapping == null ? null : mapping.getExamine();
 	}
 
 	/** Fetches GE item metadata in the background, keeping the previous map on failure. */

@@ -89,7 +89,10 @@ public class WikiRealtimePriceClient
 		private long lowPriceVolume;
 	}
 
-	/** Static GE metadata for an item: buy {@code limit}, store {@code value}, and high/low alch values. */
+	/**
+	 * Static GE metadata for an item: buy {@code limit}, store {@code value}, high/low
+	 * alch values, and the in-game {@code examine} text ({@code null} when absent).
+	 */
 	@Value
 	public static class ItemMapping
 	{
@@ -97,6 +100,7 @@ public class WikiRealtimePriceClient
 		long value;
 		long highAlch;
 		long lowAlch;
+		String examine;
 	}
 
 	private final OkHttpClient httpClient;
@@ -205,7 +209,10 @@ public class WikiRealtimePriceClient
 					long value = readLong(obj, "value");
 					long highAlch = readLong(obj, "highalch");
 					long lowAlch = readLong(obj, "lowalch");
-					result.put(id, new ItemMapping(limit, value, highAlch, lowAlch));
+					String examine = obj.has("examine") && !obj.get("examine").isJsonNull()
+							? obj.get("examine").getAsString()
+							: null;
+					result.put(id, new ItemMapping(limit, value, highAlch, lowAlch, examine));
 				}
 				catch (IllegalStateException | NumberFormatException e)
 				{
