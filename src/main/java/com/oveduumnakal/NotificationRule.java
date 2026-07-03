@@ -22,7 +22,6 @@ import java.util.OptionalDouble;
 @Data
 public class NotificationRule
 {
-
 	private NotificationMetric metric;
 	private TimeWindow timeWindow;
 	private NotificationOperation operation;

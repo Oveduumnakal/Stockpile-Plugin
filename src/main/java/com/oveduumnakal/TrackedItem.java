@@ -103,21 +103,25 @@ public class TrackedItem
 		return stackable ? Math.max(1, quantity) : 1;
 	}
 
+	/** @return the tracked quantity valued at the high (instant-buy) price. */
 	public long getHighValue()
 	{
 		return (long) quantity * highPrice;
 	}
 
+	/** @return the tracked quantity valued at the low (instant-sell) price. */
 	public long getLowValue()
 	{
 		return (long) quantity * lowPrice;
 	}
 
+	/** @return the tracked quantity valued at the average price. */
 	public long getAvgValue()
 	{
 		return (long) quantity * avgPrice;
 	}
 
+	/** @return whether any live price is known for this item. */
 	public boolean hasPrices()
 	{
 		return highPrice > 0 || lowPrice > 0;

@@ -131,11 +131,13 @@ public class PriceGraphPanel extends JPanel
 
 	private static final int X_AXIS_LABEL_GAP = 12;
 
+	/** Builds a sidebar-sized price chart. */
 	public PriceGraphPanel()
 	{
 		this(Mode.PRICE, false);
 	}
 
+	/** Builds a sidebar-sized chart in the given mode. */
 	public PriceGraphPanel(Mode mode)
 	{
 		this(mode, false);
@@ -262,6 +264,7 @@ public class PriceGraphPanel extends JPanel
 		});
 	}
 
+	/** Restyles the timeframe tabs so only the active window is bold, coloured, and underlined. */
 	private void updateTabHighlight()
 	{
 		for (int i = 0; i < tabLabels.size(); i++)
@@ -284,6 +287,7 @@ public class PriceGraphPanel extends JPanel
 		}
 	}
 
+	/** Restyles the smoothing toggle to reflect whether smoothing is active. */
 	private void updateSmoothToggle()
 	{
 		if (smoothToggle == null)
@@ -523,7 +527,6 @@ public class PriceGraphPanel extends JPanel
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
 			long startSec, long endSec, long span)
 	{
-
 		g2.setColor(SEPARATOR_COLOR);
 		g2.drawLine(0, TAB_BAR_HEIGHT, w, TAB_BAR_HEIGHT);
 
@@ -600,7 +603,6 @@ public class PriceGraphPanel extends JPanel
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH,
 			long startSec, long span)
 	{
-
 		List<Long> values = new ArrayList<>(visible.size() * 2);
 		for (WikiRealtimePriceClient.PricePoint p : visible)
 		{
@@ -627,7 +629,6 @@ public class PriceGraphPanel extends JPanel
 		}
 		else
 		{
-
 			min = percentile(values, 0.025);
 			max = percentile(values, 0.975);
 			if (max <= min)
@@ -662,18 +663,24 @@ public class PriceGraphPanel extends JPanel
 			int x = plotLeft + (int) ((double) (p.getTimestamp() - startSec) / span * plotW);
 			if (p.getAvgHighPrice() > 0)
 			{
-				hx[hc] = x; hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); hc++;
+				hx[hc] = x;
+				hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				hc++;
 			}
 
 			if (p.getAvgLowPrice() > 0)
 			{
-				lx[lc] = x; ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH); lc++;
+				lx[lc] = x;
+				ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				lc++;
 			}
 
 			long avg = midpoint(p);
 			if (avg > 0)
 			{
-				ax[ac] = x; ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH); ac++;
+				ax[ac] = x;
+				ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH);
+				ac++;
 			}
 		}
 
@@ -811,7 +818,6 @@ public class PriceGraphPanel extends JPanel
 			g2.fillRect(x, plotBottom - barH, barW, barH);
 			if (v > axisMax)
 			{
-
 				int base = plotTop - 4;
 				int cx = x + barW / 2;
 				int[] xs = {cx - 3, cx + 3, cx};
@@ -943,7 +949,6 @@ public class PriceGraphPanel extends JPanel
 				cal.set(Calendar.HOUR_OF_DAY, 0);
 				if (expanded)
 				{
-
 					if (cal.getTimeInMillis() / 1000L < startSec)
 						cal.add(Calendar.DAY_OF_MONTH, 1);
 
@@ -955,7 +960,6 @@ public class PriceGraphPanel extends JPanel
 				}
 				else
 				{
-
 					while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
 							|| cal.getTimeInMillis() / 1000L < startSec)
 					{
@@ -1067,7 +1071,6 @@ public class PriceGraphPanel extends JPanel
 
 		if (smooth && n >= 2)
 		{
-
 			double[] sy = movingAverage(ys, n, 3);
 			int[] syi = new int[n];
 			for (int i = 0; i < n; i++)
@@ -1263,7 +1266,6 @@ public class PriceGraphPanel extends JPanel
 	/** @return a rounded gridline step near {@code target/intervals} (1/2/5 × power of ten) for the volume axis. */
 	private static long niceVolumeStep(long target, int intervals)
 	{
-
 		double per = target / (double) intervals;
 		double[] niceMults = {1, 2, 2.5, 5};
 		for (int k = 0; k <= 12; k++)
@@ -1301,5 +1303,4 @@ public class PriceGraphPanel extends JPanel
 	{
 		return new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha);
 	}
-
 }

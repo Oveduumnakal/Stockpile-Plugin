@@ -308,6 +308,7 @@ public class StockpilePlugin extends Plugin
 			screenOverlays.add(overlay);
 			overlayManager.add(overlay);
 		}
+
 		clientThread.invokeLater(() ->
 		{
 			loadCategories();
@@ -503,7 +504,6 @@ public class StockpilePlugin extends Plugin
 				return;
 			}
 		}
-
 	}
 
 	/**
@@ -598,6 +598,7 @@ public class StockpilePlugin extends Plugin
 		addTrackedItem(itemId, TrackItemMode.TRACK);
 	}
 
+	/** Tracks an item by id in the given mode, routing {@link TrackItemMode#VIEW} to a read-only preview instead. */
 	private void addTrackedItem(int itemId, TrackItemMode mode)
 	{
 		if (mode == TrackItemMode.VIEW)
@@ -642,6 +643,7 @@ public class StockpilePlugin extends Plugin
 		return tracked;
 	}
 
+	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
 	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)
 	{
 		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, TrackItemMode.TRACK);
@@ -695,6 +697,7 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
+	/** Stops tracking an item, then persists and refreshes. Runs on the client thread. */
 	private void removeTrackedItem(int itemId)
 	{
 		clientThread.invokeLater(() ->
@@ -925,7 +928,11 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
-	/** Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. */
+	/**
+	 * Reorders the tracked items to match the given id order (drag reorder), then persists and
+	 * refreshes. Applies the new order only when it is a faithful permutation of the current
+	 * set, so a stale or partial drag result cannot drop items.
+	 */
 	private void setGlobalOrder(java.util.List<Integer> orderedIds)
 	{
 		clientThread.invokeLater(() ->
@@ -938,7 +945,6 @@ public class StockpilePlugin extends Plugin
 					reordered.put(id, tracked);
 			}
 
-			// Defensive: only apply when the new order is a faithful permutation of the current set.
 			if (reordered.size() != trackedItems.size())
 				return;
 
@@ -949,6 +955,7 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
+	/** Removes every tracked item, then persists and refreshes. Runs on the client thread. */
 	private void clearAllTrackedItems()
 	{
 		clientThread.invokeLater(() ->
@@ -1027,10 +1034,11 @@ public class StockpilePlugin extends Plugin
 				continue;
 
 			if (w == TimeWindow.LIVE)
+			{
 				stats.put(w, new PriceStats(tracked.getHighPrice(), tracked.getLowPrice(), tracked.getAvgPrice(), 0));
+			}
 			else
 			{
-
 				List<WikiRealtimePriceClient.PricePoint> series = tracked.getSeriesFor(w);
 				if (series.isEmpty())
 					series = tracked.getSeries5m();
@@ -1149,7 +1157,6 @@ public class StockpilePlugin extends Plugin
 		{
 			if (item.isTradeable() && item.hasPrices())
 			{
-
 				if (item.getItemId() == detailId)
 					requestDetailData(item.getItemId());
 				else
@@ -2080,14 +2087,10 @@ public class StockpilePlugin extends Plugin
 				NotificationRule rule = it.next();
 				Boolean condition = evaluateRule(item, rule);
 				if (condition == null)
-				{
-
 					continue;
-				}
 
 				if (condition)
 				{
-
 					notifier.notify(style, notificationText(item, rule));
 					it.remove();
 					changed = true;
@@ -2112,10 +2115,7 @@ public class StockpilePlugin extends Plugin
 	{
 		NotificationMetric metric = rule.getMetric();
 		if (metric == null || rule.getOperation() == null)
-		{
-
 			return null;
-		}
 
 		if (metric.isCategorical())
 		{

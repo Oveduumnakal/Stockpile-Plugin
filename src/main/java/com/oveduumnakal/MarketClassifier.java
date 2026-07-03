@@ -49,16 +49,12 @@ final class MarketClassifier
 		if (samples.size() < 2)
 			return null;
 
-		double mean = 0;
-		for (long v : samples)
-			mean += v;
-
-		mean /= samples.size();
-		double variance = 0;
-		for (long v : samples)
-			variance += (v - mean) * (v - mean);
-
-		variance /= samples.size();
+		double mean = samples.stream()
+				.mapToDouble(Long::doubleValue)
+				.sum() / samples.size();
+		double variance = samples.stream()
+				.mapToDouble(v -> (v - mean) * (v - mean))
+				.sum() / samples.size();
 		double pct = mean > 0 ? Math.sqrt(variance) / mean * 100.0 : 0;
 
 		if (pct < 1.5)
