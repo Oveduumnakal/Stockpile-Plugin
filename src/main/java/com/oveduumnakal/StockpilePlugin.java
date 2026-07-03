@@ -399,6 +399,8 @@ public class StockpilePlugin extends Plugin
 		screenOverlays.clear();
 		panel.shutdown();
 		groundItems.clear();
+		clientThread.invokeLater(this::hideGeButton);
+		currentGeItem = -1;
 		if (priceRefreshTask != null)
 		{
 			priceRefreshTask.cancel(false);
@@ -1445,10 +1447,13 @@ public class StockpilePlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		GeIntegrationMode mode = config.geIntegration();
+		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
+		if (!wantButton)
+			hideGeButton();
+
 		if (mode == GeIntegrationMode.OFF)
 		{
 			currentGeItem = -1;
-			geButton = null;
 			return;
 		}
 
@@ -1456,14 +1461,24 @@ public class StockpilePlugin extends Plugin
 		if (item != currentGeItem)
 		{
 			currentGeItem = item;
-			geButton = null;
+			hideGeButton();
 
 			if (item > 0 && (mode == GeIntegrationMode.AUTO || mode == GeIntegrationMode.BOTH))
 				openGeItemInStockpile(item);
 		}
 
-		if ((mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH) && item > 0 && geButton == null)
+		if (wantButton && item > 0 && geButton == null)
 			injectGeButton();
+	}
+
+	/** Hides and forgets the injected GE button, if one is currently on the offer interface. */
+	private void hideGeButton()
+	{
+		if (geButton == null)
+			return;
+
+		geButton.setHidden(true);
+		geButton = null;
 	}
 
 	/** Forces the GE button to be re-injected against a freshly (re)built offer interface. */
