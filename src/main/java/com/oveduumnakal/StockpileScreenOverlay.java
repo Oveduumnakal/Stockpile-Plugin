@@ -54,8 +54,8 @@ public class StockpileScreenOverlay extends Overlay
 	private final StockpileConfig config;
 	private final ItemManager itemManager;
 
-	/** Cached 18px scaled icons by item id, populated asynchronously on first use. */
-	private final Map<Integer, BufferedImage> iconCache = new HashMap<>();
+	/** Cached 18px scaled icons keyed by item id + rendered stack size, populated asynchronously on first use. */
+	private final Map<Long, BufferedImage> iconCache = new HashMap<>();
 
 	/** One coloured text segment within a rendered line. */
 	private static final class Seg
@@ -123,7 +123,7 @@ public class StockpileScreenOverlay extends Overlay
 		graphics.setColor(BORDER);
 		graphics.drawRect(0, 0, width - 1, height - 1);
 
-		BufferedImage icon = iconFor(item.getItemId());
+		BufferedImage icon = iconFor(item);
 		if (icon != null)
 			graphics.drawImage(icon, PAD, PAD, null);
 
@@ -237,15 +237,16 @@ public class StockpileScreenOverlay extends Overlay
 		return max;
 	}
 
-	/** @return an 18px cached icon for the item, requesting an async load on the first miss. */
-	private BufferedImage iconFor(int itemId)
+	/** @return an 18px cached quantity-aware icon for the item, requesting an async load on the first miss. */
+	private BufferedImage iconFor(TrackedItem item)
 	{
-		BufferedImage cached = iconCache.get(itemId);
+		long key = ((long) item.getItemId() << 32) | (item.iconStackSize() & 0xffffffffL);
+		BufferedImage cached = iconCache.get(key);
 		if (cached != null)
 			return cached;
 
-		AsyncBufferedImage image = itemManager.getImage(itemId);
-		image.onLoaded(() -> iconCache.put(itemId,
+		AsyncBufferedImage image = itemManager.getImage(item.getItemId(), item.iconStackSize(), item.isStackable());
+		image.onLoaded(() -> iconCache.put(key,
 				toBuffered(image.getScaledInstance(ICON, ICON, Image.SCALE_SMOOTH))));
 
 		return null;

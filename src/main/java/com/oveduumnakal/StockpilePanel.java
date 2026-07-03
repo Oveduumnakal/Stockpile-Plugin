@@ -215,7 +215,8 @@ public class StockpilePanel extends PluginPanel
 	private static final String CARD_LOGGED_OUT = "loggedOut";
 
 	private final Map<Integer, TrackedItem> currentItems = new HashMap<>();
-	private final Map<Integer, ImageIcon> rowIconCache = new HashMap<>();
+	/** 18px row icons keyed by {@link #iconCacheKey} (item id + rendered stack size), so quantity-aware sprites are cached per stack. */
+	private final Map<Long, ImageIcon> rowIconCache = new HashMap<>();
 	private int detailItemId = -1;
 
 	/** The logged-out placeholder card; tracked so {@link #cardsHost} can fill the viewport while it shows. */
@@ -1454,7 +1455,7 @@ public class StockpilePanel extends PluginPanel
 			orderedItemIds.add(item.getItemId());
 		}
 
-		rowIconCache.keySet().retainAll(trackedItemIds);
+		rowIconCache.keySet().removeIf(key -> !trackedItemIds.contains((int) (key >> 32)));
 
 		if (!loggedIn)
 		{
@@ -2137,22 +2138,34 @@ public class StockpilePanel extends PluginPanel
 		JLabel iconLabel = new JLabel();
 		iconLabel.setVerticalAlignment(SwingConstants.CENTER);
 		iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
+		applyRowIcon(iconLabel, item);
+		return iconLabel;
+	}
 
-		ImageIcon cached = rowIconCache.get(item.getItemId());
+	/** Sets a label's 18px quantity-aware item icon from {@link #rowIconCache}, loading asynchronously on a miss. */
+	private void applyRowIcon(JLabel iconLabel, TrackedItem item)
+	{
+		long key = iconCacheKey(item);
+		ImageIcon cached = rowIconCache.get(key);
 		if (cached != null)
-			iconLabel.setIcon(cached);
-		else
 		{
-			AsyncBufferedImage icon = itemManager.getImage(item.getItemId());
-			icon.onLoaded(() ->
-			{
-				ImageIcon scaled = new ImageIcon(icon.getScaledInstance(18, 18, Image.SCALE_SMOOTH));
-				rowIconCache.put(item.getItemId(), scaled);
-				iconLabel.setIcon(scaled);
-			});
+			iconLabel.setIcon(cached);
+			return;
 		}
 
-		return iconLabel;
+		AsyncBufferedImage icon = itemManager.getImage(item.getItemId(), item.iconStackSize(), item.isStackable());
+		icon.onLoaded(() ->
+		{
+			ImageIcon scaled = new ImageIcon(icon.getScaledInstance(18, 18, Image.SCALE_SMOOTH));
+			rowIconCache.put(key, scaled);
+			iconLabel.setIcon(scaled);
+		});
+	}
+
+	/** @return a {@link #rowIconCache} key combining an item's id with the stack size its icon is rendered at. */
+	private static long iconCacheKey(TrackedItem item)
+	{
+		return ((long) item.getItemId() << 32) | (item.iconStackSize() & 0xffffffffL);
 	}
 
 	/**
@@ -2412,19 +2425,7 @@ public class StockpilePanel extends PluginPanel
 		JLabel iconLabel = new JLabel();
 		iconLabel.setVerticalAlignment(SwingConstants.CENTER);
 		iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		ImageIcon cached = rowIconCache.get(item.getItemId());
-		if (cached != null)
-			iconLabel.setIcon(cached);
-		else
-		{
-			AsyncBufferedImage icon = itemManager.getImage(item.getItemId());
-			icon.onLoaded(() ->
-			{
-				ImageIcon scaled = new ImageIcon(icon.getScaledInstance(18, 18, Image.SCALE_SMOOTH));
-				rowIconCache.put(item.getItemId(), scaled);
-				iconLabel.setIcon(scaled);
-			});
-		}
+		applyRowIcon(iconLabel, item);
 
 		final Color REMOVE_COLOR = new Color(200, 60, 60);
 		final Color REMOVE_HIDDEN = new Color(0, 0, 0, 0);
@@ -5207,7 +5208,7 @@ public class StockpilePanel extends PluginPanel
 		rebuildOverviewGrid();
 		applyDetailSectionLayout();
 
-		AsyncBufferedImage icon = itemManager.getImage(item.getItemId());
+		AsyncBufferedImage icon = itemManager.getImage(item.getItemId(), item.iconStackSize(), item.isStackable());
 		icon.addTo(detailIconLabel);
 		setEllipsisText(detailNameLabel, item.getName());
 
