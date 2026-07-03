@@ -495,7 +495,8 @@ public class PriceGraphPanel extends JPanel
 			{
 				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 				g2.setFont(baseFont);
-				drawHover(g2, g2.getFontMetrics(), visible, plotLeft, plotTop, plotRight, plotBottom, plotW, startSec, span);
+				drawHover(g2, g2.getFontMetrics(), visible, plotLeft, plotTop, plotRight, plotBottom,
+						plotW, startSec, span);
 			}
 			finally
 			{
@@ -1188,7 +1189,8 @@ public class PriceGraphPanel extends JPanel
 	}
 
 	/** @return the index of the point whose x pixel is nearest {@link #hoverX}, or -1 if none. */
-	private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW, long startSec, long span)
+	private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW,
+			long startSec, long span)
 	{
 		int best = -1;
 		int bestDx = Integer.MAX_VALUE;

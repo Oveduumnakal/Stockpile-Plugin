@@ -195,7 +195,10 @@ public class StockpilePlugin extends Plugin
 	private boolean favoritesCollapsed;
 	private boolean uncategorizedCollapsed;
 
-	/** Transient, non-persisted item backing the read-only detail preview (view-only button); not in {@link #trackedItems}. */
+	/**
+	 * Transient, non-persisted item backing the read-only detail preview (view-only
+	 * button); not in {@link #trackedItems}.
+	 */
 	private TrackedItem previewItem;
 
 	/** The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). */
@@ -491,7 +494,8 @@ public class StockpilePlugin extends Plugin
 				{
 					for (PersistedItem p : list)
 					{
-						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications, p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
+						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
+							p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
 						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
 					}
 				}
@@ -633,7 +637,10 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
-	/** @return the tracked item for {@code itemId}, or the transient preview item when it matches; otherwise {@code null}. */
+	/**
+	 * @return the tracked item for {@code itemId}, or the transient preview item when it
+	 *         matches; otherwise {@code null}
+	 */
 	private TrackedItem lookupItem(int itemId)
 	{
 		TrackedItem tracked = trackedItems.get(itemId);
@@ -644,7 +651,8 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
-	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)
+	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records,
+			boolean costBasisInitialized)
 	{
 		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, TrackItemMode.TRACK);
 	}
@@ -1176,7 +1184,10 @@ public class StockpilePlugin extends Plugin
 			requestDetailData(previewItem.getItemId());
 	}
 
-	/** Applies a freshly fetched price set to an item: records per-side deltas, updates current prices, and refreshes its LIVE window stats. */
+	/**
+	 * Applies a freshly fetched price set to an item: records per-side deltas, updates
+	 * current prices, and refreshes its LIVE window stats.
+	 */
 	private void applyLivePrices(TrackedItem item, WikiRealtimePriceClient.ItemPrices prices)
 	{
 		if (item.hasPrices())
@@ -2180,7 +2191,8 @@ public class StockpilePlugin extends Plugin
 				if (avg <= 0 || item.getHighAlch() <= 0)
 					return OptionalDouble.empty();
 
-				return OptionalDouble.of(item.getHighAlch() - avg - runePrice(NATURE_RUNE_ID) - 5 * runePrice(FIRE_RUNE_ID));
+				return OptionalDouble.of(item.getHighAlch() - avg - runePrice(NATURE_RUNE_ID)
+						- 5 * runePrice(FIRE_RUNE_ID));
 			case DELTA_PCT:
 			{
 				long current = item.getAvgPrice();

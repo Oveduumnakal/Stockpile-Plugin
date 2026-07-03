@@ -97,7 +97,10 @@ public class TrackedItem
 		}
 	}
 
-	/** @return the stack size to render this item's icon at: the tracked quantity for stackable items, else 1 (plain single sprite). */
+	/**
+	 * @return the stack size to render this item's icon at: the tracked quantity for
+	 *         stackable items, else 1 (plain single sprite)
+	 */
 	public int iconStackSize()
 	{
 		return stackable ? Math.max(1, quantity) : 1;

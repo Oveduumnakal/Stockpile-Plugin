@@ -154,7 +154,10 @@ public class StockpilePanel extends PluginPanel
 	private boolean favoritesCollapsed;
 	private boolean uncategorizedCollapsed;
 
-	/** Whether the list is currently grouped (favorites or categories active); disables drag reorder, which is global-order only. */
+	/**
+	 * Whether the list is currently grouped (favorites or categories active); disables drag
+	 * reorder, which is global-order only.
+	 */
 	private boolean groupingActive;
 
 	/** Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full plugin refresh. */
@@ -231,14 +234,20 @@ public class StockpilePanel extends PluginPanel
 	private static final String CARD_LOGGED_OUT = "loggedOut";
 
 	private final Map<Integer, TrackedItem> currentItems = new HashMap<>();
-	/** 18px row icons keyed by {@link #iconCacheKey} (item id + rendered stack size), so quantity-aware sprites are cached per stack. */
+	/**
+	 * 18px row icons keyed by {@link #iconCacheKey} (item id + rendered stack size), so
+	 * quantity-aware sprites are cached per stack.
+	 */
 	private final Map<Long, ImageIcon> rowIconCache = new HashMap<>();
 	private int detailItemId = -1;
 
 	/** The logged-out placeholder card; tracked so {@link #cardsHost} can fill the viewport while it shows. */
 	private JPanel loggedOutCard;
 
-	/** A transient, read-only item shown in the detail view via {@link #showPreview} but never added to the tracked list. */
+	/**
+	 * A transient, read-only item shown in the detail view via {@link #showPreview} but
+	 * never added to the tracked list.
+	 */
 	private TrackedItem previewItem;
 
 	/** Placeholder card showing a spinner while a preview item's prices are still being fetched. */
@@ -348,7 +357,10 @@ public class StockpilePanel extends PluginPanel
 	private EstimatesPosition currentEstimatesPosition;
 
 	private static final Color DIVIDER_COLOR = new Color(80, 80, 80);
-	/** Fainter divider above the footer's Report/Request row: dimmer than {@link #DIVIDER_COLOR} but still visible over the (40,40,40) background. */
+	/**
+	 * Fainter divider above the footer's Report/Request row: dimmer than
+	 * {@link #DIVIDER_COLOR} but still visible over the (40,40,40) background.
+	 */
 	private static final Color FOOTER_DIVIDER_COLOR = new Color(60, 60, 60);
 	private static final Color OVERVIEW_ROW_DIVIDER = new Color(45, 45, 45);
 	private static final javax.swing.border.Border TITLE_BORDER_WITH_TOP_DIVIDER =
@@ -1056,7 +1068,8 @@ public class StockpilePanel extends PluginPanel
 
 		compactTotalsValueLabel.setText("<html><span style='color:" + toHex(COLOR_AVG) + "'>" + avgText
 				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + toHex(profitColor)
-				+ "'>" + sign + GpFormat.shortValue(profit) + "</span><span style='color:" + grey + "'>)</span></html>");
+				+ "'>" + sign + GpFormat.shortValue(profit) + "</span>"
+				+ "<span style='color:" + grey + "'>)</span></html>");
 		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
 				+ sign + NUMBER_FORMAT.format(profit) + " gp</html>");
 	}
@@ -1755,7 +1768,8 @@ public class StockpilePanel extends PluginPanel
 				uncategorized.add(item);
 		}
 
-		renderGroup("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed, uncategorized, indicatorMode);
+		renderGroup("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed,
+				uncategorized, indicatorMode);
 	}
 
 	/** @return whether the item matches the active tracked-list name filter (always true when the filter is empty). */
@@ -1848,7 +1862,10 @@ public class StockpilePanel extends PluginPanel
 		return new ImageIcon(img);
 	}
 
-	/** Renders one collapsible group: a clickable header plus its rows, unless empty (skipped) or collapsed (header only). */
+	/**
+	 * Renders one collapsible group: a clickable header plus its rows, unless empty
+	 * (skipped) or collapsed (header only).
+	 */
 	private void renderGroup(String title, String groupKey, boolean collapsed,
 			List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)
 	{
@@ -1886,7 +1903,10 @@ public class StockpilePanel extends PluginPanel
 		return -1;
 	}
 
-	/** Builds a clickable accordion header (chevron + title + group total value) that toggles the group's collapsed state. */
+	/**
+	 * Builds a clickable accordion header (chevron + title + group total value) that
+	 * toggles the group's collapsed state.
+	 */
 	private JPanel buildGroupHeader(String title, String groupKey, boolean collapsed, long groupTotal)
 	{
 		JPanel header = new JPanel(new BorderLayout(6, 0))
@@ -3205,7 +3225,10 @@ public class StockpilePanel extends PluginPanel
 		return ageSec > (long) config.stalePriceThresholdMinutes() * 60L;
 	}
 
-	/** Formats an epoch-second timestamp's age as a compact relative string, e.g. {@code "5s"}, {@code "5m"}, {@code "3hr"}, {@code "2d ago"}. */
+	/**
+	 * Formats an epoch-second timestamp's age as a compact relative string,
+	 * e.g. {@code "5s"}, {@code "5m"}, {@code "3hr"}, {@code "2d ago"}.
+	 */
 	private static String formatAge(long epochSeconds)
 	{
 		if (epochSeconds <= 0)
@@ -3976,7 +3999,10 @@ public class StockpilePanel extends PluginPanel
 		btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 	}
 
-	/** Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. */
+	/**
+	 * Notifies the plugin (via callback) that the current item's notification rules
+	 * changed, so it can persist them.
+	 */
 	private void notifyNotificationsEdited()
 	{
 		if (onNotificationsEdited != null && detailItemId > 0)
@@ -5365,10 +5391,12 @@ public class StockpilePanel extends PluginPanel
 		populateOverviewLabels(overviewLabels, item, false);
 
 		if (priceGraph != null)
-			priceGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(), item.getSeries24h(), item.getAvgPrice());
+			priceGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
+					item.getSeries24h(), item.getAvgPrice());
 
 		if (volumeGraph != null)
-			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(), item.getSeries24h(), item.getAvgPrice());
+			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
+					item.getSeries24h(), item.getAvgPrice());
 
 		miBuyLimit.setText(item.getBuyLimit() > 0 ? NUMBER_FORMAT.format(item.getBuyLimit()) : "N/A");
 		long tax = geTax(item.getAvgPrice());
@@ -6108,7 +6136,8 @@ public class StockpilePanel extends PluginPanel
 		}
 
 		@Override
-		public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column)
+		public Component getTableCellEditorComponent(JTable table, Object value,
+				boolean isSelected, int row, int column)
 		{
 			NotificationMetric metric = null;
 			TrackedItem t = currentItems.get(detailItemId);
