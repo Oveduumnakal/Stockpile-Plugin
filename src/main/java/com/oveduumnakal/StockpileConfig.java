@@ -50,6 +50,7 @@ public interface StockpileConfig extends Config
 	String GROUP = "stockpile";
 
 	String KEY_TRACKED_ITEMS = "trackedItemIds";
+	String KEY_PRICE_CACHE = "priceCache";
 	String KEY_CATEGORIES = "trackedCategories";
 
 	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";
