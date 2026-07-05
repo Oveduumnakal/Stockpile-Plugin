@@ -6,15 +6,17 @@ package com.oveduumnakal;
 
 import java.util.OptionalDouble;
 
+import com.google.gson.Gson;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for {@link NotificationRule}'s threshold parsing and formatting: k/m/b
  * suffixes, comma grouping, percent handling (explicit {@code %} and bare
- * fractions), and unparseable input.
+ * fractions), unparseable input, and repeat-flag persistence compatibility.
  */
 public class NotificationRuleTest
 {
@@ -81,5 +83,30 @@ public class NotificationRuleTest
 	{
 		OptionalDouble parsed = NotificationRule.parsePercent("2.5%");
 		assertEquals("2.5%", NotificationRule.formatPercent(parsed.getAsDouble()));
+	}
+
+	@Test
+	public void legacyJsonWithoutRepeatLoadsAsOnceRule()
+	{
+		String legacy = "{\"metric\":\"HIGH\",\"timeWindow\":\"LIVE\",\"operation\":\"GTE\",\"value\":\"5m\"}";
+		NotificationRule rule = new Gson().fromJson(legacy, NotificationRule.class);
+		assertFalse(rule.isRepeat());
+		assertEquals(NotificationMetric.HIGH, rule.getMetric());
+	}
+
+	@Test
+	public void repeatFlagPersistsButEdgeStateDoesNot()
+	{
+		NotificationRule rule = new NotificationRule();
+		rule.setRepeat(true);
+		rule.setLastCondition(true);
+
+		String json = new Gson().toJson(rule);
+		assertTrue(json.contains("\"repeat\":true"));
+		assertFalse(json.contains("lastCondition"));
+
+		NotificationRule back = new Gson().fromJson(json, NotificationRule.class);
+		assertTrue(back.isRepeat());
+		assertEquals(null, back.getLastCondition());
 	}
 }

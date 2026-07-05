@@ -4695,7 +4695,12 @@ public class StockpilePanel extends PluginPanel
 		columns.getColumn(3).setCellEditor(new NotificationValueEditor(currentItems, () -> detailItemId));
 
 		for (int i = 0; i < notificationsTable.getColumnCount(); i++)
-			columns.getColumn(i).setCellRenderer(renderer);
+		{
+			if (notificationsTable.getColumnClass(i) != Boolean.class)
+				columns.getColumn(i).setCellRenderer(renderer);
+		}
+
+		columns.getColumn(notificationsTable.getColumnCount() - 1).setMaxWidth(28);
 
 		TableCellRenderer hr = notificationsTable.getTableHeader().getDefaultRenderer();
 		if (hr instanceof DefaultTableCellRenderer)
