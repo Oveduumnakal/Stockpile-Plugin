@@ -433,8 +433,12 @@ public class StockpilePlugin extends Plugin
 
 	private static final Type PERSIST_TYPE = new TypeToken<List<PersistedItem>>(){}.getType();
 
-	/** Serializable snapshot of a tracked item, stored as JSON in the RS profile config. */
-	private static class PersistedItem
+	/**
+	 * Serializable snapshot of a tracked item, stored as JSON in the RS profile config.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape;
+	 * changes must follow {@code docs/persistence.md}.
+	 */
+	static class PersistedItem
 	{
 		int itemId;
 		int quantity;
@@ -449,8 +453,12 @@ public class StockpilePlugin extends Plugin
 
 	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
 
-	/** Serializable snapshot of the category definitions and special-group collapsed state. */
-	private static class CategoryData
+	/**
+	 * Serializable snapshot of the category definitions and special-group collapsed state.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape;
+	 * changes must follow {@code docs/persistence.md}.
+	 */
+	static class CategoryData
 	{
 		List<CategoryState> categories;
 		boolean favoritesCollapsed;
