@@ -1298,7 +1298,7 @@ public class StockpilePlugin extends Plugin
 			final int canonicalId = itemManager.canonicalize(itemId);
 			final boolean tracked = trackedItems.containsKey(canonicalId);
 
-			client.createMenuEntry(1)
+			client.getMenu().createMenuEntry(1)
 					.setOption(tracked
 							? ColorUtil.prependColorTag("Stop Tracking", config.stopTrackingColor())
 							: ColorUtil.prependColorTag("Track Item", config.trackItemColor()))
@@ -1414,7 +1414,7 @@ public class StockpilePlugin extends Plugin
 		if (!config.highlightTrackedItems().ground() || client.isMenuOpen())
 			return;
 
-		final MenuEntry[] entries = client.getMenuEntries();
+		final MenuEntry[] entries = client.getMenu().getMenuEntries();
 		final List<MenuEntry> normal = new ArrayList<>(entries.length);
 		final List<MenuEntry> trackedTakes = new ArrayList<>();
 
@@ -1435,7 +1435,7 @@ public class StockpilePlugin extends Plugin
 			return;
 
 		normal.addAll(trackedTakes);
-		client.setMenuEntries(normal.toArray(new MenuEntry[0]));
+		client.getMenu().setMenuEntries(normal.toArray(new MenuEntry[0]));
 	}
 
 	/**
