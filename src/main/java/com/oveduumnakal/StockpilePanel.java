@@ -86,6 +86,7 @@ import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -94,6 +95,7 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -180,6 +182,7 @@ public class StockpilePanel extends PluginPanel
 	private final Consumer<List<Integer>> onSetGlobalOrder;
 	/** Flips the persisted compact-view config flag; the resulting config change rebuilds the list. */
 	private final Runnable onToggleCompactView;
+	private final Consumer<SortMode> onSetSortMode;
 	/** Favorite toggle callback: (itemId, favorite) — pins/unpins an item to the top Favorites group. */
 	private final BiConsumer<Integer, Boolean> onSetFavorite;
 	/** Overlay toggle callback: (itemId, onOverlay) — adds/removes an item from the on-screen overlay. */
@@ -225,6 +228,9 @@ public class StockpilePanel extends PluginPanel
 
 	/** Header toggle that shows/hides the tracked-list filter field. */
 	private JLabel filterToggle;
+
+	/** Header toggle that opens the sort-mode menu; highlighted when a non-manual sort is active. */
+	private JLabel sortToggle;
 
 	private final CardLayout cardLayout = new CardLayout();
 
@@ -534,6 +540,7 @@ public class StockpilePanel extends PluginPanel
 			BiConsumer<Integer, Integer> onReorder,
 			Consumer<List<Integer>> onSetGlobalOrder,
 			Runnable onToggleCompactView,
+			Consumer<SortMode> onSetSortMode,
 			BiConsumer<Integer, Boolean> onSetFavorite,
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
@@ -552,6 +559,7 @@ public class StockpilePanel extends PluginPanel
 		this.onReorder = onReorder;
 		this.onSetGlobalOrder = onSetGlobalOrder;
 		this.onToggleCompactView = onToggleCompactView;
+		this.onSetSortMode = onSetSortMode;
 		this.onSetFavorite = onSetFavorite;
 		this.onSetOnOverlay = onSetOnOverlay;
 		this.onSetGroupCollapsed = onSetGroupCollapsed;
@@ -700,6 +708,23 @@ public class StockpilePanel extends PluginPanel
 			}
 		});
 
+		sortToggle = new JLabel("⇅", SwingConstants.CENTER);
+		sortToggle.setVerticalAlignment(SwingConstants.TOP);
+		sortToggle.setAlignmentY(Component.TOP_ALIGNMENT);
+		sortToggle.setFont(FontManager.getRunescapeBoldFont());
+		sortToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		sortToggle.setBorder(new EmptyBorder(6, 0, 4, 6));
+		sortToggle.setToolTipText("Sort tracked items");
+		sortToggle.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				showSortMenu();
+			}
+		});
+		updateSortToggle();
+
 		filterToggle = new JLabel();
 		filterToggle.setVerticalAlignment(SwingConstants.TOP);
 		filterToggle.setAlignmentY(Component.TOP_ALIGNMENT);
@@ -720,6 +745,7 @@ public class StockpilePanel extends PluginPanel
 		headerToggles.setLayout(new BoxLayout(headerToggles, BoxLayout.X_AXIS));
 		headerToggles.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		headerToggles.add(categoriesButton);
+		headerToggles.add(sortToggle);
 		headerToggles.add(filterToggle);
 		headerToggles.add(compactToggle);
 		headerToggles.add(reorderToggle);
@@ -1504,7 +1530,7 @@ public class StockpilePanel extends PluginPanel
 	 * timestamp, and (when {@code indicatorMode} permits) starts pulse animations
 	 * for items whose price moved.
 	 */
-	public void rebuild(List<TrackedItem> items, Instant newLastPriceRefresh,
+	public void rebuild(List<TrackedItem> rawItems, Instant newLastPriceRefresh,
 			PriceIndicatorMode indicatorMode, boolean loggedIn,
 			List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed)
 	{
@@ -1512,6 +1538,24 @@ public class StockpilePanel extends PluginPanel
 		this.categories = categories != null ? categories : new ArrayList<>();
 		this.favoritesCollapsed = favoritesCollapsed;
 		this.uncategorizedCollapsed = uncategorizedCollapsed;
+		SortMode sortMode = config.sortMode();
+		final List<TrackedItem> items;
+		if (sortMode != SortMode.MANUAL)
+		{
+			items = new ArrayList<>(rawItems);
+			items.sort(sortMode.comparator());
+		}
+		else
+		{
+			items = rawItems;
+		}
+
+		updateSortToggle();
+		if (sortMode != SortMode.MANUAL && reorderMode)
+			toggleReorderMode();
+
+		reorderToggle.setVisible(sortMode == SortMode.MANUAL);
+
 		trackedItemIds.clear();
 		currentItems.clear();
 		orderedItemIds.clear();
@@ -2874,6 +2918,35 @@ public class StockpilePanel extends PluginPanel
 		row.add(singleLabel);
 
 		return row;
+	}
+
+	/** Opens the sort-mode menu on the header toggle, with the active mode checked. */
+	private void showSortMenu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+		SortMode active = config.sortMode();
+		for (SortMode mode : SortMode.values())
+		{
+			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(mode.toString(), mode == active);
+			entry.setFont(FontManager.getRunescapeSmallFont());
+			entry.addActionListener(e ->
+			{
+				if (onSetSortMode != null)
+					onSetSortMode.accept(mode);
+			});
+			menu.add(entry);
+		}
+
+		menu.show(sortToggle, 0, sortToggle.getHeight());
+	}
+
+	/** Highlights the header sort toggle while a non-manual sort is active. */
+	private void updateSortToggle()
+	{
+		if (sortToggle != null)
+			sortToggle.setForeground(config.sortMode() != SortMode.MANUAL
+					? COLOR_AVG
+					: ColorScheme.LIGHT_GRAY_COLOR);
 	}
 
 	/** Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. */
