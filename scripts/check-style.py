@@ -14,6 +14,9 @@ every Java source file:
   7. Allman lambdas: a multi-statement lambda body's `{` goes on the next line.
   8. No wildcard imports.
   9. Statement-level method chains of three or more links must be wrapped.
+ 10. No inline `//` comments (Javadoc instead), except a note that is the sole
+     content of an intentionally-empty `catch` block.
+ 11. Every class/interface/enum declaration (including nested) carries Javadoc.
 
 Exits non-zero listing every violation, or prints a summary and exits zero.
 """
@@ -102,6 +105,65 @@ def next_code_line(lines, j):
     return k
 
 
+def allowed_empty_catch_note(lines, i):
+    """Whether the // comment on 0-based line i is the sole content of an empty catch block."""
+    bal = 0
+    j = i - 1
+    while j >= 0:
+        s = strip_strings(lines[j]).split('//')[0]
+        bal += s.count('}') - s.count('{')
+        if bal < 0:
+            break
+
+        j -= 1
+
+    if j < 0:
+        return False
+
+    header = strip_strings(lines[j]).split('//')[0].strip()
+    if header == '{' and j > 0:
+        header = strip_strings(lines[j - 1]).split('//')[0].strip()
+
+    if not header.startswith('catch'):
+        return False
+
+    k = j + 1
+    while k < len(lines):
+        s = strip_strings(lines[k]).split('//')[0].strip()
+        if s.startswith('}'):
+            return True
+
+        content = lines[k].strip()
+        if content and not content.startswith('//'):
+            return False
+
+        k += 1
+
+    return False
+
+
+def javadoc_precedes(lines, i):
+    """Whether a /** ... */ block sits directly above 0-based declaration line i, skipping annotations."""
+    rev_bal = 0
+    j = i - 1
+    while j >= 0:
+        s = strip_strings(lines[j]).strip()
+        if s.endswith('*/'):
+            return True
+
+        rev_bal += s.count(')') - s.count('(')
+        if rev_bal > 0 or (s.startswith('@') and rev_bal == 0):
+            if s.startswith('@'):
+                rev_bal = 0
+
+            j -= 1
+            continue
+
+        return False
+
+    return False
+
+
 def check_file(path):
     lines = open(path).read().split('\n')
     comment = in_block_comment_mask(lines)
@@ -130,7 +192,14 @@ def check_file(path):
         if re.match(r'^import .*\*;$', code.strip()):
             report(path, i, 'wildcard-import', raw)
 
+        if '//' in line and not allowed_empty_catch_note(lines, i - 1):
+            report(path, i, 'inline-comment', raw)
+
         stripped = code.strip()
+
+        if (re.match(r'^(?:(?:public|protected|private|static|final|abstract)\s+)*(?:class|interface|enum)\s+[A-Z]', stripped)
+                and not javadoc_precedes(lines, i - 1)):
+            report(path, i, 'missing-class-javadoc', raw)
 
         if re.match(r'^' + CONTROL + r'\s*\(', stripped):
             bal = stripped.count('(') - stripped.count(')')
