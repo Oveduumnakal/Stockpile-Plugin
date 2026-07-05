@@ -40,6 +40,12 @@ public final class GpFormat
 		return abbreviate(value, true);
 	}
 
+	/** Full comma-grouped digits with no suffix: {@code "1,234,567"}. */
+	public static String grouped(long value)
+	{
+		return GROUPED.format(value);
+	}
+
 	/** {@link #shortValue} with a trailing {@code " gp"}. */
 	public static String shortGp(long value)
 	{

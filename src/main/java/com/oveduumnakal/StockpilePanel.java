@@ -34,7 +34,6 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -44,10 +43,8 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.MouseInfo;
 import java.awt.Point;
-import java.awt.PointerInfo;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.awt.Shape;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -58,7 +55,6 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -77,13 +73,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import javax.swing.AbstractAction;
-import javax.swing.AbstractCellEditor;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -111,17 +105,14 @@ import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
-import javax.swing.ToolTipManager;
 import javax.swing.WindowConstants;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
-import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
@@ -168,10 +159,10 @@ public class StockpilePanel extends PluginPanel
 	private static final Color COLOR_HIGH_STALE = new Color(70, 110, 70);
 	private static final Color COLOR_LOW_STALE  = new Color(110, 70, 70);
 
-	private static final Color TINT_HIGH = new Color(35, 70, 35);
-	private static final Color TINT_LOW  = new Color(70, 35, 35);
-	private static final Color TINT_AVG  = new Color(75, 60, 25);
-	private static final Color TINT_VOLUME = new Color(55, 55, 55);
+	private static final Color TINT_HIGH = StockpileColors.TINT_HIGH;
+	private static final Color TINT_LOW  = StockpileColors.TINT_LOW;
+	private static final Color TINT_AVG  = StockpileColors.TINT_AVG;
+	private static final Color TINT_VOLUME = StockpileColors.TINT_VOLUME;
 
 	private final ItemManager itemManager;
 	private final StockpileConfig config;
@@ -197,20 +188,6 @@ public class StockpilePanel extends PluginPanel
 	private final BiConsumer<String, Boolean> onSetGroupCollapsed;
 	/** Category create/rename/delete/reorder and per-item assignment operations. */
 	private final CategoryActions categoryActions;
-
-	/** The category management operations the panel invokes; implemented by the plugin. */
-	public interface CategoryActions
-	{
-		void setItemCategory(int itemId, String category);
-
-		void create(String name);
-
-		void rename(String oldName, String newName);
-
-		void delete(String name);
-
-		void reorder(String name, int targetIndex);
-	}
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -526,21 +503,6 @@ public class StockpilePanel extends PluginPanel
 
 	private final JLabel profitLabel;
 	private final JPanel profitSection;
-
-	/** One in-flight price-change pulse: the label being animated, its base color, and the animation start time. */
-	private static final class PulseEntry
-	{
-		final JLabel label;
-		final Color base;
-		final long start;
-
-		PulseEntry(JLabel label, Color base, long start)
-		{
-			this.label = label;
-			this.base = base;
-			this.start = start;
-		}
-	}
 
 	/**
 	 * Builds the panel and its two cards (main list and detail view). The header toggles
@@ -1127,10 +1089,11 @@ public class StockpilePanel extends PluginPanel
 		long profit = totalAvg - totalCostBasis;
 		String sign = profit > 0 ? "+" : "";
 		Color profitColor = profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW);
-		String grey = toHex(ColorScheme.LIGHT_GRAY_COLOR);
+		String grey = StockpileColors.toHex(ColorScheme.LIGHT_GRAY_COLOR);
+		String profitHex = StockpileColors.toHex(profitColor);
 
-		compactTotalsValueLabel.setText("<html><span style='color:" + toHex(COLOR_AVG) + "'>" + avgText
-				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + toHex(profitColor)
+		compactTotalsValueLabel.setText("<html><span style='color:" + StockpileColors.toHex(COLOR_AVG) + "'>" + avgText
+				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + profitHex
 				+ "'>" + sign + GpFormat.shortValue(profit) + "</span>"
 				+ "<span style='color:" + grey + "'>)</span></html>");
 		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
@@ -1151,37 +1114,6 @@ public class StockpilePanel extends PluginPanel
 		button.addActionListener(e -> onClick.run());
 
 		return button;
-	}
-
-	/**
-	 * A single field in an issue form mapped to a GitHub form {@code id}. A {@code null}
-	 * {@link #options} makes it a free-text area {@link #rows} tall; a non-null one makes it
-	 * a dropdown whose entries must match the template's option labels exactly.
-	 */
-	private static final class IssueField
-	{
-		final String id;
-		final String label;
-		final int rows;
-		final String[] options;
-
-		IssueField(String id, String label, int rows)
-		{
-			this(id, label, rows, null);
-		}
-
-		IssueField(String id, String label, String[] options)
-		{
-			this(id, label, 0, options);
-		}
-
-		private IssueField(String id, String label, int rows, String[] options)
-		{
-			this.id = id;
-			this.label = label;
-			this.rows = rows;
-			this.options = options;
-		}
 	}
 
 	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */
@@ -1502,7 +1434,7 @@ public class StockpilePanel extends PluginPanel
 		JLabel nameLabel = new JLabel();
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setFont(FontManager.getRunescapeSmallFont());
-		setEllipsisText(nameLabel, itemName);
+		EllipsisText.set(nameLabel, itemName);
 
 		JButton viewBtn = new JButton(buildEyeIcon(14));
 		viewBtn.setPreferredSize(new Dimension(28, 22));
@@ -2336,7 +2268,7 @@ public class StockpilePanel extends PluginPanel
 		JLabel nameLabel = new JLabel();
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
-		setEllipsisText(nameLabel, item.getName());
+		EllipsisText.set(nameLabel, item.getName());
 
 		JPanel nameRow = new JPanel(new BorderLayout(6, 0));
 		nameRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -2612,7 +2544,7 @@ public class StockpilePanel extends PluginPanel
 		JLabel nameLabel = new JLabel();
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
-		setEllipsisText(nameLabel, item.getName());
+		EllipsisText.set(nameLabel, item.getName());
 
 		JLabel qtyLabel = new JLabel("Qty: " + GpFormat.shortValue(item.getQuantity()));
 		qtyLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -3345,150 +3277,6 @@ public class StockpilePanel extends PluginPanel
 		label.setText(text);
 	}
 
-	private static final String ELLIPSIS = "…";
-
-	private static final String FULL_TEXT_KEY = "stockpile.fullText";
-
-	/**
-	 * Assigns text to a label, truncating it with a trailing ellipsis so it fits the
-	 * label's available width and exposing the untruncated text as a tooltip. The text
-	 * is re-truncated automatically whenever the label is resized.
-	 */
-	private static void setEllipsisText(JLabel label, String fullText)
-	{
-		label.putClientProperty(FULL_TEXT_KEY, fullText);
-		label.setToolTipText(fullText);
-
-		boolean hasListener = Arrays.stream(label.getComponentListeners())
-				.anyMatch(l -> l instanceof EllipsisResizeListener);
-
-		if (!hasListener)
-			label.addComponentListener(new EllipsisResizeListener());
-
-		applyEllipsis(label);
-	}
-
-	/** Re-truncates a label's stored full text with an ellipsis to fit its current width. */
-	private static void applyEllipsis(JLabel label)
-	{
-		Object stored = label.getClientProperty(FULL_TEXT_KEY);
-
-		if (!(stored instanceof String))
-			return;
-
-		String fullText = (String) stored;
-		Insets insets = label.getInsets();
-		int available = label.getWidth() - insets.left - insets.right;
-
-		if (available <= 0)
-		{
-			label.setText(fullText);
-			return;
-		}
-
-		FontMetrics fm = label.getFontMetrics(label.getFont());
-
-		if (fm.stringWidth(fullText) <= available)
-		{
-			label.setText(fullText);
-			return;
-		}
-
-		int budget = available - fm.stringWidth(ELLIPSIS);
-
-		if (budget <= 0)
-		{
-			label.setText(ELLIPSIS);
-			return;
-		}
-
-		int end = 0;
-		int used = 0;
-
-		while (end < fullText.length() && used + fm.charWidth(fullText.charAt(end)) <= budget)
-		{
-			used += fm.charWidth(fullText.charAt(end));
-			end++;
-		}
-
-		label.setText(fullText.substring(0, end) + ELLIPSIS);
-	}
-
-	/** Re-applies ellipsis truncation to its label whenever the label's width changes. */
-	private static final class EllipsisResizeListener extends ComponentAdapter
-	{
-		@Override
-		public void componentResized(ComponentEvent e)
-		{
-			applyEllipsis((JLabel) e.getComponent());
-		}
-	}
-
-	/** @return the colour as a {@code #rrggbb} hex string for inline HTML styling. */
-	private static String toHex(Color c)
-	{
-		return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
-	}
-
-	/**
-	 * Mouse listener that swaps a value label to a tinted background (and the full
-	 * comma-grouped number) while hovered, restoring the compact text on exit.
-	 */
-	private static final class HoverTintListener extends MouseAdapter
-	{
-		private final JLabel label;
-		private final String shortText;
-		private final String highlightedText;
-		private final Color tint;
-
-		HoverTintListener(JLabel label, String shortText, Color tint)
-		{
-			this.label = label;
-			this.shortText = shortText;
-			this.tint = tint;
-			this.highlightedText = tint == null
-					? shortText
-					: "<html><nobr><span style='background-color:" + toHex(tint) + "'>"
-							+ shortText + "</span></nobr></html>";
-		}
-
-		@Override
-		public void mouseEntered(MouseEvent e)
-		{
-			if (tint == null)
-				return;
-
-			label.setText(highlightedText);
-		}
-
-		@Override
-		public void mouseExited(MouseEvent e)
-		{
-			if (tint == null)
-				return;
-
-			label.setText(shortText);
-		}
-
-		void applyIfHovered()
-		{
-			if (tint == null || !label.isShowing() || label.getWidth() == 0)
-				return;
-
-			PointerInfo info = MouseInfo.getPointerInfo();
-			if (info == null)
-				return;
-
-			Point screen = info.getLocation();
-			Point origin = label.getLocationOnScreen();
-			if (screen.x >= origin.x && screen.x < origin.x + label.getWidth()
-					&& screen.y >= origin.y && screen.y < origin.y + label.getHeight())
-			{
-				label.setText(highlightedText);
-			}
-		}
-	}
-
 	/** Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise. */
 	private void applyTotalTooltip(JLabel label, long value, ValueFormat fmt)
 	{
@@ -3629,7 +3417,7 @@ public class StockpilePanel extends PluginPanel
 
 		detailCard.add(topStack, BorderLayout.NORTH);
 
-		acquisitionsModel = new AcquisitionsTableModel();
+		acquisitionsModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId);
 		acquisitionsTable = new JTable(acquisitionsModel)
 		{
 			@Override
@@ -3928,7 +3716,7 @@ public class StockpilePanel extends PluginPanel
 	/** Builds the notifications section: the rules table and its add/remove/edit controls. */
 	private void buildNotificationsSection()
 	{
-		notificationsModel = new NotificationsTableModel();
+		notificationsModel = new NotificationsTableModel(this::notifyNotificationsEdited);
 		notificationsTable = new JTable(notificationsModel)
 		{
 			@Override
@@ -4520,21 +4308,6 @@ public class StockpilePanel extends PluginPanel
 		}
 	}
 
-	/** Tracks one open pop-out window and the refresher used to push fresh item data into it. */
-	private static final class PopoutHandle
-	{
-		final JFrame frame;
-		final Consumer<TrackedItem> refresher;
-		final Runnable onClose;
-
-		PopoutHandle(JFrame frame, Consumer<TrackedItem> refresher, Runnable onClose)
-		{
-			this.frame = frame;
-			this.refresher = refresher;
-			this.onClose = onClose;
-		}
-	}
-
 	private final List<PopoutHandle> openPopouts = new ArrayList<>();
 
 	private boolean graphSmooth = true;
@@ -4667,7 +4440,7 @@ public class StockpilePanel extends PluginPanel
 		if (acqPopoutModel != null)
 			return;
 
-		acqPopoutModel = new AcquisitionsTableModel();
+		acqPopoutModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId);
 		acqPopoutTable = new JTable(acqPopoutModel);
 		final JTable table = acqPopoutTable;
 		final AcquisitionsTableModel model = acqPopoutModel;
@@ -4919,7 +4692,7 @@ public class StockpilePanel extends PluginPanel
 		columns.getColumn(0).setCellEditor(new DefaultCellEditor(metricCombo));
 		columns.getColumn(1).setCellEditor(new DefaultCellEditor(timeCombo));
 		columns.getColumn(2).setCellEditor(new DefaultCellEditor(opCombo));
-		columns.getColumn(3).setCellEditor(new NotificationValueEditor());
+		columns.getColumn(3).setCellEditor(new NotificationValueEditor(currentItems, () -> detailItemId));
 
 		for (int i = 0; i < notificationsTable.getColumnCount(); i++)
 			columns.getColumn(i).setCellRenderer(renderer);
@@ -5420,7 +5193,7 @@ public class StockpilePanel extends PluginPanel
 
 		AsyncBufferedImage icon = itemManager.getImage(item.getItemId(), item.iconStackSize(), item.isStackable());
 		icon.addTo(detailIconLabel);
-		setEllipsisText(detailNameLabel, item.getName());
+		EllipsisText.set(detailNameLabel, item.getName());
 
 		int detailQty = item.getQuantity();
 		detailQtyLabel.setText("Qty: " + GpFormat.shortValue(detailQty));
@@ -5904,7 +5677,7 @@ public class StockpilePanel extends PluginPanel
 		for (int i = 0; i < cols; i++)
 		{
 			TableColumn col = table.getColumnModel().getColumn(i);
-			col.setCellRenderer(new AcqCellRenderer(i == 3, expanded));
+			col.setCellRenderer(new AcqCellRenderer(i == 3, expanded, () -> acqHoverRow, () -> acqHoverCol));
 			if (i != 3)
 				col.setCellEditor(centerEditor);
 
@@ -5928,701 +5701,6 @@ public class StockpilePanel extends PluginPanel
 			case 2: return "Sold At";
 			case 3: return "Profit";
 			default: return "";
-		}
-	}
-
-	/**
-	 * Swing table model backing the editable acquisitions log: one row per
-	 * {@link AcquisitionRecord} with quantity, buy price, sell price, and derived
-	 * profit columns. Edits are written straight back to the item's records.
-	 */
-	private class AcquisitionsTableModel extends AbstractTableModel
-	{
-		private final String[] COLS_FULL = {"Qty", "Bought", "Sold", "Profit"};
-		private final String[] COLS_NO_PROFIT = {"Qty", "Bought", "Sold"};
-		private TrackedItem item;
-
-		void setItem(TrackedItem item)
-		{
-			this.item = item;
-			fireTableStructureChanged();
-		}
-
-		/** @return the active column set, including the profit column only when configured. */
-		private String[] cols()
-		{
-			return config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
-		}
-
-		@Override
-		public int getRowCount()
-		{
-			return item == null ? 0 : item.getAcquisitions().size();
-		}
-
-		@Override
-		public int getColumnCount()
-		{
-			return cols().length;
-		}
-
-		@Override
-		public String getColumnName(int c)
-		{
-			return cols()[c];
-		}
-
-		@Override
-		public boolean isCellEditable(int r, int c)
-		{
-			return c < 3;
-		}
-
-		long rowProfit(AcquisitionRecord rec)
-		{
-			if (rec.getSoldAt() != null)
-				return (long) rec.getQuantity() * (rec.getSoldAt() - rec.getBoughtAt());
-
-			if (item != null && item.getLowPrice() > 0)
-				return (long) rec.getQuantity() * (item.getLowPrice() - rec.getBoughtAt());
-
-			return 0;
-		}
-
-		@Override
-		public Object getValueAt(int r, int c)
-		{
-			AcquisitionRecord rec = item.getAcquisitions().get(r);
-			switch (c)
-			{
-				case 0: return rec.getQuantity();
-				case 1: return rec.getBoughtAt();
-				case 2: return rec.getSoldAt() == null ? "" : rec.getSoldAt();
-				case 3: return rowProfit(rec);
-				default: return "";
-			}
-		}
-
-		@Override
-		public void setValueAt(Object value, int r, int c)
-		{
-			if (item == null || r < 0 || r >= item.getAcquisitions().size())
-				return;
-
-			AcquisitionRecord rec = item.getAcquisitions().get(r);
-			String s = value == null ? "" : value.toString().trim();
-			try
-			{
-				switch (c)
-				{
-					case 0:
-						rec.setQuantity(Math.max(0, Integer.parseInt(s)));
-						break;
-					case 1:
-						rec.setBoughtAt(Math.max(0, Long.parseLong(s)));
-						break;
-					case 2:
-						if (s.isEmpty())
-							rec.setSoldAt(null);
-						else
-							rec.setSoldAt(Math.max(0, Long.parseLong(s)));
-
-						break;
-					default:
-						return;
-				}
-
-				fireTableRowsUpdated(r, r);
-				onAcquisitionsEdited.accept(detailItemId);
-			}
-			catch (NumberFormatException ex)
-			{
-				// Ignore unparseable input and keep the prior cell value.
-			}
-		}
-	}
-
-	/**
-	 * Swing table model backing the notification rules: one row per
-	 * {@link NotificationRule} with metric, timeframe, operator, and value columns.
-	 * Editing a cell mutates the rule and notifies the plugin to persist it.
-	 */
-	private class NotificationsTableModel extends AbstractTableModel
-	{
-		private final String[] COLS = {"Metric", "Time", "Op", "Value"};
-		private TrackedItem item;
-
-		void setItem(TrackedItem item)
-		{
-			this.item = item;
-			fireTableStructureChanged();
-		}
-
-		@Override
-		public int getRowCount()
-		{
-			return item == null ? 0 : item.getNotifications().size();
-		}
-
-		@Override
-		public int getColumnCount()
-		{
-			return COLS.length;
-		}
-
-		@Override
-		public String getColumnName(int c)
-		{
-			return COLS[c];
-		}
-
-		@Override
-		public boolean isCellEditable(int r, int c)
-		{
-			if (item == null || r < 0 || r >= item.getNotifications().size())
-				return false;
-
-			NotificationMetric m = item.getNotifications()
-					.get(r)
-					.getMetric();
-			switch (c)
-			{
-				case 1: return m == null || (!m.isTimeframeDisabled() && !m.locksTimeframeToMonth());
-				case 2: return m == null || !m.locksOperationToEquals();
-				default: return true;
-			}
-		}
-
-		@Override
-		public Object getValueAt(int r, int c)
-		{
-			NotificationRule rule = item.getNotifications().get(r);
-			NotificationMetric m = rule.getMetric();
-			switch (c)
-			{
-				case 0: return m;
-				case 1: return m != null && m.isTimeframeDisabled() ? "—" : rule.getTimeWindow();
-				case 2: return rule.getOperation();
-				case 3: return rule.getValue();
-				default: return "";
-			}
-		}
-
-		@Override
-		public void setValueAt(Object value, int r, int c)
-		{
-			if (item == null || r < 0 || r >= item.getNotifications().size())
-				return;
-
-			NotificationRule rule = item.getNotifications().get(r);
-			switch (c)
-			{
-				case 0:
-					if (!(value instanceof NotificationMetric) || value == rule.getMetric())
-						return;
-
-					NotificationMetric m = (NotificationMetric) value;
-					rule.setMetric(m);
-
-					if (m.locksTimeframeToMonth())
-						rule.setTimeWindow(TimeWindow.MONTH);
-					else if (m.isTimeframeDisabled())
-						rule.setTimeWindow(null);
-					else if (rule.getTimeWindow() == null)
-						rule.setTimeWindow(TimeWindow.LIVE);
-
-					if (m.locksOperationToEquals())
-						rule.setOperation(NotificationOperation.EQ);
-					else if (rule.getOperation() == null)
-						rule.setOperation(NotificationOperation.GTE);
-
-					rule.setValue(m.isCategorical() ? m.getOptions().get(0) : "");
-					fireTableRowsUpdated(r, r);
-					break;
-				case 1:
-					if (!(value instanceof TimeWindow))
-						return;
-
-					rule.setTimeWindow((TimeWindow) value);
-					break;
-				case 2:
-					if (!(value instanceof NotificationOperation))
-						return;
-
-					rule.setOperation((NotificationOperation) value);
-					break;
-				case 3:
-					applyValueEdit(rule, value == null ? "" : value.toString());
-					fireTableRowsUpdated(r, r);
-					break;
-				default:
-					return;
-			}
-
-			notifyNotificationsEdited();
-		}
-
-		/**
-		 * Normalises an edited value into the rule: categorical values are stored as
-		 * typed, while percent and numeric inputs are parsed and reformatted
-		 * (e.g. {@code "5000000"} &rarr; {@code "5m"}), ignored when unparseable.
-		 */
-		private void applyValueEdit(NotificationRule rule, String raw)
-		{
-			NotificationMetric m = rule.getMetric();
-
-			if (m == null || m.isCategorical())
-			{
-				rule.setValue(raw.trim());
-				return;
-			}
-
-			if (m.getKind() == NotificationMetric.Kind.PERCENT)
-			{
-				OptionalDouble v = NotificationRule.parsePercent(raw);
-				if (v.isPresent())
-					rule.setValue(NotificationRule.formatPercent(v.getAsDouble()));
-
-				return;
-			}
-
-			OptionalDouble v = NotificationRule.parseNumeric(raw);
-			if (v.isPresent())
-				rule.setValue(GpFormat.shortValue((long) v.getAsDouble()));
-		}
-	}
-
-	/**
-	 * Cell editor for a notification rule's value column that adapts to the row's
-	 * metric: a dropdown of allowed options for categorical metrics, or a free-text
-	 * field for numeric/percent ones.
-	 */
-	private class NotificationValueEditor extends AbstractCellEditor implements TableCellEditor
-	{
-		private final JComboBox<String> combo = new JComboBox<>();
-		private final JTextField field = new JTextField();
-		private JComponent active;
-
-		NotificationValueEditor()
-		{
-			combo.setFont(FontManager.getRunescapeSmallFont());
-			field.setFont(FontManager.getRunescapeSmallFont());
-			field.setHorizontalAlignment(SwingConstants.CENTER);
-		}
-
-		@Override
-		public Component getTableCellEditorComponent(JTable table, Object value,
-				boolean isSelected, int row, int column)
-		{
-			NotificationMetric metric = null;
-			TrackedItem t = currentItems.get(detailItemId);
-			if (t != null && row >= 0 && row < t.getNotifications().size())
-				metric = t.getNotifications()
-						.get(row)
-						.getMetric();
-
-			if (metric != null && metric.isCategorical())
-			{
-				combo.removeAllItems();
-				for (String opt : metric.getOptions())
-					combo.addItem(opt);
-
-				combo.setSelectedItem(value == null ? null : value.toString());
-				active = combo;
-			}
-			else
-			{
-				field.setText(value == null ? "" : value.toString());
-				active = field;
-			}
-
-			return active;
-		}
-
-		@Override
-		public Object getCellEditorValue()
-		{
-			if (active == combo)
-			{
-				Object sel = combo.getSelectedItem();
-				return sel == null ? "" : sel.toString();
-			}
-
-			return field.getText();
-		}
-	}
-
-	/** Cell renderer for the notifications table, applying the panel's fonts/colors and centered alignment. */
-	private static class NotifCellRenderer extends DefaultTableCellRenderer
-	{
-		NotifCellRenderer()
-		{
-			setHorizontalAlignment(SwingConstants.CENTER);
-		}
-
-		@Override
-		public Component getTableCellRendererComponent(JTable table, Object value,
-				boolean isSelected, boolean hasFocus, int row, int column)
-		{
-			super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-			setText(value == null ? "" : value.toString());
-			if (!isSelected)
-			{
-				setBackground(table.getBackground());
-				setForeground(Color.WHITE);
-			}
-
-			return this;
-		}
-	}
-
-	/** Cell renderer for the acquisitions table, coloring the profit column and formatting gp values. */
-	private class AcqCellRenderer extends DefaultTableCellRenderer
-	{
-		private final boolean profit;
-		private final boolean expanded;
-
-		AcqCellRenderer(boolean profit, boolean expanded)
-		{
-			this.profit = profit;
-			this.expanded = expanded;
-			setHorizontalAlignment(SwingConstants.CENTER);
-		}
-
-		@Override
-		public Component getTableCellRendererComponent(JTable table, Object value,
-				boolean isSelected, boolean hasFocus, int row, int column)
-		{
-			super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-			if (!(value instanceof Number))
-			{
-				setText(value == null ? "" : value.toString());
-				if (!isSelected)
-				{
-					setBackground(table.getBackground());
-					setForeground(Color.WHITE);
-				}
-
-				return this;
-			}
-
-			long v = ((Number) value).longValue();
-
-			boolean shortForm = !expanded && Math.abs(v) >= (profit ? 1000 : 10000);
-			String text = shortForm
-					? GpFormat.shortValue(v)
-					: NUMBER_FORMAT.format(v);
-			if (profit && v > 0)
-				text = "+" + text;
-
-			setText(text);
-
-			Color fg = profit ? (v > 0 ? COLOR_HIGH : v < 0 ? COLOR_LOW : Color.WHITE) : Color.WHITE;
-			setForeground(isSelected ? table.getSelectionForeground() : fg);
-
-			boolean hovered = shortForm && row == acqHoverRow && column == acqHoverCol;
-			if (isSelected)
-			{
-				setBackground(table.getSelectionBackground());
-			}
-			else if (hovered)
-			{
-				setForeground(fg);
-				setBackground(profit ? (v >= 0 ? TINT_HIGH : TINT_LOW) : TINT_VOLUME);
-			}
-			else
-			{
-				setBackground(table.getBackground());
-			}
-
-			return this;
-		}
-	}
-
-	/** A small indeterminate spinner: an orange arc that rotates while its Swing timer runs. */
-	private static final class Spinner extends JComponent
-	{
-		private static final int DIAMETER = 32;
-
-		private final Timer timer;
-		private int angle;
-
-		Spinner()
-		{
-			setPreferredSize(new Dimension(DIAMETER, DIAMETER));
-			setMaximumSize(new Dimension(DIAMETER, DIAMETER));
-			timer = new Timer(40, e ->
-			{
-				angle = (angle + 24) % 360;
-				repaint();
-			});
-		}
-
-		void start()
-		{
-			if (!timer.isRunning())
-				timer.start();
-		}
-
-		void stop()
-		{
-			timer.stop();
-		}
-
-		@Override
-		protected void paintComponent(Graphics g)
-		{
-			Graphics2D g2 = (Graphics2D) g.create();
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-			int size = Math.min(getWidth(), getHeight()) - 6;
-			int x = (getWidth() - size) / 2;
-			int y = (getHeight() - size) / 2;
-
-			g2.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-			g2.setColor(ColorScheme.MEDIUM_GRAY_COLOR);
-			g2.drawOval(x, y, size, size);
-			g2.setColor(ColorScheme.BRAND_ORANGE);
-			g2.drawArc(x, y, size, size, angle, 100);
-
-			g2.dispose();
-		}
-	}
-
-	/**
-	 * Buy/Sell pressure label of the form {@code "55% Buy (550)"} whose short-format volume
-	 * parenthetical reveals the full number in a tooltip when hovered.
-	 */
-	private static final class PressureVolumeLabel extends JLabel
-	{
-		private long volume = -1;
-
-		PressureVolumeLabel()
-		{
-			ToolTipManager.sharedInstance().registerComponent(this);
-		}
-
-		void setVolume(long volume)
-		{
-			this.volume = volume;
-		}
-
-		/**
-		 * Shows the full-volume tooltip only while the pointer is over the parenthetical,
-		 * measuring the rendered text with font metrics to find its on-screen extent.
-		 */
-		@Override
-		public String getToolTipText(MouseEvent event)
-		{
-			if (volume < 0)
-				return null;
-
-			String text = getText();
-			int open = text.indexOf('(');
-			int close = text.indexOf(')');
-			if (open < 0 || close <= open)
-				return null;
-
-			FontMetrics fm = getFontMetrics(getFont());
-			Insets insets = getInsets();
-			int avail = getWidth() - insets.left - insets.right;
-			int textWidth = fm.stringWidth(text);
-
-			int startX;
-			if (getHorizontalAlignment() == SwingConstants.RIGHT)
-				startX = insets.left + avail - textWidth;
-			else if (getHorizontalAlignment() == SwingConstants.CENTER)
-				startX = insets.left + (avail - textWidth) / 2;
-			else
-				startX = insets.left;
-
-			int parenStart = startX + fm.stringWidth(text.substring(0, open));
-			int parenEnd = startX + fm.stringWidth(text.substring(0, close + 1));
-
-			return event.getX() >= parenStart && event.getX() <= parenEnd
-					? NUMBER_FORMAT.format(volume)
-					: null;
-		}
-	}
-
-	/** Custom-painted horizontal bar split green (buy fraction, left) and red (sell fraction, right). */
-	private static final class BuySellBar extends JPanel
-	{
-		private static final Color BAR_GREEN = StockpileColors.HIGH;
-		private static final Color BAR_RED = StockpileColors.LOW;
-		private static final int BAR_H = 5;
-		private static final int BAR_ARC = 3;
-
-		/** Buy fraction 0..1, or negative for the "no data" state. */
-		private double buyFraction = -1;
-
-		BuySellBar()
-		{
-			setBackground(ColorScheme.DARKER_GRAY_COLOR);
-			setPreferredSize(new Dimension(220, BAR_H + 4));
-			setAlignmentX(Component.LEFT_ALIGNMENT);
-		}
-
-		@Override
-		public Dimension getMaximumSize()
-		{
-			return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
-		}
-
-		void setRatio(double buyFraction)
-		{
-			this.buyFraction = buyFraction;
-			repaint();
-		}
-
-		/**
-		 * Paints the bar, grey when no ratio is known. The green/red split is clipped to
-		 * the rounded bar outline so both ends stay cleanly rounded.
-		 */
-		@Override
-		protected void paintComponent(Graphics g)
-		{
-			super.paintComponent(g);
-			Graphics2D g2 = (Graphics2D) g.create();
-			try
-			{
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				int w = Math.max(1, getWidth());
-				int y = 2;
-
-				if (buyFraction < 0)
-				{
-					g2.setColor(DIVIDER_COLOR);
-					g2.fillRoundRect(0, y, w, BAR_H, BAR_ARC, BAR_ARC);
-					return;
-				}
-
-				g2.setClip(new RoundRectangle2D.Float(0, y, w, BAR_H, BAR_ARC, BAR_ARC));
-				int buyW = (int) Math.round(w * Math.max(0, Math.min(1, buyFraction)));
-				g2.setColor(BAR_GREEN);
-				g2.fillRect(0, y, buyW, BAR_H);
-				g2.setColor(BAR_RED);
-				g2.fillRect(buyW, y, w - buyW, BAR_H);
-			}
-			finally
-			{
-				g2.dispose();
-			}
-		}
-	}
-
-	/** Small custom-painted bar showing where the live price sits within its 30-day low/high range. */
-	private static final class PriceRangeBar extends JPanel
-	{
-		private static final Color RANGE_RED = StockpileColors.LOW;
-		private static final Color RANGE_GOLD = StockpileColors.AVG;
-		private static final Color RANGE_GREEN = StockpileColors.HIGH;
-		private static final int TRIANGLE_H = 9;
-		private static final int BAR_H = 5;
-		private static final int BAR_ARC = 3;
-
-		private long min;
-		private long max;
-		private long live;
-
-		PriceRangeBar()
-		{
-			setBackground(ColorScheme.DARKER_GRAY_COLOR);
-			setPreferredSize(new Dimension(220, TRIANGLE_H + 2 + BAR_H + 16));
-			setAlignmentX(Component.LEFT_ALIGNMENT);
-		}
-
-		@Override
-		public Dimension getMaximumSize()
-		{
-			return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
-		}
-
-		void setRange(long min, long max, long live)
-		{
-			this.min = min;
-			this.max = max;
-			this.live = live;
-			repaint();
-		}
-
-		/** @return the linear interpolation between two colours at {@code t} in 0..1. */
-		private static Color lerp(Color a, Color b, double t)
-		{
-			return new Color(
-					(int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),
-					(int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t),
-					(int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
-		}
-
-		/** @return the gradient colour at fraction {@code f}: red through gold (0.5) to green. */
-		private static Color colorAt(double f)
-		{
-			f = Math.max(0, Math.min(1, f));
-			if (f < 0.5)
-				return lerp(RANGE_RED, RANGE_GOLD, f / 0.5);
-
-			return lerp(RANGE_GOLD, RANGE_GREEN, (f - 0.5) / 0.5);
-		}
-
-		/**
-		 * Paints the red-to-green gradient range bar with min/max labels and a triangle
-		 * marker at the live price's position, or a grey "No data" bar when the range is
-		 * unknown. The gradient is clipped to the rounded bar outline.
-		 */
-		@Override
-		protected void paintComponent(Graphics g)
-		{
-			super.paintComponent(g);
-			Graphics2D g2 = (Graphics2D) g.create();
-			try
-			{
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				g2.setFont(FontManager.getRunescapeSmallFont());
-				FontMetrics fm = g2.getFontMetrics();
-				int w = getWidth();
-				int barW = Math.max(1, w);
-				int barY = TRIANGLE_H + 2;
-
-				boolean hasData = max > min;
-				if (!hasData)
-				{
-					g2.setColor(DIVIDER_COLOR);
-					g2.fillRoundRect(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC);
-					g2.setColor(Color.GRAY);
-					String msg = "No data";
-					g2.drawString(msg, (barW - fm.stringWidth(msg)) / 2, barY + BAR_H + fm.getAscent() + 2);
-					return;
-				}
-
-				Shape oldClip = g2.getClip();
-				g2.setClip(new RoundRectangle2D.Double(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC));
-				for (int x = 0; x < barW; x++)
-				{
-					g2.setColor(colorAt((double) x / Math.max(1, barW - 1)));
-					g2.drawLine(x, barY, x, barY + BAR_H);
-				}
-
-				g2.setClip(oldClip);
-
-				double frac = Math.max(0, Math.min(1, (double) (live - min) / (max - min)));
-				int tx = (int) Math.round(frac * (barW - 1));
-				g2.setColor(colorAt(frac));
-				int[] xs = {tx - 5, tx + 5, tx};
-				int[] ys = {0, 0, TRIANGLE_H};
-				g2.fillPolygon(xs, ys, 3);
-
-				int labelY = barY + BAR_H + fm.getAscent() + 2;
-				g2.setColor(RANGE_RED);
-				g2.drawString(NUMBER_FORMAT.format(min), 0, labelY);
-				g2.setColor(RANGE_GREEN);
-				String maxS = NUMBER_FORMAT.format(max);
-				g2.drawString(maxS, barW - fm.stringWidth(maxS), labelY);
-			}
-			finally
-			{
-				g2.dispose();
-			}
 		}
 	}
 }

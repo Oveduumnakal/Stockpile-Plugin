@@ -30,6 +30,24 @@ final class StockpileColors
 	/** Muted grey used for placeholder/secondary text and loading states. */
 	static final Color MUTED = new Color(150, 150, 150);
 
+	/** Hover-tint background behind high-price values. */
+	static final Color TINT_HIGH = new Color(35, 70, 35);
+
+	/** Hover-tint background behind low-price values. */
+	static final Color TINT_LOW = new Color(70, 35, 35);
+
+	/** Hover-tint background behind average-price values. */
+	static final Color TINT_AVG = new Color(75, 60, 25);
+
+	/** Hover-tint background behind volume values. */
+	static final Color TINT_VOLUME = new Color(55, 55, 55);
+
+	/** @return the colour as a {@code #rrggbb} hex string for inline HTML styling. */
+	static String toHex(Color c)
+	{
+		return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+	}
+
 	private StockpileColors()
 	{
 	}

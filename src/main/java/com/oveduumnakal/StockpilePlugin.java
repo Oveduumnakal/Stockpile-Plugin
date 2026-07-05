@@ -263,7 +263,7 @@ public class StockpilePlugin extends Plugin
 				this::setFavorite,
 				this::setOnOverlay,
 				this::setGroupCollapsed,
-				new StockpilePanel.CategoryActions()
+				new CategoryActions()
 				{
 					@Override
 					public void setItemCategory(int itemId, String category)
