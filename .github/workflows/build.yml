@@ -16,7 +16,23 @@ jobs:
           distribution: temurin
           java-version: 11
 
+      - uses: gradle/actions/wrapper-validation@v4
+
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build (compile, tests, style check)
+      - name: Build (compile, tests, style check, javadoc lint)
         run: ./gradlew build
+
+      - name: Deprecation report
+        run: |
+          ./gradlew compileJava --rerun-tasks > compile.log 2>&1 || true
+          {
+            echo "### Deprecation warnings"
+            if grep -qi 'deprecat' compile.log; then
+              echo '```'
+              grep -i 'deprecat' compile.log
+              echo '```'
+            else
+              echo "None 🎉"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

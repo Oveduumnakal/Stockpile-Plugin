@@ -42,6 +42,13 @@ tasks.register('checkStyleRules', Exec) {
 
 check.dependsOn checkStyleRules
 
+javadoc {
+	options.memberLevel = JavadocMemberLevel.PRIVATE
+	options.addStringOption('Xdoclint:syntax,html,reference', '-quiet')
+}
+
+check.dependsOn javadoc
+
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
