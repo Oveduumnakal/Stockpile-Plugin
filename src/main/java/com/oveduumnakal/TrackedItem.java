@@ -56,6 +56,20 @@ public class TrackedItem
 	private List<AcquisitionRecord> acquisitions = new ArrayList<>();
 	private List<NotificationRule> notifications = new ArrayList<>();
 
+	/**
+	 * Units committed to an in-flight GE sell offer: physically gone from held
+	 * containers but not yet realized, so their lots stay open (cost basis intact)
+	 * until the offer fills. Persisted so held-quantity accounting survives a relog;
+	 * legacy records default to 0 (no in-flight sale) per {@code docs/persistence.md}.
+	 */
+	private int suspendedQuantity;
+
+	/** Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). */
+	private transient int limitBought;
+
+	/** Epoch-second when the current GE buy-limit window resets, or 0 when none (transient). */
+	private transient long limitResetEpoch;
+
 	private boolean notificationsInitialized;
 
 	private TrackItemMode mode = TrackItemMode.TRACK;

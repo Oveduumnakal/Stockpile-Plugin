@@ -26,10 +26,13 @@ package com.oveduumnakal;
 
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Type;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -57,6 +60,8 @@ import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
 import net.runelite.api.GameState;
+import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
@@ -65,6 +70,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ItemDespawned;
@@ -241,6 +247,33 @@ public class StockpilePlugin extends Plugin
 	/** Matches detector claims to observed quantity deltas; see {@link SourceAttributionCore}. */
 	private final SourceAttributionCore sourceAttribution = new SourceAttributionCore();
 
+	/** Derives discrete increments from the raw GE offer stream; see {@link GeOfferTracker}. */
+	private final GeOfferTracker geOfferTracker = new GeOfferTracker();
+
+	/** Per-item FIFO of GE buy fills awaiting collection: each entry is {@code {quantity, unitPrice}}. Persisted. */
+	private final Map<Integer, Deque<long[]>> pendingGeBuys = new HashMap<>();
+
+	/** Per-item rolling GE buy-limit window: {@code {firstBuyEpochSec, boughtInWindow}}. Persisted. */
+	private final Map<Integer, long[]> geBuyLimits = new HashMap<>();
+
+	/** Units of a just-placed GE sell awaiting their placement inventory decrease (session-only). */
+	private final Map<Integer, Integer> pendingSellSuspend = new HashMap<>();
+
+	/** Units of a cancelled GE sell awaiting their return inventory increase (session-only). */
+	private final Map<Integer, Integer> pendingSellUnsuspend = new HashMap<>();
+
+	private static final Type GE_LEDGER_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
+
+	private static final Type GE_LIMITS_TYPE = new TypeToken<Map<Integer, long[]>>(){}.getType();
+
+	/** The rolling GE buy-limit window length. */
+	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
+
+	/** How often at most the GE ledger/window are rewritten to config during activity. */
+	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
+
+	private Instant lastGeStateSave;
+
 	/**
 	 * Builds the side panel (wiring its callbacks back to this plugin), registers
 	 * the nav button and overlays, restores persisted items, and kicks off the
@@ -323,6 +356,7 @@ public class StockpilePlugin extends Plugin
 		{
 			loadCategories();
 			loadPersistedItems();
+			loadGeState();
 
 			refreshPanel();
 		});
@@ -410,10 +444,14 @@ public class StockpilePlugin extends Plugin
 			priceRefreshTask = null;
 		}
 
+		persistGeState();
 		trackedItems.clear();
 		containerCounts.clear();
 		runePouchCounts.clear();
 		sourceAttribution.clear();
+		geOfferTracker.clear();
+		pendingSellSuspend.clear();
+		pendingSellUnsuspend.clear();
 		lastPriceRefresh = null;
 	}
 
@@ -1651,6 +1689,10 @@ public class StockpilePlugin extends Plugin
 				pendingItemDeltas.clear();
 				loadCategories();
 				loadPersistedItems();
+				loadGeState();
+				geOfferTracker.clear();
+				pendingSellSuspend.clear();
+				pendingSellUnsuspend.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -1708,6 +1750,292 @@ public class StockpilePlugin extends Plugin
 			int itemId = runeEnum.getIntValue(typeId);
 			runePouchCounts.merge(itemId, qty, Integer::sum);
 		}
+	}
+
+	/**
+	 * Consumes GE offer progress to price trades and track the buy limit. Buy fills are
+	 * ledgered until the items are collected; a sell's placement suspends the offered units
+	 * and its fills realize them at the true price; a cancellation restores the remainder.
+	 */
+	@Subscribe
+	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
+	{
+		GrandExchangeOffer offer = event.getOffer();
+		if (offer == null)
+			return;
+
+		GrandExchangeOfferState state = offer.getState();
+		boolean buying = state == GrandExchangeOfferState.BUYING
+				|| state == GrandExchangeOfferState.BOUGHT
+				|| state == GrandExchangeOfferState.CANCELLED_BUY;
+		boolean cancelled = state == GrandExchangeOfferState.CANCELLED_BUY
+				|| state == GrandExchangeOfferState.CANCELLED_SELL;
+		boolean empty = state == GrandExchangeOfferState.EMPTY;
+
+		GeOfferTracker.Event e = geOfferTracker.onOffer(event.getSlot(), offer.getItemId(),
+				buying, cancelled, empty, offer.getTotalQuantity(), offer.getQuantitySold(), offer.getSpent());
+		if (e != null)
+			handleGeEvent(e);
+	}
+
+	/** Applies one derived GE event: ledger a buy, suspend/realize/restore a sell, and record the buy limit. */
+	private void handleGeEvent(GeOfferTracker.Event e)
+	{
+		if (e.kind == GeOfferTracker.Kind.BUY)
+		{
+			if (e.type == GeOfferTracker.Type.FILL)
+			{
+				pendingGeBuys.computeIfAbsent(e.itemId, k -> new ArrayDeque<>())
+						.addLast(new long[]{e.quantity, e.unitPrice});
+				recordBuyLimit(e.itemId, e.quantity);
+				scheduleGeStateSave();
+			}
+
+			return;
+		}
+
+		switch (e.type)
+		{
+			case PLACED:
+				pendingSellSuspend.merge(e.itemId, e.quantity, Integer::sum);
+				break;
+			case FILL:
+				realizeSell(e.itemId, e.quantity, e.unitPrice);
+				break;
+			case CANCELLED:
+				pendingSellUnsuspend.merge(e.itemId, e.quantity, Integer::sum);
+				break;
+			default:
+				break;
+		}
+	}
+
+	/** Closes {@code qty} suspended units of a sold item at the realized GE price, then persists and refreshes. */
+	private void realizeSell(int itemId, int qty, long unitPrice)
+	{
+		TrackedItem tracked = trackedItems.get(itemId);
+		if (tracked == null)
+			return;
+
+		int realized = Math.min(qty, tracked.getSuspendedQuantity());
+		if (realized <= 0)
+			return;
+
+		closeFifo(tracked, realized, unitPrice);
+		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
+		persistTrackedItems();
+		scheduleGeStateSave();
+		refreshPanel();
+	}
+
+	/** Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. */
+	private void recordBuyLimit(int itemId, int qty)
+	{
+		long now = Instant.now().getEpochSecond();
+		long[] window = geBuyLimits.get(itemId);
+		if (window == null || now >= window[0] + BUY_LIMIT_WINDOW.getSeconds())
+			geBuyLimits.put(itemId, new long[]{now, qty});
+		else
+			window[1] += qty;
+	}
+
+		/**
+	 * Prices one item's net container delta: GE routing first (restore a cancelled sell,
+	 * drain the buy ledger, or suspend a placed sell), then the source-attribution claim,
+	 * then the classic fallback.
+	 */
+	private void applyDelta(TrackedItem tracked, int delta)
+	{
+		int itemId = tracked.getItemId();
+		if (delta > 0)
+		{
+			int remaining = delta;
+			remaining = consumeSellUnsuspend(tracked, remaining);
+			remaining = consumeBuyLedger(tracked, remaining);
+			if (remaining > 0)
+			{
+				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
+				addOpenAcquisition(tracked, remaining, a.unitPriceOr(autoAddPrice(tracked)), a.source());
+			}
+		}
+		else
+		{
+			int mag = consumeSellSuspend(tracked, -delta);
+			if (mag > 0)
+			{
+				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
+				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()));
+			}
+		}
+	}
+
+	/** Restores up to {@code qty} cancelled-sell units to held (un-suspends), returning the unconsumed remainder. */
+	private int consumeSellUnsuspend(TrackedItem tracked, int qty)
+	{
+		Integer pending = pendingSellUnsuspend.get(tracked.getItemId());
+		if (pending == null || pending <= 0)
+			return qty;
+
+		int take = Math.min(qty, Math.min(pending, tracked.getSuspendedQuantity()));
+		if (take <= 0)
+			return qty;
+
+		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - take);
+		int left = pending - take;
+		if (left > 0)
+			pendingSellUnsuspend.put(tracked.getItemId(), left);
+		else
+			pendingSellUnsuspend.remove(tracked.getItemId());
+
+		return qty - take;
+	}
+
+	/**
+	 * Consumes up to {@code qty} from the item's GE buy ledger into priced lots, returning
+	 * the unconsumed remainder.
+	 */
+	private int consumeBuyLedger(TrackedItem tracked, int qty)
+	{
+		Deque<long[]> ledger = pendingGeBuys.get(tracked.getItemId());
+		if (ledger == null || ledger.isEmpty())
+			return qty;
+
+		int remaining = qty;
+		while (remaining > 0 && !ledger.isEmpty())
+		{
+			long[] chunk = ledger.peekFirst();
+			int take = (int) Math.min(remaining, chunk[0]);
+			addOpenAcquisition(tracked, take, chunk[1], AcquisitionSource.GE_TRADE);
+			remaining -= take;
+			chunk[0] -= take;
+			if (chunk[0] <= 0)
+				ledger.removeFirst();
+		}
+
+		if (ledger.isEmpty())
+			pendingGeBuys.remove(tracked.getItemId());
+
+		scheduleGeStateSave();
+		return remaining;
+	}
+
+	/** Suspends up to {@code qty} units for a just-placed GE sell (no close), returning the unconsumed remainder. */
+	private int consumeSellSuspend(TrackedItem tracked, int qty)
+	{
+		Integer pending = pendingSellSuspend.get(tracked.getItemId());
+		if (pending == null || pending <= 0)
+			return qty;
+
+		int take = Math.min(qty, pending);
+		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() + take);
+		int left = pending - take;
+		if (left > 0)
+			pendingSellSuspend.put(tracked.getItemId(), left);
+		else
+			pendingSellSuspend.remove(tracked.getItemId());
+
+		scheduleGeStateSave();
+		return qty - take;
+	}
+
+	/**
+	 * Rewrites {@code suspendedQuantity} from the live open sell offers so offline fills or
+	 * cancels self-heal at login; released units are then re-priced by {@link #reconcileAllQuantities}.
+	 */
+	private void reconcileSuspendedFromOffers()
+	{
+		Map<Integer, Integer> openSell = new HashMap<>();
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers != null)
+		{
+			for (GrandExchangeOffer offer : offers)
+			{
+				if (offer != null && offer.getState() == GrandExchangeOfferState.SELLING)
+					openSell.merge(offer.getItemId(), offer.getTotalQuantity() - offer.getQuantitySold(), Integer::sum);
+			}
+		}
+
+		for (TrackedItem tracked : trackedItems.values())
+			tracked.setSuspendedQuantity(openSell.getOrDefault(tracked.getItemId(), 0));
+	}
+
+	/** Sets the item's transient buy-limit fields from its window, clearing them when the window has expired. */
+	private void applyBuyLimitFields(TrackedItem item)
+	{
+		long[] window = geBuyLimits.get(item.getItemId());
+		if (window == null || Instant.now().getEpochSecond() >= window[0] + BUY_LIMIT_WINDOW.getSeconds())
+		{
+			item.setLimitBought(0);
+			item.setLimitResetEpoch(0);
+			return;
+		}
+
+		item.setLimitBought((int) window[1]);
+		item.setLimitResetEpoch(window[0] + BUY_LIMIT_WINDOW.getSeconds());
+	}
+
+	/** Persists the GE buy ledger and buy-limit windows to the RS profile config. */
+	private void persistGeState()
+	{
+		Map<Integer, List<long[]>> ledger = new HashMap<>();
+		for (Map.Entry<Integer, Deque<long[]>> e : pendingGeBuys.entrySet())
+			ledger.put(e.getKey(), new ArrayList<>(e.getValue()));
+
+		lastGeStateSave = Instant.now();
+		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER,
+				gson.toJson(ledger, GE_LEDGER_TYPE));
+		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS,
+				gson.toJson(geBuyLimits, GE_LIMITS_TYPE));
+	}
+
+	/** Restores the GE buy ledger and buy-limit windows from the RS profile config, defaulting to empty. */
+	private void loadGeState()
+	{
+		pendingGeBuys.clear();
+		geBuyLimits.clear();
+
+		String ledgerJson = configManager.getRSProfileConfiguration(
+				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER);
+		if (ledgerJson != null && !ledgerJson.trim().isEmpty())
+		{
+			try
+			{
+				Map<Integer, List<long[]>> ledger = gson.fromJson(ledgerJson, GE_LEDGER_TYPE);
+				if (ledger != null)
+				{
+					for (Map.Entry<Integer, List<long[]>> e : ledger.entrySet())
+						pendingGeBuys.put(e.getKey(), new ArrayDeque<>(e.getValue()));
+				}
+			}
+			catch (JsonSyntaxException ex)
+			{
+				log.warn("Failed to parse GE buy ledger; ignoring", ex);
+			}
+		}
+
+		String limitsJson = configManager.getRSProfileConfiguration(
+				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS);
+		if (limitsJson != null && !limitsJson.trim().isEmpty())
+		{
+			try
+			{
+				Map<Integer, long[]> limits = gson.fromJson(limitsJson, GE_LIMITS_TYPE);
+				if (limits != null)
+					geBuyLimits.putAll(limits);
+			}
+			catch (JsonSyntaxException ex)
+			{
+				log.warn("Failed to parse GE buy limits; ignoring", ex);
+			}
+		}
+	}
+
+	/** Persists the GE state at most once per {@link #GE_STATE_SAVE_INTERVAL}. */
+	private void scheduleGeStateSave()
+	{
+		if (lastGeStateSave == null
+				|| Duration.between(lastGeStateSave, Instant.now()).compareTo(GE_STATE_SAVE_INTERVAL) >= 0)
+			persistGeState();
 	}
 
 	/**
@@ -1864,7 +2192,7 @@ public class StockpilePlugin extends Plugin
 				r.setQuantity(r.getQuantity() - closeQty);
 				remaining = 0;
 				if (!mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
-					records.add(i, new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice));
+					records.add(i, new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice, r.getSource()));
 			}
 		}
 	}
@@ -1895,16 +2223,7 @@ public class StockpilePlugin extends Plugin
 			if (delta == null || delta == 0)
 				continue;
 
-			SourceAttributionCore.Attribution attribution = attributeDelta(tracked.getItemId(), Math.abs(delta));
-			if (delta > 0)
-			{
-				addOpenAcquisition(tracked, delta,
-						attribution.unitPriceOr(autoAddPrice(tracked)), attribution.source());
-			}
-			else
-			{
-				closeFifo(tracked, -delta, attribution.unitPriceOr(tracked.getAvgPrice()));
-			}
+			applyDelta(tracked, delta);
 
 			tracked.setQuantity(tracked.getQuantity() + delta);
 			changed = true;
@@ -1945,6 +2264,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		syncRunePouch();
+		reconcileSuspendedFromOffers();
 
 		boolean changed = false;
 		for (TrackedItem tracked : trackedItems.values())
@@ -1956,7 +2276,8 @@ public class StockpilePlugin extends Plugin
 					+ containerCounts.values().stream()
 					.mapToInt(c -> c.getOrDefault(tracked.getItemId(), 0))
 					.sum();
-			int logDelta = total - tracked.getRecordQuantitySum();
+			int owned = total + tracked.getSuspendedQuantity();
+			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
 				addOpenAcquisition(tracked, logDelta, autoAddPrice(tracked), AcquisitionSource.UNKNOWN);
@@ -2102,6 +2423,9 @@ public class StockpilePlugin extends Plugin
 		final PriceIndicatorMode indicatorMode = pricesUpdated
 				? config.priceChangeIndicator()
 				: PriceIndicatorMode.OFF;
+		for (TrackedItem item : trackedItems.values())
+			applyBuyLimitFields(item);
+
 		final List<TrackedItem> items = new ArrayList<>(trackedItems.values());
 
 		final GameState gs = client.getGameState();

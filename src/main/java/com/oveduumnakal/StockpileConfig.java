@@ -51,6 +51,8 @@ public interface StockpileConfig extends Config
 
 	String KEY_TRACKED_ITEMS = "trackedItemIds";
 	String KEY_SOURCE_PRICING = "sourcePricing";
+	String KEY_GE_BUY_LEDGER = "geBuyLedger";
+	String KEY_GE_BUY_LIMITS = "geBuyLimits";
 	String KEY_CATEGORIES = "trackedCategories";
 
 	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";
