@@ -364,6 +364,8 @@ public class StockpilePanel extends PluginPanel
 	private PriceGraphPanel volumeGraph;
 
 	private JPanel topStack;
+	private String detailExamineText;
+	private int detailExamineWrapWidth = -1;
 	private JPanel detailSectionsHost;
 	private JPanel itemValuesSection;
 	private JPanel marketInfoSection;
@@ -3374,6 +3376,16 @@ public class StockpilePanel extends PluginPanel
 		detailSectionsHost.setAlignmentX(Component.LEFT_ALIGNMENT);
 		topStack.add(detailSectionsHost);
 
+		topStack.addComponentListener(new ComponentAdapter()
+		{
+			@Override
+			public void componentResized(ComponentEvent e)
+			{
+				if (topStack.getWidth() != detailExamineWrapWidth)
+					applyExamineWrap();
+			}
+		});
+
 		itemValuesSection = buildDetailSection("Item Current Values",
 				buildCurrentValuesBlock(icvHigh, icvLow, icvAvg, icvVolume, null));
 
@@ -5179,6 +5191,26 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
+	 * Renders the current examine text into the description label, wrapping it to the
+	 * detail card's actual laid-out width so long text wraps instead of overrunning and
+	 * being clipped by the panel edge. Falls back to a panel-width estimate before the
+	 * card has been sized.
+	 */
+	private void applyExamineWrap()
+	{
+		if (detailExamineText == null)
+			return;
+
+		int available = topStack != null ? topStack.getWidth() : 0;
+		if (available <= 0)
+			available = PluginPanel.PANEL_WIDTH - 20;
+
+		detailExamineWrapWidth = available;
+		detailDescriptionLabel.setText("<html><div style='width:" + Math.max(1, available - 4)
+				+ "px'>" + escapeHtml(detailExamineText) + "</div></html>");
+	}
+
+	/**
 	 * Fills every detail section from an item's current state: header name/icon/quantity,
 	 * item and collection values, overview grid, charts, market info (times, volatility,
 	 * liquidity, range, pressure), alch figures, notifications, and the acquisitions log.
@@ -5202,10 +5234,8 @@ public class StockpilePanel extends PluginPanel
 
 		final String examine = examineLookup == null ? null : examineLookup.apply(item.getItemId());
 		final boolean hasExamine = examine != null && !examine.isEmpty();
-		if (hasExamine)
-			detailDescriptionLabel.setText("<html><div style='width:" + (PluginPanel.PANEL_WIDTH - 40)
-					+ "px'>" + escapeHtml(examine) + "</div></html>");
-
+		detailExamineText = hasExamine ? examine : null;
+		applyExamineWrap();
 		detailDescriptionLabel.setVisible(hasExamine);
 
 		final boolean hasPrices = item.hasPrices();
