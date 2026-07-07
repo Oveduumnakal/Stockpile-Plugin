@@ -18,11 +18,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Freezes the Release-1.3-era persisted JSON shapes against the current models,
- * per the compatibility policy in {@code docs/persistence.md}: legacy data must
- * load unchanged, and every field added later must prove its safe default here.
- * The fixture strings are historical artifacts — extend the assertions, never
- * the fixtures.
+ * Freezes the Release-1.3-era persisted JSON shapes against the current models:
+ * legacy data must load unchanged, and every field added later must prove its safe
+ * default here. Where {@link PersistedSchemaSnapshotTest} guards the shape, these
+ * fixtures guard the <em>values</em> old data deserializes to. The fixture strings
+ * are historical artifacts — extend the assertions, never the fixtures.
  */
 public class PersistenceCompatTest
 {
