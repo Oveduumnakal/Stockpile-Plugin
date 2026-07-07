@@ -59,8 +59,8 @@ public class TrackedItem
 	/**
 	 * Units committed to an in-flight GE sell offer: physically gone from held
 	 * containers but not yet realized, so their lots stay open (cost basis intact)
-	 * until the offer fills. Persisted so held-quantity accounting survives a relog;
-	 * legacy records default to 0 (no in-flight sale) per {@code docs/persistence.md}.
+	 * until the offer fills. Reconciled from the live open sell offers on login;
+	 * legacy records default to 0 (no in-flight sale) — the safe additive default.
 	 */
 	private int suspendedQuantity;
 
