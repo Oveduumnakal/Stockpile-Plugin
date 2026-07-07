@@ -17,6 +17,7 @@ enum NotificationOperation { GT, GTE, LT, LTE, EQ }
 class NotificationRule {
   metric: NotificationMetric
   operation: NotificationOperation
+  repeat: boolean
   timeWindow: TimeWindow
   value: String
 }
