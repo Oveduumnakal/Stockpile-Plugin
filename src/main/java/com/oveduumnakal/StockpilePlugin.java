@@ -435,8 +435,9 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Serializable snapshot of a tracked item, stored as JSON in the RS profile config.
-	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape;
-	 * changes must follow {@code docs/persistence.md}.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
+	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
+	 * schema snapshot until it is regenerated and explained in the PR.
 	 */
 	static class PersistedItem
 	{
@@ -455,8 +456,9 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Serializable snapshot of the category definitions and special-group collapsed state.
-	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape;
-	 * changes must follow {@code docs/persistence.md}.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
+	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
+	 * schema snapshot until it is regenerated and explained in the PR.
 	 */
 	static class CategoryData
 	{
