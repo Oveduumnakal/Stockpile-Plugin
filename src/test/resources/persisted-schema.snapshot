@@ -1,0 +1,41 @@
+class AcquisitionRecord {
+  boughtAt: long
+  quantity: int
+  soldAt: Long
+}
+class CachedPrice {
+  avg: long
+  high: long
+  highTime: long
+  low: long
+  lowTime: long
+}
+class CategoryData {
+  categories: List<CategoryState>
+  favoritesCollapsed: boolean
+  uncategorizedCollapsed: boolean
+}
+class CategoryState {
+  collapsed: boolean
+  name: String
+}
+enum NotificationMetric { HIGH, LOW, AVERAGE, ITM_PROFIT, HA_PROFIT, VOLUME, DELTA_PCT, QUANTITY, VOLATILITY, LIQUIDITY, RANGE_30D }
+enum NotificationOperation { GT, GTE, LT, LTE, EQ }
+class NotificationRule {
+  metric: NotificationMetric
+  operation: NotificationOperation
+  timeWindow: TimeWindow
+  value: String
+}
+class PersistedItem {
+  acquisitions: List<AcquisitionRecord>
+  category: String
+  costBasisInitialized: boolean
+  favorite: boolean
+  itemId: int
+  notifications: List<NotificationRule>
+  notificationsInitialized: boolean
+  onOverlay: boolean
+  quantity: int
+}
+enum TimeWindow { NONE, LIVE, M5, H1, H3, H6, H12, H24, WEEK, MONTH, MONTH3, MONTH6, YEAR }

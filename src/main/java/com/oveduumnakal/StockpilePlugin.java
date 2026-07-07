@@ -447,9 +447,11 @@ public class StockpilePlugin extends Plugin
 	/**
 	 * Last-known prices for one tracked item, stored as JSON in the RS profile config
 	 * so the panel can show (staleness-dimmed) values immediately at startup instead
-	 * of placeholders until the first wiki fetch lands.
+	 * of placeholders until the first wiki fetch lands. Package-private so
+	 * {@code PersistedSchemaSnapshotTest} can guard its shape; any field change fails
+	 * the schema snapshot until it is regenerated and explained in the PR.
 	 */
-	private static class CachedPrice
+	static class CachedPrice
 	{
 		long high;
 		long low;
@@ -458,8 +460,13 @@ public class StockpilePlugin extends Plugin
 		long lowTime;
 	}
 
-	/** Serializable snapshot of a tracked item, stored as JSON in the RS profile config. */
-	private static class PersistedItem
+	/**
+	 * Serializable snapshot of a tracked item, stored as JSON in the RS profile config.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
+	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
+	 * schema snapshot until it is regenerated and explained in the PR.
+	 */
+	static class PersistedItem
 	{
 		int itemId;
 		int quantity;
@@ -474,8 +481,13 @@ public class StockpilePlugin extends Plugin
 
 	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
 
-	/** Serializable snapshot of the category definitions and special-group collapsed state. */
-	private static class CategoryData
+	/**
+	 * Serializable snapshot of the category definitions and special-group collapsed state.
+	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
+	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
+	 * schema snapshot until it is regenerated and explained in the PR.
+	 */
+	static class CategoryData
 	{
 		List<CategoryState> categories;
 		boolean favoritesCollapsed;
