@@ -16,8 +16,8 @@ import lombok.NoArgsConstructor;
  * item's cost basis and unrealized profit; once set, the lot is realized at that
  * sale price. {@code source} records how the lot entered the collection; records
  * persisted before sources existed have {@code null}, which
- * {@link #sourceOrUnknown()} maps to {@link AcquisitionSource#UNKNOWN} per
- * {@code docs/persistence.md}.
+ * {@link #sourceOrUnknown()} maps to {@link AcquisitionSource#UNKNOWN} — the safe
+ * legacy default the schema fixtures and snapshot guard.
  */
 @Data
 @NoArgsConstructor

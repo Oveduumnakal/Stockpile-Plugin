@@ -40,3 +40,24 @@ jobs:
             exit 1
           fi
           echo "Issue reference found."
+
+      - name: Check out the PR
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Schema changes are explained
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -q 'persisted-schema.snapshot'; then
+            if ! echo "$BODY" | grep -Eiq 'schema-change:'; then
+              echo "::error::This PR changes the persisted schema (persisted-schema.snapshot) but the body has no 'Schema-Change:' explanation. Add a 'Schema-Change:' line stating what changed, the legacy default, and why old data still loads."
+              exit 1
+            fi
+            echo "Schema change explained."
+          else
+            echo "No persisted-schema change."
+          fi
