@@ -296,6 +296,7 @@ public class StockpilePlugin extends Plugin
 				this::reorderTrackedItem,
 				this::setGlobalOrder,
 				this::toggleCompactView,
+				this::setSortMode,
 				this::setFavorite,
 				this::setOnOverlay,
 				this::setGroupCollapsed,
@@ -811,6 +812,12 @@ public class StockpilePlugin extends Plugin
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/** Persists the chosen sort mode; the resulting {@link ConfigChanged} rebuilds the panel. */
+	private void setSortMode(SortMode mode)
+	{
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SORT_MODE, mode);
 	}
 
 	/** Flips the persisted compact-view flag; the resulting {@link ConfigChanged} rebuilds the panel. */

@@ -70,6 +70,7 @@ public interface StockpileConfig extends Config
 	String KEY_SHOW_ITEM_PROFIT_ROW = "showItemProfitRow";
 	String KEY_STALE_PRICE_THRESHOLD = "stalePriceThresholdMinutes";
 	String KEY_COMPACT_VIEW = "compactView";
+	String KEY_SORT_MODE = "sortMode";
 	String KEY_SHOW_SCREEN_OVERLAY = "showScreenOverlay";
 	String KEY_SCREEN_OVERLAY_LAYOUT = "screenOverlayLayout";
 	String KEY_SCREEN_OVERLAY_ON_TOP = "screenOverlayOnTop";
@@ -319,6 +320,19 @@ public interface StockpileConfig extends Config
 	default boolean compactView()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SORT_MODE,
+			name = "Sort By",
+			description = "Order of the tracked items list. Any mode except Manual sorts for display only "
+					+ "and disables drag reordering. Also toggleable from the tracked list header.",
+			section = trackedItemSection,
+			position = 11
+	)
+	default SortMode sortMode()
+	{
+		return SortMode.MANUAL;
 	}
 
 	@ConfigItem(
