@@ -14,7 +14,7 @@ import javax.swing.table.AbstractTableModel;
  */
 class NotificationsTableModel extends AbstractTableModel
 {
-	private static final String[] COLS = {"Metric", "Time", "Op", "Value"};
+	private static final String[] COLS = {"Metric", "Time", "Op", "Value", "↻"};
 
 	private final Runnable notifyEdited;
 	private TrackedItem item;
@@ -48,6 +48,13 @@ class NotificationsTableModel extends AbstractTableModel
 		return COLS[c];
 	}
 
+	/** @return {@code Boolean} for the repeat column so the table renders/edits it as a checkbox. */
+	@Override
+	public Class<?> getColumnClass(int c)
+	{
+		return c == 4 ? Boolean.class : Object.class;
+	}
+
 	@Override
 	public boolean isCellEditable(int r, int c)
 	{
@@ -76,6 +83,7 @@ class NotificationsTableModel extends AbstractTableModel
 			case 1: return m != null && m.isTimeframeDisabled() ? "—" : rule.getTimeWindow();
 			case 2: return rule.getOperation();
 			case 3: return rule.getValue();
+			case 4: return rule.isRepeat();
 			default: return "";
 		}
 	}
@@ -126,6 +134,12 @@ class NotificationsTableModel extends AbstractTableModel
 			case 3:
 				applyValueEdit(rule, value == null ? "" : value.toString());
 				fireTableRowsUpdated(r, r);
+				break;
+			case 4:
+				if (!(value instanceof Boolean))
+					return;
+
+				rule.setRepeat((Boolean) value);
 				break;
 			default:
 				return;

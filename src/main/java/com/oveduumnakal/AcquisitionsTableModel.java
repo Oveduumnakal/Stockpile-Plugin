@@ -18,16 +18,22 @@ class AcquisitionsTableModel extends AbstractTableModel
 	private static final String[] COLS_FULL = {"Qty", "Bought", "Sold", "Profit"};
 	private static final String[] COLS_NO_PROFIT = {"Qty", "Bought", "Sold"};
 
+	/** Read-only column showing each lot's acquisition source; only in the expanded view. */
+	static final String SOURCE_COL = "Source";
+
 	private final StockpileConfig config;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final IntSupplier detailItemId;
+	private final boolean expanded;
 	private TrackedItem item;
 
-	AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited, IntSupplier detailItemId)
+	AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited,
+			IntSupplier detailItemId, boolean expanded)
 	{
 		this.config = config;
 		this.onAcquisitionsEdited = onAcquisitionsEdited;
 		this.detailItemId = detailItemId;
+		this.expanded = expanded;
 	}
 
 	void setItem(TrackedItem item)
@@ -36,10 +42,32 @@ class AcquisitionsTableModel extends AbstractTableModel
 		fireTableStructureChanged();
 	}
 
-	/** @return the active column set, including the profit column only when configured. */
+	/** @return the active column set: the profit column only when configured, plus a source column when expanded. */
 	private String[] cols()
 	{
-		return config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
+		String[] base = config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
+		if (!expanded)
+			return base;
+
+		String[] withSource = new String[base.length + 1];
+		System.arraycopy(base, 0, withSource, 0, base.length);
+		withSource[base.length] = SOURCE_COL;
+		return withSource;
+	}
+
+	/** @return whether column {@code c} is the read-only source column. */
+	private boolean isSourceColumn(int c)
+	{
+		return expanded && c == getColumnCount() - 1;
+	}
+
+	/** @return the source label for the lot in {@code row}, for the compact table's tooltip. */
+	String sourceLabelAt(int row)
+	{
+		if (item == null || row < 0 || row >= item.getAcquisitions().size())
+			return "";
+
+		return item.getAcquisitions().get(row).sourceOrUnknown().toString();
 	}
 
 	@Override
@@ -82,6 +110,9 @@ class AcquisitionsTableModel extends AbstractTableModel
 	public Object getValueAt(int r, int c)
 	{
 		AcquisitionRecord rec = item.getAcquisitions().get(r);
+		if (isSourceColumn(c))
+			return rec.sourceOrUnknown().toString();
+
 		switch (c)
 		{
 			case 0: return rec.getQuantity();

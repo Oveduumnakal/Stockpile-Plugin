@@ -2,7 +2,9 @@ class AcquisitionRecord {
   boughtAt: long
   quantity: int
   soldAt: Long
+  source: AcquisitionSource
 }
+enum AcquisitionSource { UNKNOWN, MANUAL, GE_TRADE, GROUND, PLAYER_TRADE, SHOP, ALCHEMY, PROCESSING, DEATH }
 class CachedPrice {
   avg: long
   high: long
@@ -24,6 +26,7 @@ enum NotificationOperation { GT, GTE, LT, LTE, EQ }
 class NotificationRule {
   metric: NotificationMetric
   operation: NotificationOperation
+  repeat: boolean
   timeWindow: TimeWindow
   value: String
 }

@@ -3264,6 +3264,49 @@ public class StockpilePanel extends PluginPanel
 		label.setToolTipText(epochSeconds > 0 ? new Date(epochSeconds * 1000L).toString() : null);
 	}
 
+	/**
+	 * Shows the Buy Limit cell as {@code used / total} when purchases have been tracked in
+	 * the current window (with a reset-countdown tooltip), the plain total when untouched,
+	 * or {@code N/A} when the item has no GE limit.
+	 */
+	private void applyBuyLimit(TrackedItem item)
+	{
+		int limit = item.getBuyLimit();
+		if (limit <= 0)
+		{
+			miBuyLimit.setText("N/A");
+			miBuyLimit.setToolTipText(null);
+			return;
+		}
+
+		if (item.getLimitResetEpoch() <= 0)
+		{
+			miBuyLimit.setText(NUMBER_FORMAT.format(limit));
+			miBuyLimit.setToolTipText(null);
+			return;
+		}
+
+		miBuyLimit.setText(NUMBER_FORMAT.format(item.getLimitBought()) + " / " + NUMBER_FORMAT.format(limit));
+		long secondsLeft = item.getLimitResetEpoch() - System.currentTimeMillis() / 1000L;
+		miBuyLimit.setToolTipText(secondsLeft > 0
+				? "Resets in " + formatDuration(secondsLeft)
+				: "Limit window reset");
+	}
+
+	/** Formats a positive second count as a compact {@code "2h 14m"} / {@code "43m"} / {@code "12s"} duration. */
+	private static String formatDuration(long seconds)
+	{
+		long h = seconds / 3600;
+		long m = (seconds % 3600) / 60;
+		if (h > 0)
+			return h + "h " + m + "m";
+
+		if (m > 0)
+			return m + "m";
+
+		return seconds + "s";
+	}
+
 	/** Resets a value label to plain text, dropping its tooltip and any hover-tint listener. */
 	private void clearItemValue(JLabel label, String text)
 	{
@@ -3417,7 +3460,7 @@ public class StockpilePanel extends PluginPanel
 
 		detailCard.add(topStack, BorderLayout.NORTH);
 
-		acquisitionsModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId);
+		acquisitionsModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId, false);
 		acquisitionsTable = new JTable(acquisitionsModel)
 		{
 			@Override
@@ -3437,15 +3480,14 @@ public class StockpilePanel extends PluginPanel
 					return null;
 
 				Object val = getValueAt(row, col);
-				if (!(val instanceof Number))
-					return null;
+				if (val instanceof Number)
+				{
+					long v = ((Number) val).longValue();
+					if (Math.abs(v) >= (col == 3 ? 1000 : 10000))
+						return acqTooltipLabel(col) + ": " + NUMBER_FORMAT.format(v);
+				}
 
-				long v = ((Number) val).longValue();
-
-				if (Math.abs(v) < (col == 3 ? 1000 : 10000))
-					return null;
-
-				return acqTooltipLabel(col) + ": " + NUMBER_FORMAT.format(v);
+				return "Source: " + acquisitionsModel.sourceLabelAt(row);
 			}
 
 			@Override
@@ -3519,7 +3561,7 @@ public class StockpilePanel extends PluginPanel
 					return;
 
 				long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-				t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+				t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 				acquisitionsModel.fireTableDataChanged();
 				acquisitionsTable.revalidate();
 				onAcquisitionsEdited.accept(detailItemId);
@@ -3554,7 +3596,7 @@ public class StockpilePanel extends PluginPanel
 				return;
 
 			long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-			t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+			t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 			acquisitionsModel.fireTableDataChanged();
 			acquisitionsTable.revalidate();
 			onAcquisitionsEdited.accept(detailItemId);
@@ -4440,7 +4482,7 @@ public class StockpilePanel extends PluginPanel
 		if (acqPopoutModel != null)
 			return;
 
-		acqPopoutModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId);
+		acqPopoutModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> detailItemId, true);
 		acqPopoutTable = new JTable(acqPopoutModel);
 		final JTable table = acqPopoutTable;
 		final AcquisitionsTableModel model = acqPopoutModel;
@@ -4556,7 +4598,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 
 		long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-		t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+		t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 		model.fireTableDataChanged();
 		table.revalidate();
 		onAcquisitionsEdited.accept(detailItemId);
@@ -4695,7 +4737,12 @@ public class StockpilePanel extends PluginPanel
 		columns.getColumn(3).setCellEditor(new NotificationValueEditor(currentItems, () -> detailItemId));
 
 		for (int i = 0; i < notificationsTable.getColumnCount(); i++)
-			columns.getColumn(i).setCellRenderer(renderer);
+		{
+			if (notificationsTable.getColumnClass(i) != Boolean.class)
+				columns.getColumn(i).setCellRenderer(renderer);
+		}
+
+		columns.getColumn(notificationsTable.getColumnCount() - 1).setMaxWidth(28);
 
 		TableCellRenderer hr = notificationsTable.getTableHeader().getDefaultRenderer();
 		if (hr instanceof DefaultTableCellRenderer)
@@ -5246,7 +5293,7 @@ public class StockpilePanel extends PluginPanel
 			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
 					item.getSeries24h(), item.getAvgPrice());
 
-		miBuyLimit.setText(item.getBuyLimit() > 0 ? NUMBER_FORMAT.format(item.getBuyLimit()) : "N/A");
+		applyBuyLimit(item);
 		long tax = geTax(item.getAvgPrice());
 		miGeTax.setText(hasPrices ? "~" + formatTotalGp(tax, full) : "—");
 		applyTradeTime(miLastBought, item.getLatestHighTime());
@@ -5655,8 +5702,6 @@ public class StockpilePanel extends PluginPanel
 		applyAcqRenderers(acquisitionsTable, acquisitionsModel, false);
 	}
 
-	private static final String[] ACQ_FULL_HEADERS = {"Quantity", "Bought Price", "Sold Price", "Profit"};
-
 	/**
 	 * Wires an acquisitions table's fonts, row height, per-column renderers/editors, and
 	 * headers for either the compact sidebar table or the expanded pop-out table.
@@ -5677,11 +5722,13 @@ public class StockpilePanel extends PluginPanel
 		for (int i = 0; i < cols; i++)
 		{
 			TableColumn col = table.getColumnModel().getColumn(i);
-			col.setCellRenderer(new AcqCellRenderer(i == 3, expanded, () -> acqHoverRow, () -> acqHoverCol));
-			if (i != 3)
+			String name = model.getColumnName(i);
+			boolean isProfit = "Profit".equals(name);
+			col.setCellRenderer(new AcqCellRenderer(isProfit, expanded, () -> acqHoverRow, () -> acqHoverCol));
+			if (i < 3)
 				col.setCellEditor(centerEditor);
 
-			col.setHeaderValue(expanded ? ACQ_FULL_HEADERS[i] : model.getColumnName(i));
+			col.setHeaderValue(expanded ? expandedAcqHeader(name) : name);
 		}
 
 		TableCellRenderer hr = table.getTableHeader().getDefaultRenderer();
@@ -5689,6 +5736,18 @@ public class StockpilePanel extends PluginPanel
 			((DefaultTableCellRenderer) hr).setHorizontalAlignment(SwingConstants.CENTER);
 
 		table.getTableHeader().repaint();
+	}
+
+	/** @return the roomy pop-out header for a compact acquisitions column name. */
+	private static String expandedAcqHeader(String compact)
+	{
+		switch (compact)
+		{
+			case "Qty": return "Quantity";
+			case "Bought": return "Bought Price";
+			case "Sold": return "Sold Price";
+			default: return compact;
+		}
 	}
 
 	/** @return the tooltip caption for an acquisitions-table column. */
