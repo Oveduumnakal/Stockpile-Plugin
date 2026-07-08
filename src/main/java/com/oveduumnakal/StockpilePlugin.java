@@ -2441,8 +2441,10 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Evaluates every item's notification rules and fires the configured notifier
-	 * for any that are met. A fired rule is one-shot: it is removed after firing.
-	 * Skipped when notifications are disabled or the user is editing them.
+	 * for any that are met. A once rule is removed after firing; a repeat rule stays
+	 * and re-arms edge-triggered — it fires again only after its condition has gone
+	 * false and come back true, and the first evaluation after a (re)load primes it
+	 * without firing. Skipped when notifications are disabled or being edited.
 	 */
 	private void evaluateNotifications()
 	{
@@ -2463,6 +2465,16 @@ public class StockpilePlugin extends Plugin
 				Boolean condition = evaluateRule(item, rule);
 				if (condition == null)
 					continue;
+
+				if (rule.isRepeat())
+				{
+					boolean fire = condition && Boolean.FALSE.equals(rule.getLastCondition());
+					rule.setLastCondition(condition);
+					if (fire)
+						notifier.notify(style, notificationText(item, rule));
+
+					continue;
+				}
 
 				if (condition)
 				{
