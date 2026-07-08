@@ -209,6 +209,8 @@ public class StockpilePanel extends PluginPanel
 	private final Function<String, String> onImportList;
 	/** Builds the acquisitions CSV for the current profile. */
 	private final Supplier<String> onExportCsv;
+	/** Supplies the portfolio value history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
+	private final Supplier<List<long[]>> onPortfolioHistory;
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -591,7 +593,8 @@ public class StockpilePanel extends PluginPanel
 			CategoryActions categoryActions,
 			Supplier<String> onExportList,
 			Function<String, String> onImportList,
-			Supplier<String> onExportCsv)
+			Supplier<String> onExportCsv,
+			Supplier<List<long[]>> onPortfolioHistory)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -615,6 +618,7 @@ public class StockpilePanel extends PluginPanel
 		this.onExportList = onExportList;
 		this.onImportList = onImportList;
 		this.onExportCsv = onExportCsv;
+		this.onPortfolioHistory = onPortfolioHistory;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -1069,8 +1073,20 @@ public class StockpilePanel extends PluginPanel
 		linksRow.add(buildFooterMenu("Feedback", feedbackMenu,
 				"Report a bug or request a feature"));
 
+		JPanel chartRow = new JPanel(new GridLayout(1, 1, 0, 0));
+		chartRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		chartRow.setBorder(new EmptyBorder(6, 0, 0, 0));
+		chartRow.add(buildFooterLink("Portfolio Chart", this::openPortfolioChart,
+				"View total tracked value over time"));
+
+		JPanel southRows = new JPanel();
+		southRows.setLayout(new BoxLayout(southRows, BoxLayout.Y_AXIS));
+		southRows.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		southRows.add(linksRow);
+		southRows.add(chartRow);
+
 		footerPanel.add(refreshRow, BorderLayout.CENTER);
-		footerPanel.add(linksRow, BorderLayout.SOUTH);
+		footerPanel.add(southRows, BorderLayout.SOUTH);
 
 		footerPanel.setVisible(false);
 		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
@@ -1384,6 +1400,14 @@ public class StockpilePanel extends PluginPanel
 	{
 		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
 		clipboard.setContents(new StringSelection(text), null);
+	}
+
+	/** Opens a pop-out with the portfolio value history chart, fed from the plugin's stored points. */
+	private void openPortfolioChart()
+	{
+		PortfolioChartPanel chart = new PortfolioChartPanel();
+		chart.setData(onPortfolioHistory.get());
+		showPopout("Portfolio Value", chart, item -> chart.repaint(), chart::repaint);
 	}
 
 	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */

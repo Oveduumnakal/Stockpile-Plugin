@@ -72,6 +72,7 @@ public interface StockpileConfig extends Config
 	String KEY_COMPACT_VIEW = "compactView";
 	String KEY_SORT_MODE = "sortMode";
 	String KEY_SORT_REVERSED = "sortReversed";
+	String KEY_PORTFOLIO_HISTORY = "portfolioHistory";
 	String KEY_SHOW_SCREEN_OVERLAY = "showScreenOverlay";
 	String KEY_SCREEN_OVERLAY_LAYOUT = "screenOverlayLayout";
 	String KEY_SCREEN_OVERLAY_ON_TOP = "screenOverlayOnTop";
