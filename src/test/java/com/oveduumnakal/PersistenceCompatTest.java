@@ -67,6 +67,8 @@ public class PersistenceCompatTest
 		assertEquals(Long.valueOf(110), runes.acquisitions.get(1).getSoldAt());
 		assertEquals(1, runes.notifications.size());
 		assertEquals(NotificationMetric.HIGH, runes.notifications.get(0).getMetric());
+		assertNull(runes.acquisitions.get(0).getSource());
+		assertEquals(AcquisitionSource.UNKNOWN, runes.acquisitions.get(0).sourceOrUnknown());
 
 		StockpilePlugin.PersistedItem whip = items.get(1);
 		assertEquals(4151, whip.itemId);

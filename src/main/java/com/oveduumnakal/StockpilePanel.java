@@ -3519,7 +3519,7 @@ public class StockpilePanel extends PluginPanel
 					return;
 
 				long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-				t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+				t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 				acquisitionsModel.fireTableDataChanged();
 				acquisitionsTable.revalidate();
 				onAcquisitionsEdited.accept(detailItemId);
@@ -3554,7 +3554,7 @@ public class StockpilePanel extends PluginPanel
 				return;
 
 			long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-			t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+			t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 			acquisitionsModel.fireTableDataChanged();
 			acquisitionsTable.revalidate();
 			onAcquisitionsEdited.accept(detailItemId);
@@ -4556,7 +4556,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 
 		long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-		t.getAcquisitions().add(new AcquisitionRecord(0, price, null));
+		t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
 		model.fireTableDataChanged();
 		table.revalidate();
 		onAcquisitionsEdited.accept(detailItemId);

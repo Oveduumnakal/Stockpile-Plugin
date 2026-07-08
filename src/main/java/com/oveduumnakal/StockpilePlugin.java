@@ -238,6 +238,9 @@ public class StockpilePlugin extends Plugin
 
 	private volatile boolean mappingsLoaded;
 
+	/** Matches detector claims to observed quantity deltas; see {@link SourceAttributionCore}. */
+	private final SourceAttributionCore sourceAttribution = new SourceAttributionCore();
+
 	/**
 	 * Builds the side panel (wiring its callbacks back to this plugin), registers
 	 * the nav button and overlays, restores persisted items, and kicks off the
@@ -410,6 +413,7 @@ public class StockpilePlugin extends Plugin
 		trackedItems.clear();
 		containerCounts.clear();
 		runePouchCounts.clear();
+		sourceAttribution.clear();
 		lastPriceRefresh = null;
 	}
 
@@ -1129,7 +1133,8 @@ public class StockpilePlugin extends Plugin
 				if (!item.isCostBasisInitialized())
 				{
 					if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
-						addOpenAcquisition(item, item.getQuantity(), autoAddPrice(item));
+						addOpenAcquisition(item, item.getQuantity(), autoAddPrice(item),
+								AcquisitionSource.UNKNOWN);
 
 					item.setCostBasisInitialized(true);
 					persistTrackedItems();
@@ -1413,6 +1418,7 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
+		sourceAttribution.expire(client.getTickCount());
 		if (pendingQuantitySync)
 		{
 			pendingQuantitySync = false;
@@ -1706,6 +1712,19 @@ public class StockpilePlugin extends Plugin
 		}
 	}
 
+	/**
+	 * Attributes a quantity change against the open detector claims, honouring the
+	 * Source-Based Pricing kill switch: when disabled, everything is
+	 * {@link AcquisitionSource#UNKNOWN} and priced by the classic fallbacks.
+	 */
+	private SourceAttributionCore.Attribution attributeDelta(int itemId, int quantity)
+	{
+		if (!config.sourcePricing())
+			return SourceAttributionCore.Attribution.UNKNOWN;
+
+		return sourceAttribution.attribute(itemId, quantity, client.getTickCount());
+	}
+
 	/** @return the cost-basis price to seed an auto-added lot with, per the configured {@link AutoAddMode}. */
 	private long autoAddPrice(TrackedItem tracked)
 	{
@@ -1731,7 +1750,7 @@ public class StockpilePlugin extends Plugin
 	 * the same price, which a re-acquire should cancel), then merges into an
 	 * existing open lot at the same price, or appends a new lot.
 	 */
-	private void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt)
+	private void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)
 	{
 		if (qty <= 0)
 			return;
@@ -1757,14 +1776,14 @@ public class StockpilePlugin extends Plugin
 
 		for (AcquisitionRecord r : records)
 		{
-			if (r.getSoldAt() == null && r.getBoughtAt() == boughtAt)
+			if (r.getSoldAt() == null && r.getBoughtAt() == boughtAt && r.sourceOrUnknown() == source)
 			{
 				r.setQuantity(r.getQuantity() + qty);
 				return;
 			}
 		}
 
-		records.add(new AcquisitionRecord(qty, boughtAt, null));
+		records.add(new AcquisitionRecord(qty, boughtAt, null, source));
 	}
 
 	/**
@@ -1878,10 +1897,16 @@ public class StockpilePlugin extends Plugin
 			if (delta == null || delta == 0)
 				continue;
 
+			SourceAttributionCore.Attribution attribution = attributeDelta(tracked.getItemId(), Math.abs(delta));
 			if (delta > 0)
-				addOpenAcquisition(tracked, delta, autoAddPrice(tracked));
+			{
+				addOpenAcquisition(tracked, delta,
+						attribution.unitPriceOr(autoAddPrice(tracked)), attribution.source());
+			}
 			else
-				closeFifo(tracked, -delta, tracked.getAvgPrice());
+			{
+				closeFifo(tracked, -delta, attribution.unitPriceOr(tracked.getAvgPrice()));
+			}
 
 			tracked.setQuantity(tracked.getQuantity() + delta);
 			changed = true;
@@ -1936,7 +1961,7 @@ public class StockpilePlugin extends Plugin
 			int logDelta = total - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
-				addOpenAcquisition(tracked, logDelta, autoAddPrice(tracked));
+				addOpenAcquisition(tracked, logDelta, autoAddPrice(tracked), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
 			else if (logDelta < 0)
