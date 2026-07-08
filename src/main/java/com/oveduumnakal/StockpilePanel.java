@@ -3264,6 +3264,49 @@ public class StockpilePanel extends PluginPanel
 		label.setToolTipText(epochSeconds > 0 ? new Date(epochSeconds * 1000L).toString() : null);
 	}
 
+	/**
+	 * Shows the Buy Limit cell as {@code used / total} when purchases have been tracked in
+	 * the current window (with a reset-countdown tooltip), the plain total when untouched,
+	 * or {@code N/A} when the item has no GE limit.
+	 */
+	private void applyBuyLimit(TrackedItem item)
+	{
+		int limit = item.getBuyLimit();
+		if (limit <= 0)
+		{
+			miBuyLimit.setText("N/A");
+			miBuyLimit.setToolTipText(null);
+			return;
+		}
+
+		if (item.getLimitResetEpoch() <= 0)
+		{
+			miBuyLimit.setText(NUMBER_FORMAT.format(limit));
+			miBuyLimit.setToolTipText(null);
+			return;
+		}
+
+		miBuyLimit.setText(NUMBER_FORMAT.format(item.getLimitBought()) + " / " + NUMBER_FORMAT.format(limit));
+		long secondsLeft = item.getLimitResetEpoch() - System.currentTimeMillis() / 1000L;
+		miBuyLimit.setToolTipText(secondsLeft > 0
+				? "Resets in " + formatDuration(secondsLeft)
+				: "Limit window reset");
+	}
+
+	/** Formats a positive second count as a compact {@code "2h 14m"} / {@code "43m"} / {@code "12s"} duration. */
+	private static String formatDuration(long seconds)
+	{
+		long h = seconds / 3600;
+		long m = (seconds % 3600) / 60;
+		if (h > 0)
+			return h + "h " + m + "m";
+
+		if (m > 0)
+			return m + "m";
+
+		return seconds + "s";
+	}
+
 	/** Resets a value label to plain text, dropping its tooltip and any hover-tint listener. */
 	private void clearItemValue(JLabel label, String text)
 	{
@@ -5246,7 +5289,7 @@ public class StockpilePanel extends PluginPanel
 			volumeGraph.setData(item.getSeries5m(), item.getSeries1h(), item.getSeries6h(),
 					item.getSeries24h(), item.getAvgPrice());
 
-		miBuyLimit.setText(item.getBuyLimit() > 0 ? NUMBER_FORMAT.format(item.getBuyLimit()) : "N/A");
+		applyBuyLimit(item);
 		long tax = geTax(item.getAvgPrice());
 		miGeTax.setText(hasPrices ? "~" + formatTotalGp(tax, full) : "—");
 		applyTradeTime(miLastBought, item.getLatestHighTime());

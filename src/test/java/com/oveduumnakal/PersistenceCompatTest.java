@@ -78,6 +78,14 @@ public class PersistenceCompatTest
 	}
 
 	@Test
+	public void legacyTrackedItemHasNoSuspendedQuantity()
+	{
+		TrackedItem legacy = GSON.fromJson(
+				"{\"itemId\":560,\"quantity\":100,\"acquisitions\":[]}", TrackedItem.class);
+		assertEquals(0, legacy.getSuspendedQuantity());
+	}
+
+	@Test
 	public void legacyCategoriesLoadUnchanged()
 	{
 		StockpilePlugin.CategoryData data = GSON.fromJson(CATEGORIES_1_3, StockpilePlugin.CategoryData.class);
