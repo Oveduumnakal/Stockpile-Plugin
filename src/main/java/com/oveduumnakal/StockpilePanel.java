@@ -2374,12 +2374,17 @@ public class StockpilePanel extends PluginPanel
 		JButton downBtn = new JButton("↓");
 		downBtn.addActionListener(e -> moveCategoryInDialog(list, model, 1));
 
+		JButton autoBtn = new JButton("Auto");
+		autoBtn.setToolTipText("Auto-categorize tracked items by their characteristics");
+		autoBtn.addActionListener(e -> autoCategorizeFromDialog(dialog));
+
 		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
 		actions.add(newBtn);
 		actions.add(renameBtn);
 		actions.add(deleteBtn);
 		actions.add(upBtn);
 		actions.add(downBtn);
+		actions.add(autoBtn);
 
 		JScrollPane scroll = new JScrollPane(list);
 		scroll.setPreferredSize(new Dimension(220, 200));
@@ -2393,6 +2398,27 @@ public class StockpilePanel extends PluginPanel
 		dialog.pack();
 		dialog.setLocationRelativeTo(this);
 		dialog.setVisible(true);
+	}
+
+	/**
+	 * Prompts for the auto-categorize scope (uncategorized only vs. everything), runs it via
+	 * {@link #categoryActions}, reports the result, and closes the dialog so it reopens with the
+	 * freshly generated categories.
+	 */
+	private void autoCategorizeFromDialog(JDialog dialog)
+	{
+		Object[] options = {"Only uncategorized", "Re-categorize all", "Cancel"};
+		int choice = JOptionPane.showOptionDialog(dialog,
+				"Assign tracked items to categories based on their names?\n"
+						+ "\"Only uncategorized\" keeps your manual assignments.",
+				"Auto-categorize", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+				null, options, options[0]);
+		if (choice != 0 && choice != 1)
+			return;
+
+		String result = categoryActions.autoCategorize(choice == 1);
+		JOptionPane.showMessageDialog(dialog, result, "Auto-categorize", JOptionPane.INFORMATION_MESSAGE);
+		dialog.dispose();
 	}
 
 	/** Moves the selected dialog category by {@code delta} and forwards the new index to the plugin. */

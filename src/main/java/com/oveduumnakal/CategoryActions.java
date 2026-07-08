@@ -16,4 +16,13 @@ public interface CategoryActions
 	void delete(String name);
 
 	void reorder(String name, int targetIndex);
+
+	/**
+	 * Auto-assigns tracked items to generated categories from their names.
+	 *
+	 * @param includeCategorized when {@code true} also re-categorizes items already in a
+	 *                           category; otherwise only uncategorized items are touched
+	 * @return a user-facing summary of how many items were categorized
+	 */
+	String autoCategorize(boolean includeCategorized);
 }

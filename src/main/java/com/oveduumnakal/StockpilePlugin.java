@@ -354,6 +354,12 @@ public class StockpilePlugin extends Plugin
 					{
 						reorderCategory(name, targetIndex);
 					}
+
+					@Override
+					public String autoCategorize(boolean includeCategorized)
+					{
+						return StockpilePlugin.this.autoCategorize(includeCategorized);
+					}
 				}
 		);
 
@@ -950,6 +956,63 @@ public class StockpilePlugin extends Plugin
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/**
+	 * Auto-assigns tracked items to name-derived categories (see {@link ItemCategoryClassifier}),
+	 * creating any missing categories. Non-destructive unless {@code includeCategorized} is set:
+	 * by default only uncategorized items are touched, so manual assignments are preserved. The
+	 * mutation runs on the client thread; the returned message reports the outcome.
+	 *
+	 * @return a user-facing summary of how many items were categorized
+	 */
+	String autoCategorize(boolean includeCategorized)
+	{
+		long willChange = trackedItems.values().stream()
+				.filter(t -> inAutoCategorizeScope(t, includeCategorized))
+				.filter(t -> !ItemCategoryClassifier.classify(t.getName()).equals(t.getCategory()))
+				.count();
+
+		clientThread.invokeLater(() -> applyAutoCategorize(includeCategorized));
+
+		if (willChange == 0)
+			return "Nothing to categorize — everything already matches.";
+
+		return "Auto-categorized " + willChange + " item(s).";
+	}
+
+	/** @return whether the item is in scope: always when re-categorizing, otherwise only when uncategorized. */
+	private boolean inAutoCategorizeScope(TrackedItem item, boolean includeCategorized)
+	{
+		return includeCategorized || item.getCategory() == null || item.getCategory().trim().isEmpty();
+	}
+
+	/** Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. */
+	private void applyAutoCategorize(boolean includeCategorized)
+	{
+		boolean changed = false;
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (!inAutoCategorizeScope(tracked, includeCategorized))
+				continue;
+
+			String target = ItemCategoryClassifier.classify(tracked.getName());
+			if (target.equals(tracked.getCategory()))
+				continue;
+
+			if (categories.stream().noneMatch(c -> c.getName().equalsIgnoreCase(target)))
+				categories.add(new CategoryState(target, false));
+
+			tracked.setCategory(target);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			persistCategories();
+			persistTrackedItems();
+			refreshPanel();
+		}
 	}
 
 	/** Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes. */
