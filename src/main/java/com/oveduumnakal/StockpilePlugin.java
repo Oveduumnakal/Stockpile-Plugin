@@ -94,6 +94,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -1858,6 +1859,13 @@ public class StockpilePlugin extends Plugin
 			default:
 				break;
 		}
+	}
+
+	/** Resets the session baseline when the RS profile (account) changes, so stats restart per account. */
+	@Subscribe
+	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
+	{
+		SwingUtilities.invokeLater(panel::clearSessionBaseline);
 	}
 
 	/**
