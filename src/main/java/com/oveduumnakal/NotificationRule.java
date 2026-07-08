@@ -27,6 +27,17 @@ public class NotificationRule
 	private NotificationOperation operation;
 	private String value = "";
 
+	/** Whether the rule re-arms after firing (repeat) instead of being removed (once). */
+	private boolean repeat;
+
+	/**
+	 * The condition's result at the previous evaluation, used for edge-triggered
+	 * re-arming of repeat rules; {@code null} until first evaluated after a (re)load,
+	 * so a standing-true condition doesn't re-fire on every login. Transient: never
+	 * persisted.
+	 */
+	private transient Boolean lastCondition;
+
 	/**
 	 * Parses a numeric threshold, accepting commas and a k/m/b suffix
 	 * (e.g. {@code "1,500"}, {@code "5m"} &rarr; 5,000,000).

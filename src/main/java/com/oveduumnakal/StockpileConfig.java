@@ -50,6 +50,10 @@ public interface StockpileConfig extends Config
 	String GROUP = "stockpile";
 
 	String KEY_TRACKED_ITEMS = "trackedItemIds";
+	String KEY_PRICE_CACHE = "priceCache";
+	String KEY_SOURCE_PRICING = "sourcePricing";
+	String KEY_GE_BUY_LEDGER = "geBuyLedger";
+	String KEY_GE_BUY_LIMITS = "geBuyLimits";
 	String KEY_CATEGORIES = "trackedCategories";
 
 	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";
@@ -613,6 +617,20 @@ public interface StockpileConfig extends Config
 			position = 0
 	)
 	default boolean addContextMenuOption()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SOURCE_PRICING,
+			name = "Source-Based Pricing",
+			description = "Price quantity changes by how they occurred (GE offers, pickups, shops, alchemy...) "
+					+ "as those detectors arrive. Off restores classic pricing: the Auto Add price for "
+					+ "additions and the average price for removals.",
+			section = trackingSection,
+			position = 6
+	)
+	default boolean sourcePricing()
 	{
 		return true;
 	}
