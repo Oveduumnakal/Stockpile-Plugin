@@ -52,6 +52,7 @@ public class PersistedSchemaSnapshotTest
 	private static final Class<?>[] ROOTS = {
 			StockpilePlugin.PersistedItem.class,
 			StockpilePlugin.CategoryData.class,
+			StockpilePlugin.CachedPrice.class,
 	};
 
 	@Test

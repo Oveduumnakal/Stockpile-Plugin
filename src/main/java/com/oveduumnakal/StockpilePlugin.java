@@ -359,6 +359,7 @@ public class StockpilePlugin extends Plugin
 			loadGeState();
 
 			refreshPanel();
+			clientThread.invokeLater(this::hydratePriceCache);
 		});
 		executor.execute(this::fetchItemMappings);
 		scheduleRefresh();
@@ -438,6 +439,7 @@ public class StockpilePlugin extends Plugin
 		groundItems.clear();
 		clientThread.invokeLater(this::hideGeButton);
 		currentGeItem = -1;
+		persistPriceCache();
 		if (priceRefreshTask != null)
 		{
 			priceRefreshTask.cancel(false);
@@ -474,6 +476,30 @@ public class StockpilePlugin extends Plugin
 	}
 
 	private static final Type PERSIST_TYPE = new TypeToken<List<PersistedItem>>(){}.getType();
+
+	private static final Type PRICE_CACHE_TYPE = new TypeToken<Map<Integer, CachedPrice>>(){}.getType();
+
+	/** How often at most the price cache is rewritten to config during regular refreshes. */
+	private static final Duration PRICE_CACHE_SAVE_INTERVAL = Duration.ofMinutes(5);
+
+	/** When the price cache was last written, to throttle per-refresh saves. */
+	private Instant lastPriceCacheSave;
+
+	/**
+	 * Last-known prices for one tracked item, stored as JSON in the RS profile config
+	 * so the panel can show (staleness-dimmed) values immediately at startup instead
+	 * of placeholders until the first wiki fetch lands. Package-private so
+	 * {@code PersistedSchemaSnapshotTest} can guard its shape; any field change fails
+	 * the schema snapshot until it is regenerated and explained in the PR.
+	 */
+	static class CachedPrice
+	{
+		long high;
+		long low;
+		long avg;
+		long highTime;
+		long lowTime;
+	}
 
 	/**
 	 * Serializable snapshot of a tracked item, stored as JSON in the RS profile config.
@@ -1198,6 +1224,10 @@ public class StockpilePlugin extends Plugin
 		}
 
 		lastPriceRefresh = Instant.now();
+		if (lastPriceCacheSave == null
+				|| Duration.between(lastPriceCacheSave, Instant.now()).compareTo(PRICE_CACHE_SAVE_INTERVAL) >= 0)
+			persistPriceCache();
+
 		evaluateNotifications();
 		refreshPanel(true);
 
@@ -1216,6 +1246,83 @@ public class StockpilePlugin extends Plugin
 		if (previewItem != null && previewItem.getItemId() == detailId
 				&& previewItem.isTradeable() && previewItem.hasPrices())
 			requestDetailData(previewItem.getItemId());
+	}
+
+	/**
+	 * Writes every priced tracked item's current prices to the RS profile config.
+	 * Called throttled from refreshes and unconditionally at shutdown.
+	 */
+	private void persistPriceCache()
+	{
+		Map<Integer, CachedPrice> cache = new HashMap<>();
+		for (TrackedItem item : trackedItems.values())
+		{
+			if (!item.hasPrices())
+				continue;
+
+			CachedPrice p = new CachedPrice();
+			p.high = item.getHighPrice();
+			p.low = item.getLowPrice();
+			p.avg = item.getAvgPrice();
+			p.highTime = item.getLatestHighTime();
+			p.lowTime = item.getLatestLowTime();
+			cache.put(item.getItemId(), p);
+		}
+
+		if (cache.isEmpty())
+			return;
+
+		lastPriceCacheSave = Instant.now();
+		configManager.setRSProfileConfiguration(
+				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE, gson.toJson(cache, PRICE_CACHE_TYPE));
+	}
+
+	/**
+	 * Hydrates tracked items from the persisted price cache so the panel shows
+	 * last-known values (dimmed by the existing staleness treatment once their trade
+	 * times age past the threshold) instead of placeholders. Live fetches simply
+	 * overwrite these; items that already have prices are never touched. Runs on the
+	 * client thread after the persisted items have been restored.
+	 */
+	private void hydratePriceCache()
+	{
+		String saved = configManager.getRSProfileConfiguration(
+				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE);
+		if (saved == null || saved.trim().isEmpty())
+			return;
+
+		Map<Integer, CachedPrice> cache;
+		try
+		{
+			cache = gson.fromJson(saved, PRICE_CACHE_TYPE);
+		}
+		catch (JsonSyntaxException e)
+		{
+			log.warn("Failed to parse persisted price cache; ignoring", e);
+			return;
+		}
+
+		if (cache == null || cache.isEmpty())
+			return;
+
+		boolean hydrated = false;
+		for (Map.Entry<Integer, CachedPrice> entry : cache.entrySet())
+		{
+			TrackedItem item = trackedItems.get(entry.getKey());
+			if (item == null || item.hasPrices())
+				continue;
+
+			CachedPrice p = entry.getValue();
+			item.setHighPrice(p.high);
+			item.setLowPrice(p.low);
+			item.setAvgPrice(p.avg);
+			item.setLatestHighTime(p.highTime);
+			item.setLatestLowTime(p.lowTime);
+			hydrated = true;
+		}
+
+		if (hydrated)
+			refreshPanel();
 	}
 
 	/**
