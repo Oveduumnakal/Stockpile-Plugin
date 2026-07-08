@@ -45,6 +45,9 @@ import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -77,7 +80,9 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -197,6 +202,12 @@ public class StockpilePanel extends PluginPanel
 	private final BiConsumer<String, Boolean> onSetGroupCollapsed;
 	/** Category create/rename/delete/reorder and per-item assignment operations. */
 	private final CategoryActions categoryActions;
+	/** Builds the shareable tracked-list token for the current profile. */
+	private final Supplier<String> onExportList;
+	/** Imports a tracked-list token (merge, non-destructive); returns a user-facing result message. */
+	private final Function<String, String> onImportList;
+	/** Builds the acquisitions CSV for the current profile. */
+	private final Supplier<String> onExportCsv;
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -576,7 +587,10 @@ public class StockpilePanel extends PluginPanel
 			BiConsumer<Integer, Boolean> onSetFavorite,
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
-			CategoryActions categoryActions)
+			CategoryActions categoryActions,
+			Supplier<String> onExportList,
+			Function<String, String> onImportList,
+			Supplier<String> onExportCsv)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -597,6 +611,9 @@ public class StockpilePanel extends PluginPanel
 		this.onSetOnOverlay = onSetOnOverlay;
 		this.onSetGroupCollapsed = onSetGroupCollapsed;
 		this.categoryActions = categoryActions;
+		this.onExportList = onExportList;
+		this.onImportList = onImportList;
+		this.onExportCsv = onExportCsv;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -1037,8 +1054,24 @@ public class StockpilePanel extends PluginPanel
 		linksRow.add(buildFooterLink("Request Feature", this::openRequestFeatureForm,
 				"Request a feature — fill it in here, then submit on GitHub"));
 
+		JPanel dataRow = new JPanel(new GridLayout(1, 3, 6, 0));
+		dataRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		dataRow.setBorder(new EmptyBorder(6, 0, 0, 0));
+		dataRow.add(buildFooterLink("Export List", this::exportTrackedList,
+				"Copy a shareable code for your tracked list to the clipboard"));
+		dataRow.add(buildFooterLink("Import List", this::importTrackedList,
+				"Paste a tracked-list code to merge it into this profile"));
+		dataRow.add(buildFooterLink("Export CSV", this::exportAcquisitionsCsv,
+				"Copy the acquisitions log as CSV to the clipboard"));
+
+		JPanel southRows = new JPanel();
+		southRows.setLayout(new BoxLayout(southRows, BoxLayout.Y_AXIS));
+		southRows.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		southRows.add(linksRow);
+		southRows.add(dataRow);
+
 		footerPanel.add(refreshRow, BorderLayout.CENTER);
-		footerPanel.add(linksRow, BorderLayout.SOUTH);
+		footerPanel.add(southRows, BorderLayout.SOUTH);
 
 		footerPanel.setVisible(false);
 		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
@@ -1277,6 +1310,53 @@ public class StockpilePanel extends PluginPanel
 		button.addActionListener(e -> onClick.run());
 
 		return button;
+	}
+
+	/** Copies the shareable tracked-list code to the clipboard. */
+	private void exportTrackedList()
+	{
+		String token = onExportList.get();
+		if (token == null || token.isEmpty())
+		{
+			JOptionPane.showMessageDialog(this, "Nothing tracked to export.", "Export List",
+					JOptionPane.INFORMATION_MESSAGE);
+			return;
+		}
+
+		copyToClipboard(token);
+		JOptionPane.showMessageDialog(this, "Tracked-list code copied to the clipboard.", "Export List",
+				JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	/** Prompts for a tracked-list code and merges it into the current profile. */
+	private void importTrackedList()
+	{
+		JTextArea input = new JTextArea(5, 24);
+		input.setLineWrap(true);
+		JScrollPane scroll = new JScrollPane(input);
+
+		int choice = JOptionPane.showConfirmDialog(this, scroll, "Paste tracked-list code",
+				JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+		if (choice != JOptionPane.OK_OPTION)
+			return;
+
+		String result = onImportList.apply(input.getText());
+		JOptionPane.showMessageDialog(this, result, "Import List", JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	/** Copies the acquisitions log as CSV to the clipboard. */
+	private void exportAcquisitionsCsv()
+	{
+		String csv = onExportCsv.get();
+		copyToClipboard(csv);
+		JOptionPane.showMessageDialog(this, "Acquisitions CSV copied to the clipboard.", "Export CSV",
+				JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	private void copyToClipboard(String text)
+	{
+		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+		clipboard.setContents(new StringSelection(text), null);
 	}
 
 	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */

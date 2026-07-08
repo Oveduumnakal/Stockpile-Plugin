@@ -454,7 +454,10 @@ public class StockpilePlugin extends Plugin
 					{
 						return StockpilePlugin.this.autoCategorize(includeCategorized);
 					}
-				}
+				},
+				this::buildShareToken,
+				this::importTrackedList,
+				this::buildAcquisitionsCsv
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
@@ -939,6 +942,110 @@ public class StockpilePlugin extends Plugin
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/** @return a shareable code for the current tracked list (ids, modes, categories, favorites), or "" when empty. */
+	String buildShareToken()
+	{
+		List<PortfolioShareCodec.Entry> entries = trackedItems.values().stream()
+				.map(t -> new PortfolioShareCodec.Entry(t.getItemId(), t.getMode(), t.getCategory(), t.isFavorite()))
+				.collect(Collectors.toList());
+		if (entries.isEmpty())
+			return "";
+
+		return new PortfolioShareCodec(gson)
+				.encode(new PortfolioShareCodec.Snapshot(1, entries, new ArrayList<>(categories)));
+	}
+
+	/**
+	 * Merges a shared tracked-list code into the current profile: adds items that
+	 * aren't already tracked (with their mode, category, and favorite flag) plus any
+	 * missing categories they reference. Non-destructive — existing items are left
+	 * untouched. The merge runs on the client thread; the returned message reports the
+	 * outcome immediately.
+	 *
+	 * @return a user-facing summary of what was imported
+	 */
+	String importTrackedList(String token)
+	{
+		PortfolioShareCodec.Snapshot snapshot = new PortfolioShareCodec(gson).decode(token);
+		if (snapshot == null || snapshot.getItems() == null)
+			return "Couldn't read that code — make sure you pasted all of it.";
+
+		List<PortfolioShareCodec.Entry> incoming = new ArrayList<>(snapshot.getItems());
+		List<CategoryState> incomingCategories = snapshot.getCategories() != null
+				? new ArrayList<>(snapshot.getCategories())
+				: new ArrayList<>();
+
+		long fresh = incoming.stream().filter(e -> !trackedItems.containsKey(e.getId())).count();
+		long skipped = incoming.size() - fresh;
+
+		clientThread.invokeLater(() -> mergeImportedList(incoming, incomingCategories));
+
+		if (fresh == 0)
+			return "Nothing new — all " + skipped + " item(s) are already tracked.";
+
+		return "Imported " + fresh + " item(s)" + (skipped > 0 ? ", skipped " + skipped + " already tracked." : ".");
+	}
+
+	/** Applies a decoded tracked-list import on the client thread: categories first, then new items. */
+	private void mergeImportedList(List<PortfolioShareCodec.Entry> entries, List<CategoryState> importedCategories)
+	{
+		importedCategories.stream()
+				.filter(c -> c != null && c.getName() != null && !c.getName().trim().isEmpty())
+				.forEach(c -> ensureCategory(c.getName().trim(), c.isCollapsed()));
+
+		boolean changed = false;
+		for (PortfolioShareCodec.Entry entry : entries)
+		{
+			if (trackedItems.containsKey(entry.getId()))
+				continue;
+
+			var composition = itemManager.getItemComposition(entry.getId());
+			if (composition == null)
+				continue;
+
+			TrackedItem tracked = new TrackedItem(entry.getId(), composition.getName());
+			tracked.setTradeable(composition.isTradeable());
+			resolveTradeable(tracked);
+			tracked.setMode(entry.getMode() == null ? TrackItemMode.TRACK : entry.getMode());
+			tracked.setFavorite(entry.isFavorite());
+			if (entry.getCategory() != null && !entry.getCategory().trim().isEmpty())
+			{
+				String category = entry.getCategory().trim();
+				ensureCategory(category, false);
+				tracked.setCategory(category);
+			}
+
+			trackedItems.put(entry.getId(), tracked);
+			if (tracked.getMode() == TrackItemMode.TRACK)
+				syncQuantitiesForItem(tracked);
+
+			changed = true;
+		}
+
+		if (changed)
+		{
+			persistCategories();
+			persistTrackedItems();
+			refreshPanel();
+			refreshGePrices();
+		}
+	}
+
+	/** Adds a category by name if one with that name doesn't already exist (case-insensitive). */
+	private void ensureCategory(String name, boolean collapsed)
+	{
+		boolean exists = categories.stream()
+				.anyMatch(c -> c.getName() != null && c.getName().equalsIgnoreCase(name));
+		if (!exists)
+			categories.add(new CategoryState(name, collapsed));
+	}
+
+	/** @return the acquisitions log of all tracked items as CSV (see {@link AcquisitionCsvExporter}). */
+	String buildAcquisitionsCsv()
+	{
+		return AcquisitionCsvExporter.toCsv(new ArrayList<>(trackedItems.values()));
 	}
 
 	/**
