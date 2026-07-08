@@ -11,8 +11,12 @@ import java.util.Comparator;
  * order; every other mode sorts for display only (within each group when
  * grouping is active) and disables drag reordering. Value-like modes sort
  * descending; items missing the sort key sort last.
+ *
+ * <p>Public because it is the return type of a {@code @ConfigItem} accessor: the
+ * RuneLite config proxy lives in another module and must be able to access it, or
+ * the plugin fails to start with an {@link IllegalAccessError}.
  */
-enum SortMode
+public enum SortMode
 {
 	MANUAL("Manual"),
 	NAME("Name"),
