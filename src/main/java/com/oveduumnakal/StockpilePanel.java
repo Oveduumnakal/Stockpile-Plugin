@@ -183,6 +183,8 @@ public class StockpilePanel extends PluginPanel
 	/** Flips the persisted compact-view config flag; the resulting config change rebuilds the list. */
 	private final Runnable onToggleCompactView;
 	private final Consumer<SortMode> onSetSortMode;
+	/** Flips the persisted sort-direction flag; the resulting config change rebuilds the list. */
+	private final Runnable onToggleSortDirection;
 	/** Favorite toggle callback: (itemId, favorite) — pins/unpins an item to the top Favorites group. */
 	private final BiConsumer<Integer, Boolean> onSetFavorite;
 	/** Overlay toggle callback: (itemId, onOverlay) — adds/removes an item from the on-screen overlay. */
@@ -555,6 +557,7 @@ public class StockpilePanel extends PluginPanel
 			Consumer<List<Integer>> onSetGlobalOrder,
 			Runnable onToggleCompactView,
 			Consumer<SortMode> onSetSortMode,
+			Runnable onToggleSortDirection,
 			BiConsumer<Integer, Boolean> onSetFavorite,
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
@@ -574,6 +577,7 @@ public class StockpilePanel extends PluginPanel
 		this.onSetGlobalOrder = onSetGlobalOrder;
 		this.onToggleCompactView = onToggleCompactView;
 		this.onSetSortMode = onSetSortMode;
+		this.onToggleSortDirection = onToggleSortDirection;
 		this.onSetFavorite = onSetFavorite;
 		this.onSetOnOverlay = onSetOnOverlay;
 		this.onSetGroupCollapsed = onSetGroupCollapsed;
@@ -1557,7 +1561,7 @@ public class StockpilePanel extends PluginPanel
 		if (sortMode != SortMode.MANUAL)
 		{
 			items = new ArrayList<>(rawItems);
-			items.sort(sortMode.comparator());
+			items.sort(sortMode.comparator(config.sortReversed()));
 		}
 		else
 		{
@@ -2934,19 +2938,35 @@ public class StockpilePanel extends PluginPanel
 		return row;
 	}
 
-	/** Opens the sort-mode menu on the header toggle, with the active mode checked. */
+	/**
+	 * Opens the sort-mode menu on the header toggle, with the active mode checked and its current
+	 * direction arrow shown. Clicking the active (non-manual) mode flips the sort direction; clicking
+	 * any other mode selects it.
+	 */
 	private void showSortMenu()
 	{
 		JPopupMenu menu = new JPopupMenu();
 		SortMode active = config.sortMode();
+		boolean reversed = config.sortReversed();
 		for (SortMode mode : SortMode.values())
 		{
-			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(mode.toString(), mode == active);
+			boolean isActive = mode == active;
+			String label = isActive && mode != SortMode.MANUAL
+					? mode + (mode.descending(reversed) ? "  ↓" : "  ↑")
+					: mode.toString();
+			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(label, isActive);
 			entry.setFont(FontManager.getRunescapeSmallFont());
 			entry.addActionListener(e ->
 			{
-				if (onSetSortMode != null)
+				if (isActive && mode != SortMode.MANUAL)
+				{
+					if (onToggleSortDirection != null)
+						onToggleSortDirection.run();
+				}
+				else if (onSetSortMode != null)
+				{
 					onSetSortMode.accept(mode);
+				}
 			});
 			menu.add(entry);
 		}
@@ -2954,13 +2974,23 @@ public class StockpilePanel extends PluginPanel
 		menu.show(sortToggle, 0, sortToggle.getHeight());
 	}
 
-	/** Highlights the header sort toggle while a non-manual sort is active. */
+	/** Reflects the active sort on the header toggle: the effective direction arrow (highlighted) or the neutral glyph. */
 	private void updateSortToggle()
 	{
-		if (sortToggle != null)
-			sortToggle.setForeground(config.sortMode() != SortMode.MANUAL
-					? COLOR_AVG
-					: ColorScheme.LIGHT_GRAY_COLOR);
+		if (sortToggle == null)
+			return;
+
+		SortMode mode = config.sortMode();
+		if (mode == SortMode.MANUAL)
+		{
+			sortToggle.setText("⇅");
+			sortToggle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		}
+		else
+		{
+			sortToggle.setText(mode.descending(config.sortReversed()) ? "↓" : "↑");
+			sortToggle.setForeground(COLOR_AVG);
+		}
 	}
 
 	/** Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. */

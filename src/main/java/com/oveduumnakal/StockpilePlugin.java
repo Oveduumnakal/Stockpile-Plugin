@@ -314,6 +314,7 @@ public class StockpilePlugin extends Plugin
 				this::setGlobalOrder,
 				this::toggleCompactView,
 				this::setSortMode,
+				this::toggleSortReversed,
 				this::setFavorite,
 				this::setOnOverlay,
 				this::setGroupCollapsed,
@@ -841,6 +842,13 @@ public class StockpilePlugin extends Plugin
 	private void setSortMode(SortMode mode)
 	{
 		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SORT_MODE, mode);
+	}
+
+	/** Flips the persisted sort direction; the resulting {@link ConfigChanged} rebuilds the panel. */
+	private void toggleSortReversed()
+	{
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SORT_REVERSED,
+				!config.sortReversed());
 	}
 
 	/** Flips the persisted compact-view flag; the resulting {@link ConfigChanged} rebuilds the panel. */
