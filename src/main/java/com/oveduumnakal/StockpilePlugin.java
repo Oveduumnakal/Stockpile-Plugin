@@ -684,14 +684,19 @@ public class StockpilePlugin extends Plugin
 	{
 		clientThread.invokeLater(() ->
 		{
-			var composition = itemManager.getItemComposition(itemId);
-			TrackedItem preview = new TrackedItem(itemId, composition.getName());
-			preview.setTradeable(composition.isTradeable());
-			preview.setMode(TrackItemMode.VIEW);
-			applyItemMetadata(preview);
-			previewItem = preview;
+			TrackedItem preview = previewItem;
+			if (preview == null || preview.getItemId() != itemId)
+			{
+				var composition = itemManager.getItemComposition(itemId);
+				preview = new TrackedItem(itemId, composition.getName());
+				preview.setTradeable(composition.isTradeable());
+				preview.setMode(TrackItemMode.VIEW);
+				applyItemMetadata(preview);
+				previewItem = preview;
+			}
 
-			SwingUtilities.invokeLater(() -> panel.showPreview(preview));
+			final TrackedItem shown = preview;
+			SwingUtilities.invokeLater(() -> panel.showPreview(shown));
 			requestDetailData(itemId);
 			refreshGePrices();
 		});
@@ -1731,7 +1736,12 @@ public class StockpilePlugin extends Plugin
 		if (itemId <= 0)
 			return;
 
-		previewItem(itemId);
+		int canonicalId = itemManager.canonicalize(itemId);
+		if (trackedItems.containsKey(canonicalId))
+			SwingUtilities.invokeLater(() -> panel.openTrackedDetail(canonicalId));
+		else
+			previewItem(canonicalId);
+
 		if (config.geFocusPanel())
 			SwingUtilities.invokeLater(() -> clientToolbar.openPanel(navButton));
 	}

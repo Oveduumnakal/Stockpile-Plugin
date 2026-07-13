@@ -4135,6 +4135,19 @@ public class StockpilePanel extends PluginPanel
 		return detailItemId;
 	}
 
+	/**
+	 * Opens the tracked detail card for {@code itemId}. A no-op when that item's tracked
+	 * detail is already showing, so re-opening it (e.g. from the GE integration) leaves the
+	 * card's scroll position and state untouched instead of rebuilding it back to the top.
+	 */
+	public void openTrackedDetail(int itemId)
+	{
+		if (detailItemId == itemId && previewItem == null)
+			return;
+
+		showDetail(itemId);
+	}
+
 	/** @return whether the user is mid-edit in the notifications table, so the plugin should defer firing rules. */
 	public boolean isEditingNotifications()
 	{
