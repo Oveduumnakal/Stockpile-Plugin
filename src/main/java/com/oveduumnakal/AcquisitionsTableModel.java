@@ -164,6 +164,7 @@ class AcquisitionsTableModel extends AbstractTableModel
 					return;
 			}
 
+			rec.setSource(AcquisitionSource.MANUAL);
 			fireTableRowsUpdated(r, r);
 			onAcquisitionsEdited.accept(detailItemId.getAsInt());
 		}
