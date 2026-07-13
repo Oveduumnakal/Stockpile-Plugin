@@ -13,24 +13,26 @@ import java.util.List;
  * volume, percent change, quantity, or a categorical rating.
  *
  * <p>Each constant pairs a short {@code label} (used in the rule chip) with a
- * longer {@code displayName} and a {@link Kind} that drives how the rule's value
- * is entered and compared. Categorical metrics additionally carry their allowed
+ * longer {@code displayName} (dropdown + tooltip) and an even shorter
+ * {@code abbreviation} (the notifications-table row cell, which is too narrow for
+ * the full name), plus a {@link Kind} that drives how the rule's value is entered
+ * and compared. Categorical metrics additionally carry their allowed
  * {@code options}. The {@code locks*}/{@code is*} predicates capture per-metric
  * UI constraints (e.g. {@link #RANGE_30D} only makes sense over a month).
  */
 public enum NotificationMetric
 {
-	HIGH("High", "High", Kind.NUMERIC),
-	LOW("Low", "Low", Kind.NUMERIC),
-	AVERAGE("Average", "Average", Kind.NUMERIC),
-	ITM_PROFIT("Itm Profit", "Item Profit", Kind.NUMERIC),
-	HA_PROFIT("HA Profit", "HA Profit", Kind.NUMERIC),
-	VOLUME("Volume", "Volume", Kind.NUMERIC),
-	DELTA_PCT("Δ%", "Price Change", Kind.PERCENT),
-	QUANTITY("Quantity", "Quantity", Kind.QUANTITY),
-	VOLATILITY("Volatility", "Volatility", Kind.CATEGORY, "Low", "Medium", "High"),
-	LIQUIDITY("Liquidity", "Liquidity", Kind.CATEGORY, "Low", "Medium", "High"),
-	RANGE_30D("30d Range", "30 Day Range", Kind.CATEGORY,
+	HIGH("High", "High", "High", Kind.NUMERIC),
+	LOW("Low", "Low", "Low", Kind.NUMERIC),
+	AVERAGE("Average", "Average", "Avg", Kind.NUMERIC),
+	ITM_PROFIT("Itm Profit", "Item Profit", "Itm P", Kind.NUMERIC),
+	HA_PROFIT("HA Profit", "HA Profit", "HA P", Kind.NUMERIC),
+	VOLUME("Volume", "Volume", "Vol", Kind.NUMERIC),
+	DELTA_PCT("Δ%", "Price Change", "Δ%", Kind.PERCENT),
+	QUANTITY("Quantity", "Quantity", "Qty", Kind.QUANTITY),
+	VOLATILITY("Volatility", "Volatility", "Volat", Kind.CATEGORY, "Low", "Medium", "High"),
+	LIQUIDITY("Liquidity", "Liquidity", "Liq", Kind.CATEGORY, "Low", "Medium", "High"),
+	RANGE_30D("30d Range", "30 Day Range", "30d R", Kind.CATEGORY,
 			"Lowest", "Low", "Low Avg", "Average", "High Avg", "High", "Highest");
 
 	/** The value domain of a metric, controlling input and comparison semantics. */
@@ -41,13 +43,15 @@ public enum NotificationMetric
 
 	private final String label;
 	private final String displayName;
+	private final String abbreviation;
 	private final Kind kind;
 	private final List<String> options;
 
-	NotificationMetric(String label, String displayName, Kind kind, String... options)
+	NotificationMetric(String label, String displayName, String abbreviation, Kind kind, String... options)
 	{
 		this.label = label;
 		this.displayName = displayName;
+		this.abbreviation = abbreviation;
 		this.kind = kind;
 		this.options = options.length == 0
 				? Collections.emptyList()
@@ -62,6 +66,12 @@ public enum NotificationMetric
 	public String getDisplayName()
 	{
 		return displayName;
+	}
+
+	/** @return the terse form shown in the narrow notifications-table row (full name is in the tooltip/dropdown). */
+	public String getAbbreviation()
+	{
+		return abbreviation;
 	}
 
 	public Kind getKind()

@@ -82,6 +82,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultCellEditor;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
@@ -4864,6 +4865,20 @@ public class StockpilePanel extends PluginPanel
 
 		JComboBox<NotificationMetric> metricCombo = new JComboBox<>(NotificationMetric.values());
 		metricCombo.setFont(f);
+		metricCombo.setRenderer(new DefaultListCellRenderer()
+		{
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean isSelected, boolean cellHasFocus)
+			{
+				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+				if (value instanceof NotificationMetric)
+					setText(((NotificationMetric) value).getDisplayName());
+
+				setFont(f);
+				return this;
+			}
+		});
 		JComboBox<TimeWindow> timeCombo = new JComboBox<>(OVERVIEW_WINDOWS);
 		timeCombo.setFont(f);
 		JComboBox<NotificationOperation> opCombo = new JComboBox<>(NotificationOperation.values());
