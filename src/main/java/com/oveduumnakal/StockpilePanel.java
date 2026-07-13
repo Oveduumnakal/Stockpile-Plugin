@@ -3564,6 +3564,9 @@ public class StockpilePanel extends PluginPanel
 				if (row < 0 || col < 0)
 					return null;
 
+				if (acquisitionsModel.isSymbolColumn(convertColumnIndexToModel(col)))
+					return acquisitionsModel.sourceLabelAt(row);
+
 				Object val = getValueAt(row, col);
 				if (val instanceof Number)
 				{
@@ -3572,7 +3575,7 @@ public class StockpilePanel extends PluginPanel
 						return acqTooltipLabel(col) + ": " + NUMBER_FORMAT.format(v);
 				}
 
-				return "Source: " + acquisitionsModel.sourceLabelAt(row);
+				return null;
 			}
 
 			@Override
@@ -5839,6 +5842,16 @@ public class StockpilePanel extends PluginPanel
 		{
 			TableColumn col = table.getColumnModel().getColumn(i);
 			String name = model.getColumnName(i);
+			if (model.isSymbolColumn(i))
+			{
+				col.setCellRenderer(new SourceGlyphRenderer(() -> acqHoverRow, () -> acqHoverCol));
+				col.setMinWidth(28);
+				col.setMaxWidth(28);
+				col.setPreferredWidth(28);
+				col.setHeaderValue("");
+				continue;
+			}
+
 			boolean isProfit = "Profit".equals(name);
 			col.setCellRenderer(new AcqCellRenderer(isProfit, expanded, () -> acqHoverRow, () -> acqHoverCol));
 			if (i < 3)
