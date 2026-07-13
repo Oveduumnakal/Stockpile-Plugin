@@ -1550,7 +1550,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					newCounts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					newCounts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -2450,7 +2450,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -2508,7 +2508,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 
