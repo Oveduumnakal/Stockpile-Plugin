@@ -310,7 +310,20 @@ public class StockpilePanel extends PluginPanel
 	private final JLabel detailIconLabel = new JLabel();
 	private final JLabel detailNameLabel = new JLabel();
 	private final JLabel detailQtyLabel = new JLabel();
-	private final JLabel detailDescriptionLabel = new JLabel();
+	/**
+	 * Examine text renderer. A line-wrapping {@link JTextArea} rather than an HTML {@link JLabel}:
+	 * Swing ignores CSS width with the RuneScape font, so HTML labels render one clipped line, while
+	 * a text area wraps to its actual laid-out width and re-wraps responsively on resize. The
+	 * maximum-height cap keeps the surrounding {@code BoxLayout} from stretching it past its text.
+	 */
+	private final JTextArea detailDescriptionArea = new JTextArea()
+	{
+		@Override
+		public Dimension getMaximumSize()
+		{
+			return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+		}
+	};
 
 	private final JLabel icvHigh = new JLabel();
 	private final JLabel icvLow = new JLabel();
@@ -371,7 +384,6 @@ public class StockpilePanel extends PluginPanel
 
 	private JPanel topStack;
 	private String detailExamineText;
-	private int detailExamineWrapWidth = -1;
 	private JPanel detailSectionsHost;
 	private JPanel itemValuesSection;
 	private JPanel marketInfoSection;
@@ -3451,10 +3463,16 @@ public class StockpilePanel extends PluginPanel
 		detailQtyLabel.setForeground(Color.WHITE);
 		detailQtyLabel.setFont(FontManager.getRunescapeSmallFont());
 
-		detailDescriptionLabel.setForeground(DESCRIPTION_COLOR);
-		detailDescriptionLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
-		detailDescriptionLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-		detailDescriptionLabel.setBorder(new EmptyBorder(8, 0, 0, 0));
+		detailDescriptionArea.setEditable(false);
+		detailDescriptionArea.setFocusable(false);
+		detailDescriptionArea.setOpaque(false);
+		detailDescriptionArea.setLineWrap(true);
+		detailDescriptionArea.setWrapStyleWord(true);
+		detailDescriptionArea.setMargin(new Insets(0, 0, 0, 0));
+		detailDescriptionArea.setForeground(DESCRIPTION_COLOR);
+		detailDescriptionArea.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
+		detailDescriptionArea.setAlignmentX(Component.LEFT_ALIGNMENT);
+		detailDescriptionArea.setBorder(new EmptyBorder(8, 0, 0, 0));
 
 		JPanel titleTextStack = new JPanel();
 		titleTextStack.setLayout(new BoxLayout(titleTextStack, BoxLayout.Y_AXIS));
@@ -3484,23 +3502,13 @@ public class StockpilePanel extends PluginPanel
 		topStack.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		topStack.add(headerRow);
 		topStack.add(titleRow);
-		topStack.add(detailDescriptionLabel);
+		topStack.add(detailDescriptionArea);
 
 		detailSectionsHost = new JPanel();
 		detailSectionsHost.setLayout(new BoxLayout(detailSectionsHost, BoxLayout.Y_AXIS));
 		detailSectionsHost.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		detailSectionsHost.setAlignmentX(Component.LEFT_ALIGNMENT);
 		topStack.add(detailSectionsHost);
-
-		topStack.addComponentListener(new ComponentAdapter()
-		{
-			@Override
-			public void componentResized(ComponentEvent e)
-			{
-				if (topStack.getWidth() != detailExamineWrapWidth)
-					applyExamineWrap();
-			}
-		});
 
 		itemValuesSection = buildDetailSection("Item Current Values",
 				buildCurrentValuesBlock(icvHigh, icvLow, icvAvg, icvVolume, null));
@@ -5313,37 +5321,15 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Fills every detail-view section with the given item's data: name/quantity,
-	 * current values, market info, the charts, the overview grid, alch figures,
-	 * notification rules, and the acquisitions log.
-	 */
-	/** Escapes the HTML-significant characters so examine text renders literally inside a wrapping HTML label. */
-	private static String escapeHtml(String text)
-	{
-		return text
-				.replace("&", "&amp;")
-				.replace("<", "&lt;")
-				.replace(">", "&gt;");
-	}
-
-	/**
-	 * Renders the current examine text into the description label, wrapping it to the
-	 * detail card's actual laid-out width so long text wraps instead of overrunning and
-	 * being clipped by the panel edge. Falls back to a panel-width estimate before the
-	 * card has been sized.
+	 * Sets the current examine text on the description area. The {@link JTextArea} line-wraps to its
+	 * own laid-out width, so no width measurement is needed and it re-wraps responsively on resize.
 	 */
 	private void applyExamineWrap()
 	{
 		if (detailExamineText == null)
 			return;
 
-		int available = topStack != null ? topStack.getWidth() : 0;
-		if (available <= 0)
-			available = PluginPanel.PANEL_WIDTH - 20;
-
-		detailExamineWrapWidth = available;
-		detailDescriptionLabel.setText("<html><div style='width:" + Math.max(1, available - 4)
-				+ "px'>" + escapeHtml(detailExamineText) + "</div></html>");
+		detailDescriptionArea.setText(detailExamineText);
 	}
 
 	/**
@@ -5372,7 +5358,7 @@ public class StockpilePanel extends PluginPanel
 		final boolean hasExamine = examine != null && !examine.isEmpty();
 		detailExamineText = hasExamine ? examine : null;
 		applyExamineWrap();
-		detailDescriptionLabel.setVisible(hasExamine);
+		detailDescriptionArea.setVisible(hasExamine);
 
 		final boolean hasPrices = item.hasPrices();
 		final boolean showMarket = item.isTradeable();
