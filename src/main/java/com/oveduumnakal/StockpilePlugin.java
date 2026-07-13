@@ -227,6 +227,7 @@ public class StockpilePlugin extends Plugin
 	private final Set<Integer> seenContainersSinceLogin = new HashSet<>();
 
 	private boolean runePouchSeenSinceLogin = false;
+	private int geLoginTick = -1;
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -276,6 +277,14 @@ public class StockpilePlugin extends Plugin
 
 	/** The rolling GE buy-limit window length. */
 	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
+
+	/**
+	 * Ticks after login during which {@code GrandExchangeOfferChanged} events are treated as the
+	 * login offer sync (pre-existing offers) rather than user actions. The client delivers the GE
+	 * offers with the login packet within a tick or two, while the player cannot open the GE and
+	 * abort an offer anywhere near this fast — so the window reliably separates the two.
+	 */
+	private static final int GE_LOGIN_SYNC_TICKS = 5;
 
 	/** How often at most the GE ledger/window are rewritten to config during activity. */
 	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
@@ -1822,6 +1831,7 @@ public class StockpilePlugin extends Plugin
 				runePouchCounts.clear();
 				seenContainersSinceLogin.clear();
 				runePouchSeenSinceLogin = false;
+				geLoginTick = client.getTickCount();
 				pendingQuantitySync = false;
 				pendingItemDeltas.clear();
 				loadCategories();
@@ -1901,6 +1911,15 @@ public class StockpilePlugin extends Plugin
 		GrandExchangeOffer offer = event.getOffer();
 		if (offer == null)
 			return;
+
+		// The login offer sync (pre-existing offers) arrives here, not at container sync where the
+		// offers array isn't populated yet. Rebuild suspend state from those offers and swallow the
+		// sync events so they aren't replayed as fresh placements/fills.
+		if (geLoginTick >= 0 && client.getTickCount() - geLoginTick <= GE_LOGIN_SYNC_TICKS)
+		{
+			primeGeStateFromLogin();
+			return;
+		}
 
 		GrandExchangeOfferState state = offer.getState();
 		boolean buying = state == GrandExchangeOfferState.BUYING
@@ -2127,6 +2146,35 @@ public class StockpilePlugin extends Plugin
 
 		scheduleGeStateSave();
 		return qty - take;
+	}
+
+	/**
+	 * Post-login GE reconciliation, run for each offer event inside the {@link #GE_LOGIN_SYNC_TICKS}
+	 * login window (when the offers array is finally populated, unlike at container sync). Seeds the
+	 * offer tracker's baselines from the live offers so an offer that already existed at login is not
+	 * replayed as a fresh placement or fill, drops the stale session sell-routing maps, and rebuilds
+	 * {@code suspendedQuantity} from those offers so a later cancel un-suspends correctly instead of
+	 * logging a phantom acquisition. Idempotent, so repeating it as the array fills in is safe.
+	 */
+	private void primeGeStateFromLogin()
+	{
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers != null)
+		{
+			for (int slot = 0; slot < offers.length; slot++)
+			{
+				GrandExchangeOffer offer = offers[slot];
+				if (offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
+					continue;
+
+				geOfferTracker.seed(slot, offer.getItemId(), offer.getQuantitySold(), offer.getSpent());
+			}
+		}
+
+		pendingSellSuspend.clear();
+		pendingSellUnsuspend.clear();
+		pendingSellRealize.clear();
+		reconcileSuspendedFromOffers();
 	}
 
 	/**

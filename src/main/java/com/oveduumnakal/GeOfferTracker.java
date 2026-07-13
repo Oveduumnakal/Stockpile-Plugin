@@ -106,6 +106,20 @@ class GeOfferTracker
 		return new Event(Type.FILL, kind, itemId, qtyDelta, unitPrice);
 	}
 
+	/**
+	 * Records a slot's current cumulative progress as the baseline <em>without</em> emitting an
+	 * event, priming an offer that already existed at (re)login so its pre-existing state is not
+	 * replayed as a fresh placement or fill by the next {@link #onOffer} for that slot.
+	 */
+	void seed(int slot, int itemId, int quantitySold, long spent)
+	{
+		SlotState state = new SlotState();
+		state.itemId = itemId;
+		state.lastQuantitySold = quantitySold;
+		state.lastSpent = spent;
+		slots.put(slot, state);
+	}
+
 	/** Drops all slot state (logout, plugin shutdown). */
 	void clear()
 	{
