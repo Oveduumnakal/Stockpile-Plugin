@@ -262,6 +262,14 @@ public class StockpilePlugin extends Plugin
 	/** Units of a cancelled GE sell awaiting their return inventory increase (session-only). */
 	private final Map<Integer, Integer> pendingSellUnsuspend = new HashMap<>();
 
+	/**
+	 * Per-item FIFO of GE sell fills that outran their suspension: each entry is
+	 * {@code {quantity, unitPrice}}. A same-tick fill realizes before the placement
+	 * inventory decrease has moved {@link #pendingSellSuspend} into {@code suspendedQuantity},
+	 * so the shortfall is parked here and drained once the units suspend (session-only).
+	 */
+	private final Map<Integer, Deque<long[]>> pendingSellRealize = new HashMap<>();
+
 	private static final Type GE_LEDGER_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
 
 	private static final Type GE_LIMITS_TYPE = new TypeToken<Map<Integer, long[]>>(){}.getType();
@@ -455,6 +463,7 @@ public class StockpilePlugin extends Plugin
 		geOfferTracker.clear();
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
+		pendingSellRealize.clear();
 		lastPriceRefresh = null;
 	}
 
@@ -1582,6 +1591,8 @@ public class StockpilePlugin extends Plugin
 			syncQuantitiesFromContainers();
 		}
 
+		flushPendingSellRealize();
+
 		evaluateNotifications();
 
 		if (!config.highlightTrackedItems().ground() || client.isMenuOpen())
@@ -1819,6 +1830,7 @@ public class StockpilePlugin extends Plugin
 				geOfferTracker.clear();
 				pendingSellSuspend.clear();
 				pendingSellUnsuspend.clear();
+				pendingSellRealize.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -1944,14 +1956,67 @@ public class StockpilePlugin extends Plugin
 			return;
 
 		int realized = Math.min(qty, tracked.getSuspendedQuantity());
-		if (realized <= 0)
+		if (realized > 0)
+		{
+			closeFifo(tracked, realized, unitPrice);
+			tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
+			persistTrackedItems();
+			refreshPanel();
+		}
+
+		int shortfall = qty - realized;
+		if (shortfall > 0)
+			pendingSellRealize.computeIfAbsent(itemId, k -> new ArrayDeque<>())
+					.addLast(new long[]{shortfall, unitPrice});
+
+		scheduleGeStateSave();
+	}
+
+	/**
+	 * Closes any GE sell fill that outran its suspension, now that the placement inventory
+	 * decrease has moved the units into {@code suspendedQuantity}. Runs each tick after the
+	 * container sync; unmatched fills stay parked and retry on a later tick.
+	 */
+	private void flushPendingSellRealize()
+	{
+		if (pendingSellRealize.isEmpty())
 			return;
 
-		closeFifo(tracked, realized, unitPrice);
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
-		persistTrackedItems();
-		scheduleGeStateSave();
-		refreshPanel();
+		boolean changed = false;
+		Iterator<Map.Entry<Integer, Deque<long[]>>> it = pendingSellRealize.entrySet().iterator();
+		while (it.hasNext())
+		{
+			Map.Entry<Integer, Deque<long[]>> entry = it.next();
+			TrackedItem tracked = trackedItems.get(entry.getKey());
+			if (tracked == null)
+			{
+				it.remove();
+				continue;
+			}
+
+			Deque<long[]> queue = entry.getValue();
+			while (!queue.isEmpty() && tracked.getSuspendedQuantity() > 0)
+			{
+				long[] chunk = queue.peekFirst();
+				int realize = (int) Math.min(chunk[0], tracked.getSuspendedQuantity());
+				closeFifo(tracked, realize, chunk[1]);
+				tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realize);
+				chunk[0] -= realize;
+				changed = true;
+				if (chunk[0] <= 0)
+					queue.removeFirst();
+			}
+
+			if (queue.isEmpty())
+				it.remove();
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			scheduleGeStateSave();
+			refreshPanel();
+		}
 	}
 
 	/** Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. */
