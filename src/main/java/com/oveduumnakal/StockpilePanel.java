@@ -1710,10 +1710,11 @@ public class StockpilePanel extends PluginPanel
 			{
 				final TrackedItem shown = detail;
 				SwingUtilities.invokeLater(() ->
-				{
-					populateDetail(shown);
-					applyDetailCard();
-				});
+						preserveDetailScroll(() ->
+						{
+							populateDetail(shown);
+							applyDetailCard();
+						}));
 			}
 			else if (!currentItems.isEmpty())
 			{
@@ -4395,7 +4396,31 @@ public class StockpilePanel extends PluginPanel
 			item = previewItem;
 
 		if (item != null)
-			populateDetail(item);
+		{
+			final TrackedItem shown = item;
+			preserveDetailScroll(() -> populateDetail(shown));
+		}
+	}
+
+	/**
+	 * Runs a refresh-in-place of the open detail card, restoring the enclosing scroll
+	 * pane's vertical position once the relayout settles — so a data refresh doesn't
+	 * yank the view back to the top. Opening a different item still starts at the top,
+	 * since {@link #showDetail} bypasses this.
+	 */
+	private void preserveDetailScroll(Runnable refresh)
+	{
+		JScrollPane scroll = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, cardsHost);
+		if (scroll == null)
+		{
+			refresh.run();
+			return;
+		}
+
+		final JScrollBar bar = scroll.getVerticalScrollBar();
+		final int value = bar.getValue();
+		refresh.run();
+		SwingUtilities.invokeLater(() -> bar.setValue(value));
 	}
 
 	/** Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. */
