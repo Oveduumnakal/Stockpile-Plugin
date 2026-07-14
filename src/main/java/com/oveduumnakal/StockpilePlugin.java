@@ -1912,6 +1912,11 @@ public class StockpilePlugin extends Plugin
 	 * Consumes GE offer progress to price trades and track the buy limit. Buy fills are
 	 * ledgered until the items are collected; a sell's placement suspends the offered units
 	 * and its fills realize them at the true price; a cancellation restores the remainder.
+	 *
+	 * <p>Just after login the offer sync replays pre-existing offers here rather than at
+	 * container sync (whose offers array isn't populated yet). Within that window the state
+	 * is rebuilt via {@link #primeGeStateFromLogin()} and the events are swallowed so they
+	 * aren't replayed as fresh placements or fills.
 	 */
 	@Subscribe
 	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
@@ -1920,9 +1925,6 @@ public class StockpilePlugin extends Plugin
 		if (offer == null)
 			return;
 
-		// The login offer sync (pre-existing offers) arrives here, not at container sync where the
-		// offers array isn't populated yet. Rebuild suspend state from those offers and swallow the
-		// sync events so they aren't replayed as fresh placements/fills.
 		if (geLoginTick >= 0 && client.getTickCount() - geLoginTick <= GE_LOGIN_SYNC_TICKS)
 		{
 			primeGeStateFromLogin();

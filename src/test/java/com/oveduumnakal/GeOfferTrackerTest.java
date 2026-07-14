@@ -107,7 +107,6 @@ public class GeOfferTrackerTest
 	{
 		tracker.seed(0, 560, 0, 0);
 
-		// The post-login sync event for the pre-existing offer must not look like a fresh placement.
 		assertNull(sell(0, 10, 0, 0));
 
 		GeOfferTracker.Event cancel = tracker.onOffer(0, 560, false, true, false, 10, 0, 0);

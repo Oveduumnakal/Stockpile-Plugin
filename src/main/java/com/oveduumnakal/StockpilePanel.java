@@ -2975,7 +2975,10 @@ public class StockpilePanel extends PluginPanel
 		menu.show(sortToggle, 0, sortToggle.getHeight());
 	}
 
-	/** Reflects the active sort on the header toggle: the effective direction arrow (highlighted) or the neutral glyph. */
+	/**
+	 * Reflects the active sort on the header toggle: the effective direction arrow
+	 * (highlighted) or the neutral glyph.
+	 */
 	private void updateSortToggle()
 	{
 		if (sortToggle == null)
