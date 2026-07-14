@@ -2087,7 +2087,7 @@ public class StockpilePlugin extends Plugin
 		int realized = Math.min(qty, tracked.getSuspendedQuantity());
 		if (realized > 0)
 		{
-			closeFifo(tracked, realized, unitPrice);
+			closeFifo(tracked, realized, unitPrice, AcquisitionSource.GE_TRADE);
 			tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
 			persistTrackedItems();
 			refreshPanel();
@@ -2128,7 +2128,7 @@ public class StockpilePlugin extends Plugin
 			{
 				long[] chunk = queue.peekFirst();
 				int realize = (int) Math.min(chunk[0], tracked.getSuspendedQuantity());
-				closeFifo(tracked, realize, chunk[1]);
+				closeFifo(tracked, realize, chunk[1], AcquisitionSource.GE_TRADE);
 				tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realize);
 				chunk[0] -= realize;
 				changed = true;
@@ -2184,7 +2184,7 @@ public class StockpilePlugin extends Plugin
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()));
+				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
 			}
 		}
 	}
@@ -2463,16 +2463,18 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Merges {@code qty} into an existing closed (sold) lot with the same
-	 * bought/sold prices, to avoid fragmenting the log.
+	 * bought/sold prices and sell provenance, to avoid fragmenting the log.
 	 *
 	 * @return {@code true} if a matching lot absorbed the quantity
 	 */
-	private boolean mergeClosed(List<AcquisitionRecord> records, int qty, long boughtAt, long soldAtPrice)
+	private boolean mergeClosed(List<AcquisitionRecord> records, int qty, long boughtAt, long soldAtPrice,
+			AcquisitionSource sellSource)
 	{
 		for (AcquisitionRecord r : records)
 		{
 			Long sold = r.getSoldAt();
-			if (sold != null && r.getBoughtAt() == boughtAt && sold == soldAtPrice)
+			if (sold != null && r.getBoughtAt() == boughtAt && sold == soldAtPrice
+					&& r.sellSourceOrUnknown() == sellSource)
 			{
 				r.setQuantity(r.getQuantity() + qty);
 				return true;
@@ -2484,14 +2486,16 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Closes {@code amount} units of held inventory at {@code soldAtPrice},
-	 * oldest lot first (FIFO).
+	 * oldest lot first (FIFO), recording {@code sellSource} as the sale's
+	 * provenance — {@link AcquisitionSource#UNKNOWN} marks the price as an
+	 * estimate rather than an observed sale.
 	 *
 	 * <p>It first cancels any just-added open lots bought at the same price (a
 	 * buy immediately followed by a sell nets out), then realizes the remaining
 	 * amount across the oldest open lots, splitting a lot when only part of it is
 	 * sold and merging into matching closed lots where possible.
 	 */
-	private void closeFifo(TrackedItem tracked, int amount, long soldAtPrice)
+	private void closeFifo(TrackedItem tracked, int amount, long soldAtPrice, AcquisitionSource sellSource)
 	{
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
 		int remaining = amount;
@@ -2525,13 +2529,14 @@ public class StockpilePlugin extends Plugin
 			{
 				int closeQty = r.getQuantity();
 				remaining -= closeQty;
-				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
+				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice, sellSource))
 				{
 					records.remove(i);
 				}
 				else
 				{
 					r.setSoldAt(soldAtPrice);
+					r.setSellSource(sellSource);
 					i++;
 				}
 			}
@@ -2540,8 +2545,13 @@ public class StockpilePlugin extends Plugin
 				int closeQty = remaining;
 				r.setQuantity(r.getQuantity() - closeQty);
 				remaining = 0;
-				if (!mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice))
-					records.add(i, new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice, r.getSource()));
+				if (!mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice, sellSource))
+				{
+					AcquisitionRecord closed = new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice,
+							r.getSource());
+					closed.setSellSource(sellSource);
+					records.add(i, closed);
+				}
 			}
 		}
 	}
@@ -2634,7 +2644,7 @@ public class StockpilePlugin extends Plugin
 			}
 			else if (logDelta < 0)
 			{
-				closeFifo(tracked, -logDelta, tracked.getAvgPrice());
+				closeFifo(tracked, -logDelta, tracked.getAvgPrice(), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
 
