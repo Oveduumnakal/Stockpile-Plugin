@@ -2409,7 +2409,7 @@ public class StockpilePanel extends PluginPanel
 	{
 		Object[] options = {"Only uncategorized", "Re-categorize all", "Cancel"};
 		int choice = JOptionPane.showOptionDialog(dialog,
-				"Assign tracked items to categories based on their names?\n"
+				"Assign tracked items to categories from the wiki's item groupings?\n"
 						+ "\"Only uncategorized\" keeps your manual assignments.",
 				"Auto-categorize", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
 				null, options, options[0]);

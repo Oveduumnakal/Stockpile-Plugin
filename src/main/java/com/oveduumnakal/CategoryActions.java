@@ -18,7 +18,8 @@ public interface CategoryActions
 	void reorder(String name, int targetIndex);
 
 	/**
-	 * Auto-assigns tracked items to generated categories from their names.
+	 * Auto-assigns tracked items to generated categories from the bundled wiki
+	 * category snapshot.
 	 *
 	 * @param includeCategorized when {@code true} also re-categorizes items already in a
 	 *                           category; otherwise only uncategorized items are touched
