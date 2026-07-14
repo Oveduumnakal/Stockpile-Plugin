@@ -35,10 +35,14 @@ tasks.withType(JavaCompile).configureEach {
 	options.compilerArgs << '-Xlint:deprecation'
 }
 
+def pythonExecutable = org.gradle.internal.os.OperatingSystem.current().isWindows()
+		? 'python'
+		: 'python3'
+
 tasks.register('checkStyleRules', Exec) {
 	group = 'verification'
 	description = 'Checks the project coding standards (scripts/check-style.py).'
-	commandLine 'python3', 'scripts/check-style.py'
+	commandLine pythonExecutable, 'scripts/check-style.py'
 }
 
 check.dependsOn checkStyleRules
