@@ -101,4 +101,17 @@ public class GeOfferTrackerTest
 		assertEquals(GeOfferTracker.Type.PLACED, placed.type);
 		assertEquals(50, placed.quantity);
 	}
+
+	@Test
+	public void seededSellOfferDoesNotReplayAsPlacementAndStillCancels()
+	{
+		tracker.seed(0, 560, 0, 0);
+
+		assertNull(sell(0, 10, 0, 0));
+
+		GeOfferTracker.Event cancel = tracker.onOffer(0, 560, false, true, false, 10, 0, 0);
+		assertEquals(GeOfferTracker.Type.CANCELLED, cancel.type);
+		assertEquals(GeOfferTracker.Kind.SELL, cancel.kind);
+		assertEquals(10, cancel.quantity);
+	}
 }

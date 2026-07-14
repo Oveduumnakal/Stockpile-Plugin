@@ -18,8 +18,11 @@ class AcquisitionsTableModel extends AbstractTableModel
 	private static final String[] COLS_FULL = {"Qty", "Bought", "Sold", "Profit"};
 	private static final String[] COLS_NO_PROFIT = {"Qty", "Bought", "Sold"};
 
-	/** Read-only column showing each lot's acquisition source; only in the expanded view. */
+	/** Read-only text column showing each lot's acquisition source; only in the expanded view. */
 	static final String SOURCE_COL = "Source";
+
+	/** Read-only symbol column showing each lot's acquisition source; the compact view's trailing column. */
+	static final String SYMBOL_COL = "";
 
 	private final StockpileConfig config;
 	private final Consumer<Integer> onAcquisitionsEdited;
@@ -42,23 +45,29 @@ class AcquisitionsTableModel extends AbstractTableModel
 		fireTableStructureChanged();
 	}
 
-	/** @return the active column set: the profit column only when configured, plus a source column when expanded. */
+	/**
+	 * @return the active column set: the profit column only when configured, plus a trailing source
+	 *         column — a text label in the expanded view, a symbol in the compact view.
+	 */
 	private String[] cols()
 	{
 		String[] base = config.showItemProfitRow() ? COLS_FULL : COLS_NO_PROFIT;
-		if (!expanded)
-			return base;
-
 		String[] withSource = new String[base.length + 1];
 		System.arraycopy(base, 0, withSource, 0, base.length);
-		withSource[base.length] = SOURCE_COL;
+		withSource[base.length] = expanded ? SOURCE_COL : SYMBOL_COL;
 		return withSource;
 	}
 
-	/** @return whether column {@code c} is the read-only source column. */
+	/** @return whether column {@code c} is the expanded view's read-only text source column. */
 	private boolean isSourceColumn(int c)
 	{
 		return expanded && c == getColumnCount() - 1;
+	}
+
+	/** @return whether column {@code c} is the compact view's read-only source-symbol column. */
+	boolean isSymbolColumn(int c)
+	{
+		return !expanded && c == getColumnCount() - 1;
 	}
 
 	/** @return the source label for the lot in {@code row}, for the compact table's tooltip. */
@@ -110,6 +119,9 @@ class AcquisitionsTableModel extends AbstractTableModel
 	public Object getValueAt(int r, int c)
 	{
 		AcquisitionRecord rec = item.getAcquisitions().get(r);
+		if (isSymbolColumn(c))
+			return rec.sourceOrUnknown();
+
 		if (isSourceColumn(c))
 			return rec.sourceOrUnknown().toString();
 
@@ -152,6 +164,7 @@ class AcquisitionsTableModel extends AbstractTableModel
 					return;
 			}
 
+			rec.setSource(AcquisitionSource.MANUAL);
 			fireTableRowsUpdated(r, r);
 			onAcquisitionsEdited.accept(detailItemId.getAsInt());
 		}

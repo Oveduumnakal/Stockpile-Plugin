@@ -227,6 +227,7 @@ public class StockpilePlugin extends Plugin
 	private final Set<Integer> seenContainersSinceLogin = new HashSet<>();
 
 	private boolean runePouchSeenSinceLogin = false;
+	private int geLoginTick = -1;
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -262,12 +263,28 @@ public class StockpilePlugin extends Plugin
 	/** Units of a cancelled GE sell awaiting their return inventory increase (session-only). */
 	private final Map<Integer, Integer> pendingSellUnsuspend = new HashMap<>();
 
+	/**
+	 * Per-item FIFO of GE sell fills that outran their suspension: each entry is
+	 * {@code {quantity, unitPrice}}. A same-tick fill realizes before the placement
+	 * inventory decrease has moved {@link #pendingSellSuspend} into {@code suspendedQuantity},
+	 * so the shortfall is parked here and drained once the units suspend (session-only).
+	 */
+	private final Map<Integer, Deque<long[]>> pendingSellRealize = new HashMap<>();
+
 	private static final Type GE_LEDGER_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
 
 	private static final Type GE_LIMITS_TYPE = new TypeToken<Map<Integer, long[]>>(){}.getType();
 
 	/** The rolling GE buy-limit window length. */
 	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
+
+	/**
+	 * Ticks after login during which {@code GrandExchangeOfferChanged} events are treated as the
+	 * login offer sync (pre-existing offers) rather than user actions. The client delivers the GE
+	 * offers with the login packet within a tick or two, while the player cannot open the GE and
+	 * abort an offer anywhere near this fast — so the window reliably separates the two.
+	 */
+	private static final int GE_LOGIN_SYNC_TICKS = 5;
 
 	/** How often at most the GE ledger/window are rewritten to config during activity. */
 	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
@@ -297,6 +314,7 @@ public class StockpilePlugin extends Plugin
 				this::setGlobalOrder,
 				this::toggleCompactView,
 				this::setSortMode,
+				this::toggleSortReversed,
 				this::setFavorite,
 				this::setOnOverlay,
 				this::setGroupCollapsed,
@@ -455,6 +473,7 @@ public class StockpilePlugin extends Plugin
 		geOfferTracker.clear();
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
+		pendingSellRealize.clear();
 		lastPriceRefresh = null;
 	}
 
@@ -684,14 +703,19 @@ public class StockpilePlugin extends Plugin
 	{
 		clientThread.invokeLater(() ->
 		{
-			var composition = itemManager.getItemComposition(itemId);
-			TrackedItem preview = new TrackedItem(itemId, composition.getName());
-			preview.setTradeable(composition.isTradeable());
-			preview.setMode(TrackItemMode.VIEW);
-			applyItemMetadata(preview);
-			previewItem = preview;
+			TrackedItem preview = previewItem;
+			if (preview == null || preview.getItemId() != itemId)
+			{
+				var composition = itemManager.getItemComposition(itemId);
+				preview = new TrackedItem(itemId, composition.getName());
+				preview.setTradeable(composition.isTradeable());
+				preview.setMode(TrackItemMode.VIEW);
+				applyItemMetadata(preview);
+				previewItem = preview;
+			}
 
-			SwingUtilities.invokeLater(() -> panel.showPreview(preview));
+			final TrackedItem shown = preview;
+			SwingUtilities.invokeLater(() -> panel.showPreview(shown));
 			requestDetailData(itemId);
 			refreshGePrices();
 		});
@@ -818,6 +842,13 @@ public class StockpilePlugin extends Plugin
 	private void setSortMode(SortMode mode)
 	{
 		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SORT_MODE, mode);
+	}
+
+	/** Flips the persisted sort direction; the resulting {@link ConfigChanged} rebuilds the panel. */
+	private void toggleSortReversed()
+	{
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SORT_REVERSED,
+				!config.sortReversed());
 	}
 
 	/** Flips the persisted compact-view flag; the resulting {@link ConfigChanged} rebuilds the panel. */
@@ -1536,7 +1567,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					newCounts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					newCounts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -1576,6 +1607,8 @@ public class StockpilePlugin extends Plugin
 			pendingQuantitySync = false;
 			syncQuantitiesFromContainers();
 		}
+
+		flushPendingSellRealize();
 
 		evaluateNotifications();
 
@@ -1731,7 +1764,12 @@ public class StockpilePlugin extends Plugin
 		if (itemId <= 0)
 			return;
 
-		previewItem(itemId);
+		int canonicalId = itemManager.canonicalize(itemId);
+		if (trackedItems.containsKey(canonicalId))
+			SwingUtilities.invokeLater(() -> panel.openTrackedDetail(canonicalId));
+		else
+			previewItem(canonicalId);
+
 		if (config.geFocusPanel())
 			SwingUtilities.invokeLater(() -> clientToolbar.openPanel(navButton));
 	}
@@ -1801,6 +1839,7 @@ public class StockpilePlugin extends Plugin
 				runePouchCounts.clear();
 				seenContainersSinceLogin.clear();
 				runePouchSeenSinceLogin = false;
+				geLoginTick = client.getTickCount();
 				pendingQuantitySync = false;
 				pendingItemDeltas.clear();
 				loadCategories();
@@ -1809,6 +1848,7 @@ public class StockpilePlugin extends Plugin
 				geOfferTracker.clear();
 				pendingSellSuspend.clear();
 				pendingSellUnsuspend.clear();
+				pendingSellRealize.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -1872,6 +1912,11 @@ public class StockpilePlugin extends Plugin
 	 * Consumes GE offer progress to price trades and track the buy limit. Buy fills are
 	 * ledgered until the items are collected; a sell's placement suspends the offered units
 	 * and its fills realize them at the true price; a cancellation restores the remainder.
+	 *
+	 * <p>Just after login the offer sync replays pre-existing offers here rather than at
+	 * container sync (whose offers array isn't populated yet). Within that window the state
+	 * is rebuilt via {@link #primeGeStateFromLogin()} and the events are swallowed so they
+	 * aren't replayed as fresh placements or fills.
 	 */
 	@Subscribe
 	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
@@ -1879,6 +1924,12 @@ public class StockpilePlugin extends Plugin
 		GrandExchangeOffer offer = event.getOffer();
 		if (offer == null)
 			return;
+
+		if (geLoginTick >= 0 && client.getTickCount() - geLoginTick <= GE_LOGIN_SYNC_TICKS)
+		{
+			primeGeStateFromLogin();
+			return;
+		}
 
 		GrandExchangeOfferState state = offer.getState();
 		boolean buying = state == GrandExchangeOfferState.BUYING
@@ -1934,14 +1985,67 @@ public class StockpilePlugin extends Plugin
 			return;
 
 		int realized = Math.min(qty, tracked.getSuspendedQuantity());
-		if (realized <= 0)
+		if (realized > 0)
+		{
+			closeFifo(tracked, realized, unitPrice);
+			tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
+			persistTrackedItems();
+			refreshPanel();
+		}
+
+		int shortfall = qty - realized;
+		if (shortfall > 0)
+			pendingSellRealize.computeIfAbsent(itemId, k -> new ArrayDeque<>())
+					.addLast(new long[]{shortfall, unitPrice});
+
+		scheduleGeStateSave();
+	}
+
+	/**
+	 * Closes any GE sell fill that outran its suspension, now that the placement inventory
+	 * decrease has moved the units into {@code suspendedQuantity}. Runs each tick after the
+	 * container sync; unmatched fills stay parked and retry on a later tick.
+	 */
+	private void flushPendingSellRealize()
+	{
+		if (pendingSellRealize.isEmpty())
 			return;
 
-		closeFifo(tracked, realized, unitPrice);
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
-		persistTrackedItems();
-		scheduleGeStateSave();
-		refreshPanel();
+		boolean changed = false;
+		Iterator<Map.Entry<Integer, Deque<long[]>>> it = pendingSellRealize.entrySet().iterator();
+		while (it.hasNext())
+		{
+			Map.Entry<Integer, Deque<long[]>> entry = it.next();
+			TrackedItem tracked = trackedItems.get(entry.getKey());
+			if (tracked == null)
+			{
+				it.remove();
+				continue;
+			}
+
+			Deque<long[]> queue = entry.getValue();
+			while (!queue.isEmpty() && tracked.getSuspendedQuantity() > 0)
+			{
+				long[] chunk = queue.peekFirst();
+				int realize = (int) Math.min(chunk[0], tracked.getSuspendedQuantity());
+				closeFifo(tracked, realize, chunk[1]);
+				tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realize);
+				chunk[0] -= realize;
+				changed = true;
+				if (chunk[0] <= 0)
+					queue.removeFirst();
+			}
+
+			if (queue.isEmpty())
+				it.remove();
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			scheduleGeStateSave();
+			refreshPanel();
+		}
 	}
 
 	/** Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. */
@@ -2052,6 +2156,35 @@ public class StockpilePlugin extends Plugin
 
 		scheduleGeStateSave();
 		return qty - take;
+	}
+
+	/**
+	 * Post-login GE reconciliation, run for each offer event inside the {@link #GE_LOGIN_SYNC_TICKS}
+	 * login window (when the offers array is finally populated, unlike at container sync). Seeds the
+	 * offer tracker's baselines from the live offers so an offer that already existed at login is not
+	 * replayed as a fresh placement or fill, drops the stale session sell-routing maps, and rebuilds
+	 * {@code suspendedQuantity} from those offers so a later cancel un-suspends correctly instead of
+	 * logging a phantom acquisition. Idempotent, so repeating it as the array fills in is safe.
+	 */
+	private void primeGeStateFromLogin()
+	{
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers != null)
+		{
+			for (int slot = 0; slot < offers.length; slot++)
+			{
+				GrandExchangeOffer offer = offers[slot];
+				if (offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
+					continue;
+
+				geOfferTracker.seed(slot, offer.getItemId(), offer.getQuantitySold(), offer.getSpent());
+			}
+		}
+
+		pendingSellSuspend.clear();
+		pendingSellUnsuspend.clear();
+		pendingSellRealize.clear();
+		reconcileSuspendedFromOffers();
 	}
 
 	/**
@@ -2375,7 +2508,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -2433,7 +2566,7 @@ public class StockpilePlugin extends Plugin
 			for (Item item : container.getItems())
 			{
 				if (item.getId() > 0)
-					counts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
 

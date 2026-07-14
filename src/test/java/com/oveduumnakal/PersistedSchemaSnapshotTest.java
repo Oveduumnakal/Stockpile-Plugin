@@ -69,6 +69,8 @@ public class PersistedSchemaSnapshotTest
 			fail(SNAPSHOT_NAME + " did not exist — wrote " + bootstrap + ". Review it and re-run.");
 		}
 
+		expected = normalizeEol(expected);
+
 		if (!expected.equals(actual))
 		{
 			Path dump = Paths.get("build", "persisted-schema.actual");
@@ -168,6 +170,16 @@ public class PersistedSchemaSnapshotTest
 		return type.getTypeName()
 				.replaceAll("(?:[a-zA-Z_$][a-zA-Z0-9_$]*\\.)+", "")
 				.replaceAll("[A-Za-z0-9_]+\\$", "");
+	}
+
+	/**
+	 * Collapses CRLF to LF so a snapshot checked out with Windows line endings
+	 * (git {@code core.autocrlf=true}) still matches the LF-joined {@link #buildSnapshot()}
+	 * output. The schema comparison is about field shape, not line terminators.
+	 */
+	private static String normalizeEol(String text)
+	{
+		return text.replace("\r\n", "\n");
 	}
 
 	private static String readSnapshot() throws IOException

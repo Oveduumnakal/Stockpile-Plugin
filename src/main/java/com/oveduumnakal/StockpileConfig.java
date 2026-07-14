@@ -71,6 +71,7 @@ public interface StockpileConfig extends Config
 	String KEY_STALE_PRICE_THRESHOLD = "stalePriceThresholdMinutes";
 	String KEY_COMPACT_VIEW = "compactView";
 	String KEY_SORT_MODE = "sortMode";
+	String KEY_SORT_REVERSED = "sortReversed";
 	String KEY_SHOW_SCREEN_OVERLAY = "showScreenOverlay";
 	String KEY_SCREEN_OVERLAY_LAYOUT = "screenOverlayLayout";
 	String KEY_SCREEN_OVERLAY_ON_TOP = "screenOverlayOnTop";
@@ -333,6 +334,19 @@ public interface StockpileConfig extends Config
 	default SortMode sortMode()
 	{
 		return SortMode.MANUAL;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SORT_REVERSED,
+			name = "Reverse Sort",
+			description = "Reverses the sort direction of the tracked items list (flips each mode's "
+					+ "default ascending/descending order). Also toggleable from the tracked list header.",
+			section = trackedItemSection,
+			position = 12
+	)
+	default boolean sortReversed()
+	{
+		return false;
 	}
 
 	@ConfigItem(

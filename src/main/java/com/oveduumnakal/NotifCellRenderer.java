@@ -23,7 +23,22 @@ class NotifCellRenderer extends DefaultTableCellRenderer
 			boolean isSelected, boolean hasFocus, int row, int column)
 	{
 		super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-		setText(value == null ? "" : value.toString());
+
+		// Metrics show a terse abbreviation in the narrow row cell with the full name on hover; other
+		// values render as-is but still carry a tooltip so anything the column truncates stays readable.
+		if (value instanceof NotificationMetric)
+		{
+			NotificationMetric metric = (NotificationMetric) value;
+			setText(metric.getAbbreviation());
+			setToolTipText(metric.getDisplayName());
+		}
+		else
+		{
+			String text = value == null ? "" : value.toString();
+			setText(text);
+			setToolTipText(text.isEmpty() ? null : text);
+		}
+
 		if (!isSelected)
 		{
 			setBackground(table.getBackground());

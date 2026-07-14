@@ -82,6 +82,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultCellEditor;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
@@ -183,6 +184,8 @@ public class StockpilePanel extends PluginPanel
 	/** Flips the persisted compact-view config flag; the resulting config change rebuilds the list. */
 	private final Runnable onToggleCompactView;
 	private final Consumer<SortMode> onSetSortMode;
+	/** Flips the persisted sort-direction flag; the resulting config change rebuilds the list. */
+	private final Runnable onToggleSortDirection;
 	/** Favorite toggle callback: (itemId, favorite) — pins/unpins an item to the top Favorites group. */
 	private final BiConsumer<Integer, Boolean> onSetFavorite;
 	/** Overlay toggle callback: (itemId, onOverlay) — adds/removes an item from the on-screen overlay. */
@@ -310,7 +313,20 @@ public class StockpilePanel extends PluginPanel
 	private final JLabel detailIconLabel = new JLabel();
 	private final JLabel detailNameLabel = new JLabel();
 	private final JLabel detailQtyLabel = new JLabel();
-	private final JLabel detailDescriptionLabel = new JLabel();
+	/**
+	 * Examine text renderer. A line-wrapping {@link JTextArea} rather than an HTML {@link JLabel}:
+	 * Swing ignores CSS width with the RuneScape font, so HTML labels render one clipped line, while
+	 * a text area wraps to its actual laid-out width and re-wraps responsively on resize. The
+	 * maximum-height cap keeps the surrounding {@code BoxLayout} from stretching it past its text.
+	 */
+	private final JTextArea detailDescriptionArea = new JTextArea()
+	{
+		@Override
+		public Dimension getMaximumSize()
+		{
+			return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+		}
+	};
 
 	private final JLabel icvHigh = new JLabel();
 	private final JLabel icvLow = new JLabel();
@@ -371,7 +387,6 @@ public class StockpilePanel extends PluginPanel
 
 	private JPanel topStack;
 	private String detailExamineText;
-	private int detailExamineWrapWidth = -1;
 	private JPanel detailSectionsHost;
 	private JPanel itemValuesSection;
 	private JPanel marketInfoSection;
@@ -543,6 +558,7 @@ public class StockpilePanel extends PluginPanel
 			Consumer<List<Integer>> onSetGlobalOrder,
 			Runnable onToggleCompactView,
 			Consumer<SortMode> onSetSortMode,
+			Runnable onToggleSortDirection,
 			BiConsumer<Integer, Boolean> onSetFavorite,
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
@@ -562,6 +578,7 @@ public class StockpilePanel extends PluginPanel
 		this.onSetGlobalOrder = onSetGlobalOrder;
 		this.onToggleCompactView = onToggleCompactView;
 		this.onSetSortMode = onSetSortMode;
+		this.onToggleSortDirection = onToggleSortDirection;
 		this.onSetFavorite = onSetFavorite;
 		this.onSetOnOverlay = onSetOnOverlay;
 		this.onSetGroupCollapsed = onSetGroupCollapsed;
@@ -1545,7 +1562,7 @@ public class StockpilePanel extends PluginPanel
 		if (sortMode != SortMode.MANUAL)
 		{
 			items = new ArrayList<>(rawItems);
-			items.sort(sortMode.comparator());
+			items.sort(sortMode.comparator(config.sortReversed()));
 		}
 		else
 		{
@@ -2922,19 +2939,35 @@ public class StockpilePanel extends PluginPanel
 		return row;
 	}
 
-	/** Opens the sort-mode menu on the header toggle, with the active mode checked. */
+	/**
+	 * Opens the sort-mode menu on the header toggle, with the active mode checked and its current
+	 * direction arrow shown. Clicking the active (non-manual) mode flips the sort direction; clicking
+	 * any other mode selects it.
+	 */
 	private void showSortMenu()
 	{
 		JPopupMenu menu = new JPopupMenu();
 		SortMode active = config.sortMode();
+		boolean reversed = config.sortReversed();
 		for (SortMode mode : SortMode.values())
 		{
-			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(mode.toString(), mode == active);
+			boolean isActive = mode == active;
+			String label = isActive && mode != SortMode.MANUAL
+					? mode + (mode.descending(reversed) ? "  ↓" : "  ↑")
+					: mode.toString();
+			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(label, isActive);
 			entry.setFont(FontManager.getRunescapeSmallFont());
 			entry.addActionListener(e ->
 			{
-				if (onSetSortMode != null)
+				if (isActive && mode != SortMode.MANUAL)
+				{
+					if (onToggleSortDirection != null)
+						onToggleSortDirection.run();
+				}
+				else if (onSetSortMode != null)
+				{
 					onSetSortMode.accept(mode);
+				}
 			});
 			menu.add(entry);
 		}
@@ -2942,13 +2975,26 @@ public class StockpilePanel extends PluginPanel
 		menu.show(sortToggle, 0, sortToggle.getHeight());
 	}
 
-	/** Highlights the header sort toggle while a non-manual sort is active. */
+	/**
+	 * Reflects the active sort on the header toggle: the effective direction arrow
+	 * (highlighted) or the neutral glyph.
+	 */
 	private void updateSortToggle()
 	{
-		if (sortToggle != null)
-			sortToggle.setForeground(config.sortMode() != SortMode.MANUAL
-					? COLOR_AVG
-					: ColorScheme.LIGHT_GRAY_COLOR);
+		if (sortToggle == null)
+			return;
+
+		SortMode mode = config.sortMode();
+		if (mode == SortMode.MANUAL)
+		{
+			sortToggle.setText("⇅");
+			sortToggle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		}
+		else
+		{
+			sortToggle.setText(mode.descending(config.sortReversed()) ? "↓" : "↑");
+			sortToggle.setForeground(COLOR_AVG);
+		}
 	}
 
 	/** Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. */
@@ -3451,10 +3497,16 @@ public class StockpilePanel extends PluginPanel
 		detailQtyLabel.setForeground(Color.WHITE);
 		detailQtyLabel.setFont(FontManager.getRunescapeSmallFont());
 
-		detailDescriptionLabel.setForeground(DESCRIPTION_COLOR);
-		detailDescriptionLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
-		detailDescriptionLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-		detailDescriptionLabel.setBorder(new EmptyBorder(8, 0, 0, 0));
+		detailDescriptionArea.setEditable(false);
+		detailDescriptionArea.setFocusable(false);
+		detailDescriptionArea.setOpaque(false);
+		detailDescriptionArea.setLineWrap(true);
+		detailDescriptionArea.setWrapStyleWord(true);
+		detailDescriptionArea.setMargin(new Insets(0, 0, 0, 0));
+		detailDescriptionArea.setForeground(DESCRIPTION_COLOR);
+		detailDescriptionArea.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
+		detailDescriptionArea.setAlignmentX(Component.LEFT_ALIGNMENT);
+		detailDescriptionArea.setBorder(new EmptyBorder(8, 0, 0, 0));
 
 		JPanel titleTextStack = new JPanel();
 		titleTextStack.setLayout(new BoxLayout(titleTextStack, BoxLayout.Y_AXIS));
@@ -3484,23 +3536,13 @@ public class StockpilePanel extends PluginPanel
 		topStack.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		topStack.add(headerRow);
 		topStack.add(titleRow);
-		topStack.add(detailDescriptionLabel);
+		topStack.add(detailDescriptionArea);
 
 		detailSectionsHost = new JPanel();
 		detailSectionsHost.setLayout(new BoxLayout(detailSectionsHost, BoxLayout.Y_AXIS));
 		detailSectionsHost.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		detailSectionsHost.setAlignmentX(Component.LEFT_ALIGNMENT);
 		topStack.add(detailSectionsHost);
-
-		topStack.addComponentListener(new ComponentAdapter()
-		{
-			@Override
-			public void componentResized(ComponentEvent e)
-			{
-				if (topStack.getWidth() != detailExamineWrapWidth)
-					applyExamineWrap();
-			}
-		});
 
 		itemValuesSection = buildDetailSection("Item Current Values",
 				buildCurrentValuesBlock(icvHigh, icvLow, icvAvg, icvVolume, null));
@@ -3564,6 +3606,9 @@ public class StockpilePanel extends PluginPanel
 				if (row < 0 || col < 0)
 					return null;
 
+				if (acquisitionsModel.isSymbolColumn(convertColumnIndexToModel(col)))
+					return acquisitionsModel.sourceLabelAt(row);
+
 				Object val = getValueAt(row, col);
 				if (val instanceof Number)
 				{
@@ -3572,7 +3617,7 @@ public class StockpilePanel extends PluginPanel
 						return acqTooltipLabel(col) + ": " + NUMBER_FORMAT.format(v);
 				}
 
-				return "Source: " + acquisitionsModel.sourceLabelAt(row);
+				return null;
 			}
 
 			@Override
@@ -4133,6 +4178,19 @@ public class StockpilePanel extends PluginPanel
 	public int getDetailItemId()
 	{
 		return detailItemId;
+	}
+
+	/**
+	 * Opens the tracked detail card for {@code itemId}. A no-op when that item's tracked
+	 * detail is already showing, so re-opening it (e.g. from the GE integration) leaves the
+	 * card's scroll position and state untouched instead of rebuilding it back to the top.
+	 */
+	public void openTrackedDetail(int itemId)
+	{
+		if (detailItemId == itemId && previewItem == null)
+			return;
+
+		showDetail(itemId);
 	}
 
 	/** @return whether the user is mid-edit in the notifications table, so the plugin should defer firing rules. */
@@ -4810,6 +4868,20 @@ public class StockpilePanel extends PluginPanel
 
 		JComboBox<NotificationMetric> metricCombo = new JComboBox<>(NotificationMetric.values());
 		metricCombo.setFont(f);
+		metricCombo.setRenderer(new DefaultListCellRenderer()
+		{
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean isSelected, boolean cellHasFocus)
+			{
+				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+				if (value instanceof NotificationMetric)
+					setText(((NotificationMetric) value).getDisplayName());
+
+				setFont(f);
+				return this;
+			}
+		});
 		JComboBox<TimeWindow> timeCombo = new JComboBox<>(OVERVIEW_WINDOWS);
 		timeCombo.setFont(f);
 		JComboBox<NotificationOperation> opCombo = new JComboBox<>(NotificationOperation.values());
@@ -5297,37 +5369,15 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Fills every detail-view section with the given item's data: name/quantity,
-	 * current values, market info, the charts, the overview grid, alch figures,
-	 * notification rules, and the acquisitions log.
-	 */
-	/** Escapes the HTML-significant characters so examine text renders literally inside a wrapping HTML label. */
-	private static String escapeHtml(String text)
-	{
-		return text
-				.replace("&", "&amp;")
-				.replace("<", "&lt;")
-				.replace(">", "&gt;");
-	}
-
-	/**
-	 * Renders the current examine text into the description label, wrapping it to the
-	 * detail card's actual laid-out width so long text wraps instead of overrunning and
-	 * being clipped by the panel edge. Falls back to a panel-width estimate before the
-	 * card has been sized.
+	 * Sets the current examine text on the description area. The {@link JTextArea} line-wraps to its
+	 * own laid-out width, so no width measurement is needed and it re-wraps responsively on resize.
 	 */
 	private void applyExamineWrap()
 	{
 		if (detailExamineText == null)
 			return;
 
-		int available = topStack != null ? topStack.getWidth() : 0;
-		if (available <= 0)
-			available = PluginPanel.PANEL_WIDTH - 20;
-
-		detailExamineWrapWidth = available;
-		detailDescriptionLabel.setText("<html><div style='width:" + Math.max(1, available - 4)
-				+ "px'>" + escapeHtml(detailExamineText) + "</div></html>");
+		detailDescriptionArea.setText(detailExamineText);
 	}
 
 	/**
@@ -5356,7 +5406,7 @@ public class StockpilePanel extends PluginPanel
 		final boolean hasExamine = examine != null && !examine.isEmpty();
 		detailExamineText = hasExamine ? examine : null;
 		applyExamineWrap();
-		detailDescriptionLabel.setVisible(hasExamine);
+		detailDescriptionArea.setVisible(hasExamine);
 
 		final boolean hasPrices = item.hasPrices();
 		final boolean showMarket = item.isTradeable();
@@ -5826,6 +5876,16 @@ public class StockpilePanel extends PluginPanel
 		{
 			TableColumn col = table.getColumnModel().getColumn(i);
 			String name = model.getColumnName(i);
+			if (model.isSymbolColumn(i))
+			{
+				col.setCellRenderer(new SourceGlyphRenderer(() -> acqHoverRow, () -> acqHoverCol));
+				col.setMinWidth(28);
+				col.setMaxWidth(28);
+				col.setPreferredWidth(28);
+				col.setHeaderValue("");
+				continue;
+			}
+
 			boolean isProfit = "Profit".equals(name);
 			col.setCellRenderer(new AcqCellRenderer(isProfit, expanded, () -> acqHoverRow, () -> acqHoverCol));
 			if (i < 3)
