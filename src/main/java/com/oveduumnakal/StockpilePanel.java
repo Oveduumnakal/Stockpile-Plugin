@@ -75,6 +75,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import javax.swing.AbstractAction;
@@ -683,7 +684,7 @@ public class StockpilePanel extends PluginPanel
 		trackedLabel.setFont(FontManager.getRunescapeBoldFont());
 		trackedLabel.setBorder(new EmptyBorder(0, 0, 4, 0));
 
-		reorderToggle = new JLabel("⇅", SwingConstants.CENTER);
+		reorderToggle = new JLabel("⚙", SwingConstants.CENTER);
 		reorderToggle.setVerticalAlignment(SwingConstants.TOP);
 		reorderToggle.setAlignmentY(Component.TOP_ALIGNMENT);
 		reorderToggle.setFont(FontManager.getRunescapeBoldFont());
@@ -718,11 +719,10 @@ public class StockpilePanel extends PluginPanel
 		});
 		updateCompactToggle();
 
-		categoriesButton = new JLabel("⚙", SwingConstants.CENTER);
+		categoriesButton = new JLabel();
+		categoriesButton.setIcon(categoriesIcon(ColorScheme.LIGHT_GRAY_COLOR));
 		categoriesButton.setVerticalAlignment(SwingConstants.TOP);
 		categoriesButton.setAlignmentY(Component.TOP_ALIGNMENT);
-		categoriesButton.setFont(FontManager.getRunescapeBoldFont());
-		categoriesButton.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		categoriesButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		categoriesButton.setBorder(new EmptyBorder(6, 0, 4, 6));
 		categoriesButton.setToolTipText("Manage categories");
@@ -769,13 +769,25 @@ public class StockpilePanel extends PluginPanel
 		});
 		updateFilterToggle();
 
+		installToggleHover(reorderToggle, () -> reorderMode,
+				reorderToggle::setForeground, this::updateReorderToggle);
+		installToggleHover(sortToggle, () -> config.sortMode() != SortMode.MANUAL,
+				sortToggle::setForeground, this::updateSortToggle);
+		installToggleHover(compactToggle, config::compactView,
+				compactToggle::setForeground, this::updateCompactToggle);
+		installToggleHover(filterToggle, () -> trackedFilterField != null && trackedFilterField.isVisible(),
+				color -> filterToggle.setIcon(filterIcon(color)), this::updateFilterToggle);
+		installToggleHover(categoriesButton, () -> false,
+				color -> categoriesButton.setIcon(categoriesIcon(color)),
+				() -> categoriesButton.setIcon(categoriesIcon(ColorScheme.LIGHT_GRAY_COLOR)));
+
 		JPanel headerToggles = new JPanel();
 		headerToggles.setLayout(new BoxLayout(headerToggles, BoxLayout.X_AXIS));
 		headerToggles.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		headerToggles.add(categoriesButton);
 		headerToggles.add(sortToggle);
 		headerToggles.add(filterToggle);
 		headerToggles.add(compactToggle);
+		headerToggles.add(categoriesButton);
 		headerToggles.add(reorderToggle);
 
 		JPanel togglesRow = new JPanel(new BorderLayout());
@@ -1993,6 +2005,54 @@ public class StockpilePanel extends PluginPanel
 
 		g.dispose();
 		return new ImageIcon(img);
+	}
+
+	/** Draws a bulleted-list glyph — three dots, each followed by a line — tinted {@code color}. */
+	private static Icon categoriesIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		for (int y : new int[]{1, 6, 11})
+		{
+			g.fillOval(1, y, 3, 3);
+			g.fillRect(6, y, 7, 3);
+		}
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/**
+	 * Installs grey↔gold hover colouring on a header toggle: an unselected (grey) button
+	 * turns gold while hovered, a selected (gold) button turns grey, and its resting
+	 * state colour is repainted on exit.
+	 *
+	 * @param selected whether the button is currently in its selected/gold state
+	 * @param apply    paints the button in a colour ({@code setForeground} for glyph
+	 *                     buttons, {@code setIcon} for icon buttons)
+	 * @param restore  repaints the button's resting state colour
+	 */
+	private static void installToggleHover(JLabel button, BooleanSupplier selected,
+			Consumer<Color> apply, Runnable restore)
+	{
+		button.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				apply.accept(selected.getAsBoolean() ? ColorScheme.LIGHT_GRAY_COLOR : COLOR_AVG);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				restore.run();
+			}
+		});
 	}
 
 	/** Paints a small monochrome monitor (on-screen overlay) icon in the given colour. */
