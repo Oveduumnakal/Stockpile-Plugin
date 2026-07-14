@@ -99,6 +99,7 @@ public interface StockpileConfig extends Config
 	String KEY_SHOW_EST_LOW = "showEstLow";
 	String KEY_SHOW_EST_AVG = "showEstAvg";
 	String KEY_SHOW_EST_PROFIT = "showEstProfit";
+	String KEY_SHOW_SESSION = "showSession";
 
 	String KEY_ADD_CONTEXT_MENU_OPTION = "addContextMenuOption";
 	String KEY_TRACK_ITEM_COLOR = "trackItemColor";
@@ -618,6 +619,18 @@ public interface StockpileConfig extends Config
 			position = 7
 	)
 	default boolean showEstProfit()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_SHOW_SESSION,
+			name = "Show Session",
+			description = "Show the row containing the value gained/lost since login",
+			section = geEstimatesSection,
+			position = 8
+	)
+	default boolean showSession()
 	{
 		return true;
 	}

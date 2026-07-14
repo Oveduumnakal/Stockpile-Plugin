@@ -459,6 +459,15 @@ public class StockpilePanel extends PluginPanel
 	private final JPanel totalLowRow;
 	private final JPanel totalAvgRow;
 
+	/** Value gained/lost since the session baseline (login or manual reset); clickable to reset. */
+	private final JLabel sessionLabel = new JLabel();
+	/** The row wrapping {@link #sessionLabel}; toggled as a whole so no empty row lingers when hidden. */
+	private JPanel sessionRow;
+	/** In-memory session tracking; baseline captured on the first priced render after a reset. */
+	private final SessionStats sessionStats = new SessionStats();
+	/** The items from the most recent rebuild, so a session reset can re-render without one. */
+	private List<TrackedItem> lastRenderedItems = new ArrayList<>();
+
 	/** The standard totals rows (high/low/avg + profit), toggled off in compact view. */
 	private JPanel totalsRows;
 
@@ -885,6 +894,27 @@ public class StockpilePanel extends PluginPanel
 		profitSection.setVisible(false);
 		totalsRows.add(profitSection);
 
+		sessionLabel.setFont(FontManager.getRunescapeSmallFont());
+		sessionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		sessionLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		sessionLabel.setToolTipText("Value change since login — click to reset the session baseline");
+		sessionLabel.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				resetSession();
+			}
+		});
+
+		sessionRow = new JPanel();
+		sessionRow.setLayout(new BoxLayout(sessionRow, BoxLayout.X_AXIS));
+		sessionRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		sessionRow.setBorder(ESTIMATE_ROW_BORDER_DEFAULT);
+		sessionRow.add(sessionLabel);
+		sessionRow.add(Box.createHorizontalGlue());
+		totalsRows.add(sessionRow);
+
 		bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		bottomPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1143,6 +1173,65 @@ public class StockpilePanel extends PluginPanel
 				+ "<span style='color:" + grey + "'>)</span></html>");
 		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
 				+ sign + NUMBER_FORMAT.format(profit) + " gp</html>");
+	}
+
+	/**
+	 * Renders the "Session:" line: the value gained/lost since the baseline, coloured
+	 * green/red, with a tooltip splitting the change into price movement vs. quantity
+	 * change. Captures the baseline on the first priced render after a reset; hidden
+	 * until prices are available.
+	 */
+	private void updateSessionLine(List<TrackedItem> items, boolean hasPrices)
+	{
+		if (!config.showSession() || !hasPrices)
+		{
+			sessionRow.setVisible(false);
+			return;
+		}
+
+		Map<Integer, long[]> snapshot = new HashMap<>();
+		for (TrackedItem item : items)
+			if (item.hasPrices())
+				snapshot.put(item.getItemId(), new long[]{item.getQuantity(), item.getAvgPrice()});
+
+		if (!sessionStats.hasBaseline())
+			sessionStats.reset(snapshot);
+
+		SessionStats.Delta delta = sessionStats.delta(snapshot);
+		long total = delta.getTotal();
+		Color color = total == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (total > 0 ? COLOR_HIGH : COLOR_LOW);
+
+		sessionLabel.setForeground(color);
+		sessionLabel.setText("Session: " + signedShort(total));
+		sessionLabel.setToolTipText("<html>Since login:<br>"
+				+ "Price movement: " + signedGp(delta.getPrice()) + "<br>"
+				+ "Quantity change: " + signedGp(delta.getQuantity()) + "<br>"
+				+ "<i>click to reset</i></html>");
+		sessionRow.setVisible(true);
+	}
+
+	/** Re-baselines the session to the current holdings, so "Session:" restarts from zero. */
+	public void resetSession()
+	{
+		sessionStats.clear();
+		boolean hasPrices = lastRenderedItems.stream().anyMatch(TrackedItem::hasPrices);
+		updateSessionLine(lastRenderedItems, hasPrices);
+	}
+
+	/**
+	 * Drops the session baseline without re-priming (used on profile change): the next
+	 * rebuild captures the new profile's holdings as the baseline.
+	 */
+	public void clearSessionBaseline()
+	{
+		sessionStats.clear();
+	}
+
+	/** @return the value in short gp with an explicit +/- sign (e.g. {@code +1.2M}, {@code -350K}). */
+	private String signedShort(long value)
+	{
+		String sign = value > 0 ? "+" : (value < 0 ? "-" : "");
+		return sign + GpFormat.shortValue(Math.abs(value));
 	}
 
 	/** Builds a small footer button that runs the given action when clicked. */
@@ -1678,6 +1767,9 @@ public class StockpilePanel extends PluginPanel
 			renderTrackedRows(items, indicatorMode);
 
 			boolean hasPrices = items.stream().anyMatch(TrackedItem::hasPrices);
+
+			lastRenderedItems = items;
+			updateSessionLine(items, hasPrices);
 
 			totalHighRow.setVisible(showEstHigh);
 			totalLowRow.setVisible(showEstLow);

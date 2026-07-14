@@ -1,0 +1,96 @@
+/*
+ * Copyright (c) 2026, Oveduumnakal
+ * All rights reserved.
+ */
+package com.oveduumnakal;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import lombok.Value;
+
+/**
+ * Tracks how the tracked portfolio's value has moved since a baseline (captured at
+ * login or a manual reset), and splits the change into a <em>price</em> component
+ * (the baseline holdings revalued at current prices) and a <em>quantity</em>
+ * component (units gained or lost, valued at current prices). The two components
+ * sum exactly to the total change, so the tooltip breakdown always reconciles.
+ *
+ * <p>Session state is deliberately in-memory only — it resets each login and is
+ * never persisted.
+ */
+public final class SessionStats
+{
+	/** Baseline holdings: item id → {@code {quantity, unitPrice}} at baseline time. */
+	private final Map<Integer, long[]> baseline = new HashMap<>();
+
+	private boolean hasBaseline;
+
+	/** @return whether a baseline has been captured this session. */
+	public boolean hasBaseline()
+	{
+		return hasBaseline;
+	}
+
+	/** Captures {@code snapshot} (id → {@code {quantity, unitPrice}}) as the new session baseline. */
+	public void reset(Map<Integer, long[]> snapshot)
+	{
+		baseline.clear();
+		snapshot.forEach((id, qtyPrice) -> baseline.put(id, new long[]{qtyPrice[0], qtyPrice[1]}));
+		hasBaseline = true;
+	}
+
+	/** Drops the baseline (e.g. on profile change); the next snapshot re-primes it. */
+	public void clear()
+	{
+		baseline.clear();
+		hasBaseline = false;
+	}
+
+	/**
+	 * Computes the session change for {@code current} (id → {@code {quantity, unitPrice}})
+	 * against the baseline. A dropped item keeps its baseline price, so its loss lands
+	 * entirely on the quantity side.
+	 *
+	 * @return the total delta and its price/quantity split; zeros when no baseline is set
+	 */
+	public Delta delta(Map<Integer, long[]> current)
+	{
+		if (!hasBaseline)
+			return new Delta(0, 0, 0);
+
+		Set<Integer> ids = new HashSet<>(baseline.keySet());
+		ids.addAll(current.keySet());
+
+		long priceEffect = 0;
+		long quantityEffect = 0;
+		for (int id : ids)
+		{
+			long[] base = baseline.get(id);
+			long[] now = current.get(id);
+
+			long baseQty = base != null ? base[0] : 0;
+			long basePrice = base != null ? base[1] : 0;
+			long currentQty = now != null ? now[0] : 0;
+			long currentPrice = now != null ? now[1] : basePrice;
+
+			priceEffect += baseQty * (currentPrice - basePrice);
+			quantityEffect += (currentQty - baseQty) * currentPrice;
+		}
+
+		return new Delta(priceEffect + quantityEffect, priceEffect, quantityEffect);
+	}
+
+	/** The session change decomposed into total, price movement, and quantity movement (all gp). */
+	@Value
+	public static class Delta
+	{
+		long total;
+
+		long price;
+
+		long quantity;
+	}
+}
