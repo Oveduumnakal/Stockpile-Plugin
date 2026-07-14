@@ -461,6 +461,8 @@ public class StockpilePanel extends PluginPanel
 
 	/** Value gained/lost since the session baseline (login or manual reset); clickable to reset. */
 	private final JLabel sessionLabel = new JLabel();
+	/** The row wrapping {@link #sessionLabel}; toggled as a whole so no empty row lingers when hidden. */
+	private JPanel sessionRow;
 	/** In-memory session tracking; baseline captured on the first priced render after a reset. */
 	private final SessionStats sessionStats = new SessionStats();
 	/** The items from the most recent rebuild, so a session reset can re-render without one. */
@@ -828,20 +830,6 @@ public class StockpilePanel extends PluginPanel
 		totalsRows.add(totalLowRow);
 		totalsRows.add(totalAvgRow);
 
-		sessionLabel.setFont(FontManager.getRunescapeSmallFont());
-		sessionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		sessionLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		sessionLabel.setToolTipText("Value change since login — click to reset the session baseline");
-		sessionLabel.addMouseListener(new MouseAdapter()
-		{
-			@Override
-			public void mousePressed(MouseEvent e)
-			{
-				resetSession();
-			}
-		});
-		totalsRows.add(sessionLabel);
-
 		compactTotalsRows = new JPanel();
 		compactTotalsRows.setLayout(new BoxLayout(compactTotalsRows, BoxLayout.Y_AXIS));
 		compactTotalsRows.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -905,6 +893,27 @@ public class StockpilePanel extends PluginPanel
 		profitSection.add(profitRow, BorderLayout.CENTER);
 		profitSection.setVisible(false);
 		totalsRows.add(profitSection);
+
+		sessionLabel.setFont(FontManager.getRunescapeSmallFont());
+		sessionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		sessionLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		sessionLabel.setToolTipText("Value change since login — click to reset the session baseline");
+		sessionLabel.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				resetSession();
+			}
+		});
+
+		sessionRow = new JPanel();
+		sessionRow.setLayout(new BoxLayout(sessionRow, BoxLayout.X_AXIS));
+		sessionRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		sessionRow.setBorder(ESTIMATE_ROW_BORDER_DEFAULT);
+		sessionRow.add(sessionLabel);
+		sessionRow.add(Box.createHorizontalGlue());
+		totalsRows.add(sessionRow);
 
 		bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -1174,9 +1183,9 @@ public class StockpilePanel extends PluginPanel
 	 */
 	private void updateSessionLine(List<TrackedItem> items, boolean hasPrices)
 	{
-		if (!hasPrices)
+		if (!config.showSession() || !hasPrices)
 		{
-			sessionLabel.setVisible(false);
+			sessionRow.setVisible(false);
 			return;
 		}
 
@@ -1198,7 +1207,7 @@ public class StockpilePanel extends PluginPanel
 				+ "Price movement: " + signedGp(delta.getPrice()) + "<br>"
 				+ "Quantity change: " + signedGp(delta.getQuantity()) + "<br>"
 				+ "<i>click to reset</i></html>");
-		sessionLabel.setVisible(true);
+		sessionRow.setVisible(true);
 	}
 
 	/** Re-baselines the session to the current holdings, so "Session:" restarts from zero. */
