@@ -45,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -238,6 +239,9 @@ public class StockpilePlugin extends Plugin
 	private NavigationButton navButton;
 	private ScheduledFuture<?> priceRefreshTask;
 	private Instant lastPriceRefresh = null;
+
+	/** The newest un-rendered panel snapshot; non-null means a rebuild drainer is already queued. */
+	private final AtomicReference<Runnable> pendingRebuild = new AtomicReference<>();
 
 	private static final int NATURE_RUNE_ID = 561;
 	private static final int FIRE_RUNE_ID = 554;
@@ -2671,6 +2675,13 @@ public class StockpilePlugin extends Plugin
 	/**
 	 * Pushes the current tracked items and totals to the panel on the Swing thread.
 	 *
+	 * <p>Rebuilds are coalesced: the snapshot is published to {@link #pendingRebuild}
+	 * (last writer wins) and a drainer is enqueued only when none is pending, so no
+	 * matter how fast game events arrive, at most one rebuild sits in the EDT queue
+	 * and only the newest snapshot is rendered. Without this, per-tick events queue
+	 * full rebuilds faster than one completes and the panel's {@code removeAll} —
+	 * which scans the pending queue per removed child — live-locks the EDT (#120).
+	 *
 	 * @param pricesUpdated whether this refresh follows a price change, enabling
 	 *                      the per-row change indicators
 	 */
@@ -2690,8 +2701,17 @@ public class StockpilePlugin extends Plugin
 		final List<CategoryState> categorySnapshot = new ArrayList<>(categories);
 		final boolean favCollapsed = favoritesCollapsed;
 		final boolean uncatCollapsed = uncategorizedCollapsed;
-		SwingUtilities.invokeLater(() -> panel.rebuild(items, refresh, indicatorMode, loggedIn,
-				categorySnapshot, favCollapsed, uncatCollapsed));
+		Runnable rebuild = () -> panel.rebuild(items, refresh, indicatorMode, loggedIn,
+				categorySnapshot, favCollapsed, uncatCollapsed);
+		if (pendingRebuild.getAndSet(rebuild) != null)
+			return;
+
+		SwingUtilities.invokeLater(() ->
+		{
+			Runnable newest = pendingRebuild.getAndSet(null);
+			if (newest != null)
+				newest.run();
+		});
 	}
 
 	/**
