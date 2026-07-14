@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2026, Oveduumnakal
+ * All rights reserved.
+ */
 package com.oveduumnakal;
 
 import net.runelite.client.RuneLite;

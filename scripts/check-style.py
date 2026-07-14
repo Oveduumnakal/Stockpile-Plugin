@@ -17,6 +17,8 @@ every Java source file:
  10. No inline `//` comments (Javadoc instead), except a note that is the sole
      content of an intentionally-empty `catch` block.
  11. Every class/interface/enum declaration (including nested) carries Javadoc.
+ 12. No plain `/* ... */` block comments — the only permitted block comments
+     are `/**` Javadoc and the license header opening on line 1.
 
 Exits non-zero listing every violation, or prints a summary and exits zero.
 """
@@ -194,6 +196,9 @@ def check_file(path):
 
         if '//' in line and not allowed_empty_catch_note(lines, i - 1):
             report(path, i, 'inline-comment', raw)
+
+        if re.search(r'/\*(?!\*)', line.split('//')[0]) and i > 1:
+            report(path, i, 'block-comment', raw)
 
         stripped = code.strip()
 
