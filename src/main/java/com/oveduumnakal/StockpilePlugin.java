@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.Deque;
 import java.util.HashMap;
@@ -353,6 +354,12 @@ public class StockpilePlugin extends Plugin
 					public void reorder(String name, int targetIndex)
 					{
 						reorderCategory(name, targetIndex);
+					}
+
+					@Override
+					public String autoCategorize(boolean includeCategorized)
+					{
+						return StockpilePlugin.this.autoCategorize(includeCategorized);
 					}
 				}
 		);
@@ -950,6 +957,87 @@ public class StockpilePlugin extends Plugin
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/**
+	 * Auto-assigns tracked items to wiki-derived categories (see {@link ItemCategoryClassifier}),
+	 * creating any missing categories. Non-destructive unless {@code includeCategorized} is set:
+	 * by default only uncategorized items are touched, so manual assignments are preserved. The
+	 * mutation runs on the client thread; the returned message reports the outcome.
+	 *
+	 * @return a user-facing summary of how many items were categorized
+	 */
+	String autoCategorize(boolean includeCategorized)
+	{
+		long willChange = trackedItems.values().stream()
+				.filter(t -> inAutoCategorizeScope(t, includeCategorized))
+				.filter(t -> !ItemCategoryClassifier.classify(t.getName()).equals(t.getCategory()))
+				.count();
+
+		clientThread.invokeLater(() -> applyAutoCategorize(includeCategorized));
+
+		if (willChange == 0)
+			return "Nothing to categorize — everything already matches.";
+
+		return "Auto-categorized " + willChange + " item(s).";
+	}
+
+	/** @return whether the item is in scope: always when re-categorizing, otherwise only when uncategorized. */
+	private boolean inAutoCategorizeScope(TrackedItem item, boolean includeCategorized)
+	{
+		return includeCategorized || item.getCategory() == null || item.getCategory().trim().isEmpty();
+	}
+
+	/** Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. */
+	private void applyAutoCategorize(boolean includeCategorized)
+	{
+		boolean changed = false;
+		List<CategoryState> created = new ArrayList<>();
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (!inAutoCategorizeScope(tracked, includeCategorized))
+				continue;
+
+			String target = ItemCategoryClassifier.classify(tracked.getName());
+			if (target.equals(tracked.getCategory()))
+				continue;
+
+			if (categories.stream().noneMatch(c -> c.getName().equalsIgnoreCase(target)))
+			{
+				CategoryState category = new CategoryState(target, false);
+				categories.add(category);
+				created.add(category);
+			}
+
+			tracked.setCategory(target);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			orderGeneratedCategories(created);
+			persistCategories();
+			persistTrackedItems();
+			refreshPanel();
+		}
+	}
+
+	/**
+	 * Orders an auto-categorize run's generated categories alphabetically after any
+	 * pre-existing (manually ordered) ones, then keeps "Other" at the very end.
+	 */
+	private void orderGeneratedCategories(List<CategoryState> created)
+	{
+		categories.removeAll(created);
+		created.stream()
+				.sorted(Comparator.comparing(CategoryState::getName, String.CASE_INSENSITIVE_ORDER))
+				.forEach(categories::add);
+
+		List<CategoryState> other = categories.stream()
+				.filter(c -> ItemCategoryClassifier.OTHER.equalsIgnoreCase(c.getName()))
+				.collect(Collectors.toList());
+		categories.removeAll(other);
+		categories.addAll(other);
 	}
 
 	/** Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes. */
