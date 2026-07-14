@@ -1659,7 +1659,7 @@ public class StockpilePlugin extends Plugin
 		{
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0)
+				if (item.getId() > 0 && !isPlaceholder(item.getId()))
 					newCounts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
@@ -2607,7 +2607,7 @@ public class StockpilePlugin extends Plugin
 			counts.clear();
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0)
+				if (item.getId() > 0 && !isPlaceholder(item.getId()))
 					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
@@ -2665,7 +2665,7 @@ public class StockpilePlugin extends Plugin
 			counts.clear();
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0)
+				if (item.getId() > 0 && !isPlaceholder(item.getId()))
 					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
 			}
 		}
@@ -2683,6 +2683,16 @@ public class StockpilePlugin extends Plugin
 	boolean isTracked(int itemId)
 	{
 		return trackedItems.containsKey(itemId);
+	}
+
+	/**
+	 * @return whether {@code itemId} is a bank placeholder variant, which
+	 *         {@code canonicalize} would map to the real item — placeholders must
+	 *         never count as held quantity. Client thread only.
+	 */
+	private boolean isPlaceholder(int itemId)
+	{
+		return itemManager.getItemComposition(itemId).getPlaceholderTemplateId() != -1;
 	}
 
 	/** Callback after the user edits an item's acquisitions: re-derives its quantity from the lots and persists. */
