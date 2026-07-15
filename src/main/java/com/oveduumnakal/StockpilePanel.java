@@ -120,6 +120,7 @@ import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
+import javax.swing.text.DefaultCaret;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -3679,6 +3680,7 @@ public class StockpilePanel extends PluginPanel
 		detailDescriptionArea.setEditable(false);
 		detailDescriptionArea.setFocusable(false);
 		detailDescriptionArea.setOpaque(false);
+		((DefaultCaret) detailDescriptionArea.getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
 		detailDescriptionArea.setLineWrap(true);
 		detailDescriptionArea.setWrapStyleWord(true);
 		detailDescriptionArea.setMargin(new Insets(0, 0, 0, 0));
@@ -4406,10 +4408,14 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Runs a refresh-in-place of the open detail card, restoring the enclosing scroll
-	 * pane's vertical position once the relayout settles — so a data refresh doesn't
-	 * yank the view back to the top. Opening a different item still starts at the top,
-	 * since {@link #showDetail} bypasses this.
+	 * Runs a refresh-in-place of the open detail card, keeping the enclosing scroll
+	 * pane's vertical position. The scroll yank this guards against was the
+	 * description area's caret scrolling itself into view on {@code setText} — muzzled
+	 * at the source with {@link DefaultCaret#NEVER_UPDATE} — so this is defensive:
+	 * layout is forced synchronously and the position re-asserted in the same EDT
+	 * event, with a queued re-assert for layout that settles late (async item images).
+	 * Opening a different item still starts at the top, since {@link #showDetail}
+	 * bypasses this.
 	 */
 	private void preserveDetailScroll(Runnable refresh)
 	{
@@ -4423,6 +4429,8 @@ public class StockpilePanel extends PluginPanel
 		final JScrollBar bar = scroll.getVerticalScrollBar();
 		final int value = bar.getValue();
 		refresh.run();
+		scroll.validate();
+		bar.setValue(value);
 		SwingUtilities.invokeLater(() -> bar.setValue(value));
 	}
 

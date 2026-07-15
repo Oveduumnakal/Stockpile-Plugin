@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import javax.swing.table.AbstractTableModel;
@@ -30,6 +31,9 @@ class AcquisitionsTableModel extends AbstractTableModel
 	private final boolean expanded;
 	private TrackedItem item;
 
+	/** The column set last announced via {@code fireTableStructureChanged}, to skip redundant resets. */
+	private String[] lastFiredCols;
+
 	AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited,
 			IntSupplier detailItemId, boolean expanded)
 	{
@@ -39,9 +43,23 @@ class AcquisitionsTableModel extends AbstractTableModel
 		this.expanded = expanded;
 	}
 
+	/**
+	 * Swaps the backing item, announcing a full structure reset only when the column
+	 * set actually changed — a plain data change keeps the table's layout, column
+	 * widths, and renderers, so refresh-in-place doesn't collapse the detail card.
+	 */
 	void setItem(TrackedItem item)
 	{
 		this.item = item;
+
+		String[] cols = cols();
+		if (Arrays.equals(cols, lastFiredCols))
+		{
+			fireTableDataChanged();
+			return;
+		}
+
+		lastFiredCols = cols;
 		fireTableStructureChanged();
 	}
 
