@@ -8,13 +8,16 @@ import java.util.Collection;
 
 /**
  * Renders the acquisition (lot) log of the tracked items to CSV: one row per
- * acquisition, with the realized profit filled in for closed lots. The output is
+ * acquisition, with the realized profit filled in for closed lots and the buy/sell
+ * provenance from source-attributed pricing (#64) — {@code Sold Estimated} flags
+ * closes priced at the average rather than an observed sale (#71). The output is
  * RFC-4180-style (quotes doubled, fields with commas/quotes/newlines quoted) so it
  * opens cleanly in any spreadsheet.
  */
 public final class AcquisitionCsvExporter
 {
-	private static final String HEADER = "Item,Item ID,Quantity,Bought At,Sold At,Realized Profit";
+	private static final String HEADER =
+			"Item,Item ID,Quantity,Bought At,Sold At,Realized Profit,Source,Sell Source,Sold Estimated";
 
 	private AcquisitionCsvExporter()
 	{
@@ -53,7 +56,10 @@ public final class AcquisitionCsvExporter
 				.append(record.getQuantity()).append(',')
 				.append(record.getBoughtAt()).append(',')
 				.append(soldAt != null ? Long.toString(soldAt) : "").append(',')
-				.append(profit).append('\n');
+				.append(profit).append(',')
+				.append(record.sourceOrUnknown()).append(',')
+				.append(soldAt != null ? record.sellSourceOrUnknown().toString() : "").append(',')
+				.append(record.isSellEstimated() ? "yes" : "").append('\n');
 	}
 
 	/** Quotes a field when it contains a comma, quote, or newline, doubling embedded quotes. */
