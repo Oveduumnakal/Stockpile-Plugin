@@ -58,6 +58,7 @@ import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
@@ -72,6 +73,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -248,6 +250,14 @@ public class StockpilePlugin extends Plugin
 
 	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
 	private boolean shopOpen = false;
+
+	/** The partner-side trade container: the offer container id with the "other player" bit set. */
+	private static final int TRADE_OTHER_CONTAINER = InventoryID.TRADEOFFER | 0x8000;
+
+	/** Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). */
+	private final Map<Integer, Integer> myTradeOffer = new HashMap<>();
+	private final Map<Integer, Integer> theirTradeOffer = new HashMap<>();
+
 	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
 			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC);
@@ -1790,6 +1800,13 @@ public class StockpilePlugin extends Plugin
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
 		int containerId = event.getContainerId();
+		if (containerId == InventoryID.TRADEOFFER || containerId == TRADE_OTHER_CONTAINER)
+		{
+			captureTradeOffer(containerId == InventoryID.TRADEOFFER ? myTradeOffer : theirTradeOffer,
+					event.getItemContainer());
+			return;
+		}
+
 		if (!TRACKED_CONTAINERS.contains(containerId))
 			return;
 
@@ -2305,6 +2322,76 @@ public class StockpilePlugin extends Plugin
 		}
 	}
 
+	/** Snapshots one side of the trade window (canonical id → quantity) as its container changes. */
+	private void captureTradeOffer(Map<Integer, Integer> side, ItemContainer container)
+	{
+		side.clear();
+		if (container == null)
+			return;
+
+		for (Item item : container.getItems())
+		{
+			if (item.getId() > 0)
+				side.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
+		}
+	}
+
+	/** Registers the completed trade's claims when the game confirms the exchange (#66). */
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() == ChatMessageType.TRADE && "Accepted trade.".equals(event.getMessage()))
+			registerTradeClaims();
+	}
+
+	/**
+	 * Claims a completed trade's item movements as {@link AcquisitionSource#PLAYER_TRADE} (#66):
+	 * items received buy in at the gp we gave apportioned across them by market value, and
+	 * items given close at the gp we received apportioned the same way. Pure item-for-item
+	 * legs price at 0; coins are the numerator, never an apportionment target.
+	 */
+	private void registerTradeClaims()
+	{
+		long gpPaid = myTradeOffer.getOrDefault(ItemID.COINS, 0);
+		long gpReceived = theirTradeOffer.getOrDefault(ItemID.COINS, 0);
+
+		registerTradeSide(theirTradeOffer, gpPaid);
+		registerTradeSide(myTradeOffer, gpReceived);
+
+		myTradeOffer.clear();
+		theirTradeOffer.clear();
+	}
+
+	/** Claims one trade side's non-coin legs at the apportioned per-unit price. */
+	private void registerTradeSide(Map<Integer, Integer> side, long gp)
+	{
+		List<TradeApportioner.Leg> legs = new ArrayList<>();
+		for (Map.Entry<Integer, Integer> entry : side.entrySet())
+		{
+			if (entry.getKey() != ItemID.COINS && entry.getValue() > 0)
+				legs.add(new TradeApportioner.Leg(entry.getKey(), entry.getValue(),
+						marketUnitValue(entry.getKey())));
+		}
+
+		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
+		for (TradeApportioner.Leg leg : legs)
+		{
+			if (isTracked(leg.itemId))
+				sourceAttribution.claim(AcquisitionSource.PLAYER_TRADE, leg.itemId, leg.quantity,
+						prices.get(leg.itemId), client.getTickCount());
+		}
+	}
+
+	/** @return an item's unit market value for apportionment weights: the tracked avg, or the wiki price. */
+	private long marketUnitValue(int itemId)
+	{
+		TrackedItem tracked = trackedItems.get(itemId);
+		if (tracked != null && tracked.getAvgPrice() > 0)
+			return tracked.getAvgPrice();
+
+		return itemManager.getItemPrice(itemId);
+	}
+
 	/**
 	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
 	 * non-coin item moved: the coins paid or received, divided across the quantity,
@@ -2437,6 +2524,8 @@ public class StockpilePlugin extends Plugin
 					pendingGroundSuspend.clear();
 					pendingGroundUnsuspend.clear();
 					shopOpen = false;
+					myTradeOffer.clear();
+					theirTradeOffer.clear();
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					pendingProcessingOutput.clear();
