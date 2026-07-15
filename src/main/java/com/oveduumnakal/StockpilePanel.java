@@ -4407,9 +4407,11 @@ public class StockpilePanel extends PluginPanel
 
 	/**
 	 * Runs a refresh-in-place of the open detail card, restoring the enclosing scroll
-	 * pane's vertical position once the relayout settles — so a data refresh doesn't
-	 * yank the view back to the top. Opening a different item still starts at the top,
-	 * since {@link #showDetail} bypasses this.
+	 * pane's vertical position — so a data refresh doesn't yank the view back to the
+	 * top. Layout is forced synchronously and the scrollbar restored within the same
+	 * EDT event, so no intermediate frame can paint at the clamped position; a queued
+	 * re-assert then covers layout that settles late (e.g. async item images). Opening
+	 * a different item still starts at the top, since {@link #showDetail} bypasses this.
 	 */
 	private void preserveDetailScroll(Runnable refresh)
 	{
@@ -4423,6 +4425,8 @@ public class StockpilePanel extends PluginPanel
 		final JScrollBar bar = scroll.getVerticalScrollBar();
 		final int value = bar.getValue();
 		refresh.run();
+		scroll.validate();
+		bar.setValue(value);
 		SwingUtilities.invokeLater(() -> bar.setValue(value));
 	}
 
