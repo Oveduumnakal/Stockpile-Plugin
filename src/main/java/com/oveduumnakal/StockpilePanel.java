@@ -3788,6 +3788,9 @@ public class StockpilePanel extends PluginPanel
 				if (acquisitionsModel.isSymbolColumn(convertColumnIndexToModel(col)))
 					return acquisitionsModel.sourceLabelAt(row);
 
+				if (convertColumnIndexToModel(col) == 2 && acquisitionsModel.isSellEstimated(row))
+					return AcqCellRenderer.ESTIMATED_TOOLTIP;
+
 				Object val = getValueAt(row, col);
 				if (val instanceof Number)
 				{
@@ -6090,7 +6093,9 @@ public class StockpilePanel extends PluginPanel
 			}
 
 			boolean isProfit = "Profit".equals(name);
-			col.setCellRenderer(new AcqCellRenderer(isProfit, expanded, () -> acqHoverRow, () -> acqHoverCol));
+			boolean isSold = "Sold".equals(name);
+			col.setCellRenderer(new AcqCellRenderer(isProfit, expanded, () -> acqHoverRow, () -> acqHoverCol,
+					isSold ? model::isSellEstimated : null));
 			if (i < 3)
 				col.setCellEditor(centerEditor);
 

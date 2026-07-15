@@ -500,8 +500,9 @@ public interface StockpileConfig extends Config
 			keyName = KEY_AUTO_ADD_ITEMS,
 			name = "Auto Add Items",
 			description = "Automatically add collection-log entries from inventory/bank changes, and the price "
-					+ "they buy in at. High/Low/Avg use the latest matching price, Zero buys in at 0, "
-					+ "Off disables auto-adds (manual edits still work).",
+					+ "unknown-source changes buy in at (mobile/offline sessions and anything no detector "
+					+ "observed — observed sources like GE offers price themselves). High/Low/Avg use the "
+					+ "latest matching price, Zero buys in at 0, Off disables auto-adds (manual edits still work).",
 			section = detailViewSection,
 			position = 11
 	)

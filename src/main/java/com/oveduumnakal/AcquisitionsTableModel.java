@@ -79,6 +79,16 @@ class AcquisitionsTableModel extends AbstractTableModel
 		return item.getAcquisitions().get(row).sourceOrUnknown().toString();
 	}
 
+	/** @return whether the lot in {@code row} was closed at an estimated price rather than an observed sale. */
+	boolean isSellEstimated(int row)
+	{
+		if (item == null || row < 0 || row >= item.getAcquisitions().size())
+			return false;
+
+		AcquisitionRecord rec = item.getAcquisitions().get(row);
+		return rec.isSellEstimated();
+	}
+
 	@Override
 	public int getRowCount()
 	{
@@ -155,9 +165,15 @@ class AcquisitionsTableModel extends AbstractTableModel
 					break;
 				case 2:
 					if (s.isEmpty())
+					{
 						rec.setSoldAt(null);
+						rec.setSellSource(null);
+					}
 					else
+					{
 						rec.setSoldAt(Math.max(0, Long.parseLong(s)));
+						rec.setSellSource(AcquisitionSource.MANUAL);
+					}
 
 					break;
 				default:

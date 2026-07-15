@@ -1,6 +1,7 @@
 class AcquisitionRecord {
   boughtAt: long
   quantity: int
+  sellSource: AcquisitionSource
   soldAt: Long
   source: AcquisitionSource
 }
