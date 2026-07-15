@@ -2088,11 +2088,13 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
-	 * Claims an inventory change as a shop transaction (#67) when exactly one non-coin
-	 * item moved against an opposite coin move: the coins actually paid or received,
-	 * divided across the quantity, price the item's {@link AcquisitionSource#SHOP}
-	 * claim. Anything murkier — multi-item changes, specialty currencies moving no
-	 * coins — stays unclaimed and takes the unknown-source path.
+	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
+	 * non-coin item moved: the coins paid or received, divided across the quantity,
+	 * price the item's {@link AcquisitionSource#SHOP} claim. A buy must pay coins; a
+	 * sell must not spend them, and a worthless sell the shop pays nothing for is still
+	 * a shop sale at 0. Anything murkier — multi-item changes, specialty-currency shops
+	 * (tokkul, marks) that move a second item rather than coins — stays unclaimed and
+	 * takes the unknown-source path.
 	 */
 	private void registerShopClaims(Map<Integer, Integer> oldCounts, Map<Integer, Integer> newCounts)
 	{
@@ -2121,10 +2123,11 @@ public class StockpilePlugin extends Plugin
 			}
 		}
 
-		if (changedCount != 1 || coinDelta == 0 || itemDelta == 0 || (coinDelta > 0) == (itemDelta > 0))
+		if (changedCount != 1 || itemDelta == 0 || !isTracked(changedItem))
 			return;
 
-		if (!isTracked(changedItem))
+		boolean sell = itemDelta < 0;
+		if (sell ? coinDelta < 0 : coinDelta >= 0)
 			return;
 
 		long unitPrice = Math.abs(coinDelta) / Math.abs(itemDelta);
