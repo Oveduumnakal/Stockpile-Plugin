@@ -88,13 +88,22 @@ class AcquisitionsTableModel extends AbstractTableModel
 		return !expanded && c == getColumnCount() - 1;
 	}
 
+	/**
+	 * @return the source shown for a lot: for a sold lot how it left the collection
+	 *         (the sell source — GE, Alchemy, Shop, …), otherwise how it entered
+	 */
+	private AcquisitionSource displaySource(AcquisitionRecord rec)
+	{
+		return rec.getSoldAt() != null ? rec.sellSourceOrUnknown() : rec.sourceOrUnknown();
+	}
+
 	/** @return the source label for the lot in {@code row}, for the compact table's tooltip. */
 	String sourceLabelAt(int row)
 	{
 		if (item == null || row < 0 || row >= item.getAcquisitions().size())
 			return "";
 
-		return item.getAcquisitions().get(row).sourceOrUnknown().toString();
+		return displaySource(item.getAcquisitions().get(row)).toString();
 	}
 
 	/** @return whether the lot in {@code row} was closed at an estimated price rather than an observed sale. */
@@ -148,10 +157,10 @@ class AcquisitionsTableModel extends AbstractTableModel
 	{
 		AcquisitionRecord rec = item.getAcquisitions().get(r);
 		if (isSymbolColumn(c))
-			return rec.sourceOrUnknown();
+			return displaySource(rec);
 
 		if (isSourceColumn(c))
-			return rec.sourceOrUnknown().toString();
+			return displaySource(rec).toString();
 
 		switch (c)
 		{
