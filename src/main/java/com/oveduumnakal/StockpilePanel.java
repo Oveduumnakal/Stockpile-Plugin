@@ -46,7 +46,6 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
-import java.awt.event.AdjustmentListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
@@ -121,6 +120,7 @@ import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
+import javax.swing.text.DefaultCaret;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -3680,6 +3680,7 @@ public class StockpilePanel extends PluginPanel
 		detailDescriptionArea.setEditable(false);
 		detailDescriptionArea.setFocusable(false);
 		detailDescriptionArea.setOpaque(false);
+		((DefaultCaret) detailDescriptionArea.getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
 		detailDescriptionArea.setLineWrap(true);
 		detailDescriptionArea.setWrapStyleWord(true);
 		detailDescriptionArea.setMargin(new Insets(0, 0, 0, 0));
@@ -4407,12 +4408,12 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Runs a refresh-in-place of the open detail card, restoring the enclosing scroll
-	 * pane's vertical position — so a data refresh doesn't yank the view back to the
-	 * top. The relayout settles over several EDT events (table updates, async item
-	 * images), each of which can clamp the scrollbar, so the saved position is pinned
-	 * by {@link #pinDetailScroll} for a short settle window: the pin re-asserts inside
-	 * the clamping event itself, before Swing can paint a frame at the wrong position.
+	 * Runs a refresh-in-place of the open detail card, keeping the enclosing scroll
+	 * pane's vertical position. The scroll yank this guards against was the
+	 * description area's caret scrolling itself into view on {@code setText} — muzzled
+	 * at the source with {@link DefaultCaret#NEVER_UPDATE} — so this is defensive:
+	 * layout is forced synchronously and the position re-asserted in the same EDT
+	 * event, with a queued re-assert for layout that settles late (async item images).
 	 * Opening a different item still starts at the top, since {@link #showDetail}
 	 * bypasses this.
 	 */
@@ -4430,52 +4431,7 @@ public class StockpilePanel extends PluginPanel
 		refresh.run();
 		scroll.validate();
 		bar.setValue(value);
-		pinDetailScroll(bar, value);
-	}
-
-	/** Pin re-asserting the detail scroll position during a refresh's settle window, or {@code null}. */
-	private AdjustmentListener detailScrollPin;
-	private JScrollBar detailScrollPinBar;
-	private Timer detailScrollPinRelease;
-
-	/** How long a refresh's scroll pin holds before user scrolling regains control. */
-	private static final int SCROLL_PIN_SETTLE_MS = 250;
-
-	/**
-	 * Holds the detail scrollbar at {@code value} against transient relayout clamps:
-	 * any adjustment during the settle window is corrected synchronously, inside the
-	 * event that moved it, so the wrong position is never painted. A one-shot timer
-	 * releases the pin, returning scroll control to the user.
-	 */
-	private void pinDetailScroll(JScrollBar bar, int value)
-	{
-		releaseDetailScrollPin();
-
-		detailScrollPinBar = bar;
-		detailScrollPin = e ->
-		{
-			if (e.getValue() != value)
-				bar.setValue(value);
-		};
-		bar.addAdjustmentListener(detailScrollPin);
-
-		detailScrollPinRelease = new Timer(SCROLL_PIN_SETTLE_MS, e -> releaseDetailScrollPin());
-		detailScrollPinRelease.setRepeats(false);
-		detailScrollPinRelease.start();
-	}
-
-	/** Detaches the active scroll pin and cancels its release timer, if any. */
-	private void releaseDetailScrollPin()
-	{
-		if (detailScrollPinBar != null && detailScrollPin != null)
-			detailScrollPinBar.removeAdjustmentListener(detailScrollPin);
-
-		if (detailScrollPinRelease != null)
-			detailScrollPinRelease.stop();
-
-		detailScrollPin = null;
-		detailScrollPinBar = null;
-		detailScrollPinRelease = null;
+		SwingUtilities.invokeLater(() -> bar.setValue(value));
 	}
 
 	/** Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. */
