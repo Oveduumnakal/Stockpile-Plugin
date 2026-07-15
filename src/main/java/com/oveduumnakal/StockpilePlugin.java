@@ -249,6 +249,9 @@ public class StockpilePlugin extends Plugin
 
 	/** The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. */
 	private int processingXpTick = -1;
+
+	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
+	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -2115,12 +2118,14 @@ public class StockpilePlugin extends Plugin
 	 * Pairs this tick's consumed inputs with the produced output when a processing-skill
 	 * XP gain identifies a recipe action (#69), transferring the summed input cost: tracked
 	 * inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their
-	 * fallback market value, and the single output item buys in at the total divided per
-	 * unit. Multi-output ticks are unattributable and left to the fallback; tracked inputs
-	 * with no tracked output close at 0. Coins never participate.
+	 * fallback market value, and the total is carried onto the output's new lot(s) by
+	 * {@link #consumeProcessingOutput} so their basis sums exactly to it. Multi-output ticks
+	 * are unattributable and left to the fallback; tracked inputs with no tracked output
+	 * close at 0. Coins never participate.
 	 */
 	private void correlateProcessing()
 	{
+		pendingProcessingOutput.clear();
 		if (pendingItemDeltas.isEmpty() || client.getTickCount() - processingXpTick > 1)
 			return;
 
@@ -2168,8 +2173,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		if (trackedOutput && outputQty > 0)
-			sourceAttribution.claim(AcquisitionSource.PROCESSING, outputId, outputQty,
-					totalCost / outputQty, client.getTickCount());
+			pendingProcessingOutput.put(outputId, totalCost);
 	}
 
 	/** @return an untracked processing input's per-unit value under the fallback (Auto Add) policy. */
@@ -2316,6 +2320,7 @@ public class StockpilePlugin extends Plugin
 				shopOpen = false;
 				lastSkillXp.clear();
 				processingXpTick = -1;
+				pendingProcessingOutput.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -2547,6 +2552,7 @@ public class StockpilePlugin extends Plugin
 			remaining = consumeSellUnsuspend(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
+			remaining = consumeProcessingOutput(tracked, remaining);
 			if (remaining > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
@@ -2611,6 +2617,28 @@ public class StockpilePlugin extends Plugin
 
 		tracked.setGroundSuspendedQuantity(suspended - restore);
 		return qty - restore;
+	}
+
+	/**
+	 * Opens the output lot(s) of a processing action (#69), carrying the transferred
+	 * input basis so their cost sums <em>exactly</em> to it. An uneven split gives the
+	 * remainder units one extra gp each — 13 gp across 60 units becomes 13 units at 1 gp
+	 * plus 47 at 0 gp — since a single integer per-unit price can't hold a sub-gp basis.
+	 * Consumes the whole addition (returns 0) so it bypasses the fallback auto-add.
+	 */
+	private int consumeProcessingOutput(TrackedItem tracked, int qty)
+	{
+		Long totalCost = pendingProcessingOutput.remove(tracked.getItemId());
+		if (qty <= 0 || totalCost == null)
+			return qty;
+
+		long base = totalCost / qty;
+		int remainder = (int) (totalCost % qty);
+		if (remainder > 0)
+			addOpenAcquisition(tracked, remainder, base + 1, AcquisitionSource.PROCESSING);
+
+		addOpenAcquisition(tracked, qty - remainder, base, AcquisitionSource.PROCESSING);
+		return 0;
 	}
 
 	/** Restores up to {@code qty} cancelled-sell units to held (un-suspends), returning the unconsumed remainder. */
