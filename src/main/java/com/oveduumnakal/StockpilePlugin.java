@@ -2836,11 +2836,28 @@ public class StockpilePlugin extends Plugin
 			}
 		}
 
+		remaining = realizeOpenLots(records, remaining, soldAtPrice, sellSource, sellSource);
+		realizeOpenLots(records, remaining, soldAtPrice, sellSource, null);
+	}
+
+	/**
+	 * Realizes up to {@code remaining} units across the open lots oldest-first,
+	 * closing (or splitting) each at {@code soldAtPrice} with {@code sellSource} and
+	 * merging into a matching closed lot where possible. When {@code onlySource} is
+	 * non-null, only lots that entered from that source are eligible — so a sell
+	 * closes its own source's buys before any others (#137), with the caller running
+	 * a matched pass followed by an unrestricted one.
+	 *
+	 * @return the units still unrealized after this pass
+	 */
+	private int realizeOpenLots(List<AcquisitionRecord> records, int remaining, long soldAtPrice,
+			AcquisitionSource sellSource, AcquisitionSource onlySource)
+	{
 		int i = 0;
 		while (i < records.size() && remaining > 0)
 		{
 			AcquisitionRecord r = records.get(i);
-			if (r.getSoldAt() != null)
+			if (r.getSoldAt() != null || (onlySource != null && r.sourceOrUnknown() != onlySource))
 			{
 				i++;
 				continue;
@@ -2875,6 +2892,8 @@ public class StockpilePlugin extends Plugin
 				}
 			}
 		}
+
+		return remaining;
 	}
 
 	/**
