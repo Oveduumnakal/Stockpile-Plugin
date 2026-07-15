@@ -250,6 +250,9 @@ public class StockpilePlugin extends Plugin
 	/** Per-item units queued to move into ground suspension when this tick's removals apply. */
 	private final Map<Integer, Integer> pendingGroundSuspend = new HashMap<>();
 
+	/** Per-item units queued to leave ground suspension when this tick's additions apply (re-pickups). */
+	private final Map<Integer, Integer> pendingGroundUnsuspend = new HashMap<>();
+
 	/** How long a ground suspension may go unresolved before its units close as lost. */
 	private static final Duration GROUND_SUSPEND_EXPIRY = Duration.ofMinutes(10);
 
@@ -2051,7 +2054,9 @@ public class StockpilePlugin extends Plugin
 		if (ours != null)
 		{
 			int resolved = Math.min(ours, taken);
-			if (pendingAddition <= 0)
+			if (pendingAddition > 0)
+				pendingGroundUnsuspend.merge(canonicalId, Math.min(resolved, pendingAddition), Integer::sum);
+			else
 				closeGroundLost(canonicalId, resolved);
 
 			if (resolved >= ours)
@@ -2107,6 +2112,7 @@ public class StockpilePlugin extends Plugin
 
 		myDrops.clear();
 		pendingGroundSuspend.clear();
+		pendingGroundUnsuspend.clear();
 	}
 
 	/**
@@ -2145,6 +2151,7 @@ public class StockpilePlugin extends Plugin
 				pendingSellRealize.clear();
 				myDrops.clear();
 				pendingGroundSuspend.clear();
+				pendingGroundUnsuspend.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -2418,18 +2425,26 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
-	 * Greedily restores an addition from ground suspension — a re-pickup of our own
-	 * drop is a net no-op that opens no new lot. Greedy (not keyed to a remembered
-	 * {@code TileItem}) so recoveries still un-suspend when the drop's tile item was
-	 * lost to a scene reload. Returns the unconsumed remainder.
+	 * Restores an addition from ground suspension, but only up to what an actual
+	 * re-pickup of one of our dropped {@code TileItem}s queued — so a same-item pickup
+	 * from an unrelated source (a monster drop while our own is on the floor) can't
+	 * cancel the suspension and instead gets its own 0-cost ground lot. A re-pickup of
+	 * our drop is the net no-op that opens no new lot. Returns the unconsumed remainder.
 	 */
 	private int consumeGroundUnsuspend(TrackedItem tracked, int qty)
 	{
+		Integer pending = pendingGroundUnsuspend.get(tracked.getItemId());
 		int suspended = tracked.getGroundSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0)
+		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
 			return qty;
 
-		int restore = Math.min(qty, suspended);
+		int restore = Math.min(qty, Math.min(pending, suspended));
+		int left = pending - restore;
+		if (left > 0)
+			pendingGroundUnsuspend.put(tracked.getItemId(), left);
+		else
+			pendingGroundUnsuspend.remove(tracked.getItemId());
+
 		tracked.setGroundSuspendedQuantity(suspended - restore);
 		return qty - restore;
 	}
