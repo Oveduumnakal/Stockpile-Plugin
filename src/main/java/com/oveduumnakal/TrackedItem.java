@@ -66,6 +66,18 @@ public class TrackedItem
 	private int suspendedQuantity;
 
 	/**
+	 * Units lost to a death and awaiting recovery: gone from held containers but
+	 * their lots stay open (cost basis intact) until a gravestone/Death's Office
+	 * reclaim restores them, or the suspension outlives the gravestone timer and
+	 * closes at 0. Survives relogs — persisted explicitly through
+	 * {@code PersistedItem} (transient here so Gson never touches these fields).
+	 */
+	private transient int deathSuspendedQuantity;
+
+	/** When the newest death suspension was taken, for the recovery-expiry sweep. */
+	private transient Instant deathSuspendedAt;
+
+	/**
 	 * Units dropped on the ground and still considered owned: gone from held
 	 * containers but their lots stay open (cost basis intact) until re-picked-up
 	 * (un-suspends, a net no-op) or lost (despawn/expiry closes them at 0). Kept

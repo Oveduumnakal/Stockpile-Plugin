@@ -79,6 +79,9 @@ public class PersistenceCompatTest
 		assertEquals("Weapons", whip.category);
 		assertFalse(whip.favorite);
 		assertTrue(whip.acquisitions.isEmpty());
+
+		assertEquals(0, runes.deathSuspendedQuantity);
+		assertNull(runes.deathSuspendedAt);
 	}
 
 	@Test
