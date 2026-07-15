@@ -76,12 +76,14 @@ import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ItemDespawned;
+import net.runelite.api.events.ItemQuantityChanged;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
@@ -236,6 +238,20 @@ public class StockpilePlugin extends Plugin
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
 	private final Map<TileItem, Tile> groundItems = new HashMap<>();
+
+	/** This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65). */
+	private final List<ItemSpawned> tickGroundSpawns = new ArrayList<>();
+	private final List<ItemDespawned> tickGroundDespawns = new ArrayList<>();
+	private final List<ItemQuantityChanged> tickGroundQuantityChanges = new ArrayList<>();
+
+	/** Ground items this player dropped: the {@code TileItem} → how many of its units are ours. */
+	private final Map<TileItem, Integer> myDrops = new HashMap<>();
+
+	/** Per-item units queued to move into ground suspension when this tick's removals apply. */
+	private final Map<Integer, Integer> pendingGroundSuspend = new HashMap<>();
+
+	/** How long a ground suspension may go unresolved before its units close as lost. */
+	private static final Duration GROUND_SUSPEND_EXPIRY = Duration.ofMinutes(10);
 
 	private StockpilePanel panel;
 	private NavigationButton navButton;
@@ -468,7 +484,11 @@ public class StockpilePlugin extends Plugin
 		screenOverlays.forEach(overlayManager::remove);
 		screenOverlays.clear();
 		panel.shutdown();
+		closeAllGroundSuspensions();
 		groundItems.clear();
+		tickGroundSpawns.clear();
+		tickGroundDespawns.clear();
+		tickGroundQuantityChanges.clear();
 		clientThread.invokeLater(this::hideGeButton);
 		currentGeItem = -1;
 		persistPriceCache();
@@ -1726,6 +1746,7 @@ public class StockpilePlugin extends Plugin
 	public void onClientTick(ClientTick event)
 	{
 		sourceAttribution.expire(client.getTickCount());
+		correlateGroundActivity();
 		if (pendingQuantitySync)
 		{
 			pendingQuantitySync = false;
@@ -1771,6 +1792,8 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		expireGroundSuspensions();
+
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
 		if (!wantButton)
@@ -1929,18 +1952,161 @@ public class StockpilePlugin extends Plugin
 		geButton = button;
 	}
 
-	/** Records a ground item and its tile so the ground overlay can outline it. */
+	/** Records a ground item and its tile so the ground overlay can outline it, buffering it for #65. */
 	@Subscribe
 	public void onItemSpawned(ItemSpawned event)
 	{
 		groundItems.put(event.getItem(), event.getTile());
+		if (isTracked(itemManager.canonicalize(event.getItem().getId())))
+			tickGroundSpawns.add(event);
 	}
 
-	/** Forgets a ground item once it despawns. */
+	/** Forgets a ground item once it despawns, buffering it for #65's pickup/lost-drop correlation. */
 	@Subscribe
 	public void onItemDespawned(ItemDespawned event)
 	{
 		groundItems.remove(event.getItem());
+		if (myDrops.containsKey(event.getItem()) || isTracked(itemManager.canonicalize(event.getItem().getId())))
+			tickGroundDespawns.add(event);
+	}
+
+	/** Buffers ground-stack quantity changes so drops onto an existing stack correlate like spawns (#65). */
+	@Subscribe
+	public void onItemQuantityChanged(ItemQuantityChanged event)
+	{
+		if (myDrops.containsKey(event.getItem()) || isTracked(itemManager.canonicalize(event.getItem().getId())))
+			tickGroundQuantityChanges.add(event);
+	}
+
+	/**
+	 * Correlates this tick's ground-item activity with the pending inventory deltas (#65):
+	 * a spawn (or stack increase) on the player's tile matching a pending removal is our
+	 * drop — its units queue for ground suspension and the {@code TileItem} is remembered;
+	 * a despawn of a remembered drop with no matching pickup closes its units as lost at 0;
+	 * a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a
+	 * {@link AcquisitionSource#GROUND} acquisition at 0. Runs before the quantity sync
+	 * consumes the deltas.
+	 */
+	private void correlateGroundActivity()
+	{
+		if (tickGroundSpawns.isEmpty() && tickGroundDespawns.isEmpty() && tickGroundQuantityChanges.isEmpty())
+			return;
+
+		WorldPoint myLocation = client.getLocalPlayer() == null
+				? null
+				: client.getLocalPlayer().getWorldLocation();
+
+		for (ItemSpawned spawn : tickGroundSpawns)
+			correlateGroundGain(spawn.getItem(), spawn.getTile(), spawn.getItem().getQuantity(), myLocation);
+
+		for (ItemQuantityChanged change : tickGroundQuantityChanges)
+		{
+			int delta = change.getNewQuantity() - change.getOldQuantity();
+			if (delta > 0)
+				correlateGroundGain(change.getItem(), change.getTile(), delta, myLocation);
+			else
+				correlateGroundTaken(change.getItem(), -delta);
+		}
+
+		for (ItemDespawned despawn : tickGroundDespawns)
+			correlateGroundTaken(despawn.getItem(), despawn.getItem().getQuantity());
+
+		tickGroundSpawns.clear();
+		tickGroundDespawns.clear();
+		tickGroundQuantityChanges.clear();
+	}
+
+	/** Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. */
+	private void correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)
+	{
+		if (myLocation == null || !myLocation.equals(tile.getWorldLocation()))
+			return;
+
+		int canonicalId = itemManager.canonicalize(item.getId());
+		if (!isTracked(canonicalId))
+			return;
+
+		int queued = pendingGroundSuspend.getOrDefault(canonicalId, 0);
+		int pendingRemoval = -pendingItemDeltas.getOrDefault(canonicalId, 0) - queued;
+		if (pendingRemoval <= 0)
+			return;
+
+		int qty = Math.min(gained, pendingRemoval);
+		pendingGroundSuspend.merge(canonicalId, qty, Integer::sum);
+		myDrops.merge(item, qty, Integer::sum);
+	}
+
+	/**
+	 * Handles a ground pile losing units: a remembered drop with a matching pending
+	 * addition is a re-pickup (the greedy un-suspend consumes it during the sync);
+	 * with no matching addition its units close as lost at 0. An unfamiliar pile
+	 * matching a pending addition is a loot pickup, claimed as {@code GROUND} at 0.
+	 */
+	private void correlateGroundTaken(TileItem item, int taken)
+	{
+		int canonicalId = itemManager.canonicalize(item.getId());
+		Integer ours = myDrops.get(item);
+		int pendingAddition = pendingItemDeltas.getOrDefault(canonicalId, 0);
+
+		if (ours != null)
+		{
+			int resolved = Math.min(ours, taken);
+			if (pendingAddition <= 0)
+				closeGroundLost(canonicalId, resolved);
+
+			if (resolved >= ours)
+				myDrops.remove(item);
+			else
+				myDrops.put(item, ours - resolved);
+
+			return;
+		}
+
+		if (pendingAddition > 0 && isTracked(canonicalId))
+			sourceAttribution.claim(AcquisitionSource.GROUND, canonicalId, Math.min(taken, pendingAddition), 0,
+					client.getTickCount());
+	}
+
+	/** Closes {@code qty} ground-suspended units of an item as lost: gone from the floor with no pickup. */
+	private void closeGroundLost(int itemId, int qty)
+	{
+		TrackedItem tracked = trackedItems.get(itemId);
+		if (tracked == null)
+			return;
+
+		int lost = Math.min(qty, tracked.getGroundSuspendedQuantity());
+		if (lost <= 0)
+			return;
+
+		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() - lost);
+		closeFifo(tracked, lost, 0, AcquisitionSource.GROUND);
+		persistTrackedItems();
+		refreshPanel();
+	}
+
+	/** Closes ground suspensions that outlived {@link #GROUND_SUSPEND_EXPIRY} as lost drops. */
+	private void expireGroundSuspensions()
+	{
+		Instant cutoff = Instant.now().minus(GROUND_SUSPEND_EXPIRY);
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getGroundSuspendedQuantity() > 0 && tracked.getGroundSuspendedAt() != null
+					&& tracked.getGroundSuspendedAt().isBefore(cutoff))
+				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
+		}
+	}
+
+	/** Closes every remaining ground suspension as lost — floor items rarely survive a logout. */
+	private void closeAllGroundSuspensions()
+	{
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getGroundSuspendedQuantity() > 0)
+				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
+		}
+
+		myDrops.clear();
+		pendingGroundSuspend.clear();
 	}
 
 	/**
@@ -1955,6 +2121,10 @@ public class StockpilePlugin extends Plugin
 		{
 			case LOADING:
 				groundItems.clear();
+				myDrops.clear();
+				tickGroundSpawns.clear();
+				tickGroundDespawns.clear();
+				tickGroundQuantityChanges.clear();
 				break;
 			case LOGGED_IN:
 				trackedItems.clear();
@@ -1973,10 +2143,12 @@ public class StockpilePlugin extends Plugin
 				pendingSellSuspend.clear();
 				pendingSellUnsuspend.clear();
 				pendingSellRealize.clear();
+				myDrops.clear();
+				pendingGroundSuspend.clear();
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
-
+				closeAllGroundSuspensions();
 				refreshPanel();
 				break;
 			default:
@@ -2203,6 +2375,7 @@ public class StockpilePlugin extends Plugin
 			int remaining = delta;
 			remaining = consumeSellUnsuspend(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
+			remaining = consumeGroundUnsuspend(tracked, remaining);
 			if (remaining > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
@@ -2212,12 +2385,53 @@ public class StockpilePlugin extends Plugin
 		else
 		{
 			int mag = consumeSellSuspend(tracked, -delta);
+			mag = consumeGroundSuspend(tracked, mag);
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
 				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
 			}
 		}
+	}
+
+	/**
+	 * Moves up to this tick's correlated drop quantity of a removal into ground
+	 * suspension — the units left the containers but sit on the floor, still owned,
+	 * lots untouched. Returns the unconsumed remainder.
+	 */
+	private int consumeGroundSuspend(TrackedItem tracked, int qty)
+	{
+		Integer pending = pendingGroundSuspend.get(tracked.getItemId());
+		if (qty <= 0 || pending == null || pending <= 0)
+			return qty;
+
+		int take = Math.min(qty, pending);
+		int left = pending - take;
+		if (left > 0)
+			pendingGroundSuspend.put(tracked.getItemId(), left);
+		else
+			pendingGroundSuspend.remove(tracked.getItemId());
+
+		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + take);
+		tracked.setGroundSuspendedAt(Instant.now());
+		return qty - take;
+	}
+
+	/**
+	 * Greedily restores an addition from ground suspension — a re-pickup of our own
+	 * drop is a net no-op that opens no new lot. Greedy (not keyed to a remembered
+	 * {@code TileItem}) so recoveries still un-suspend when the drop's tile item was
+	 * lost to a scene reload. Returns the unconsumed remainder.
+	 */
+	private int consumeGroundUnsuspend(TrackedItem tracked, int qty)
+	{
+		int suspended = tracked.getGroundSuspendedQuantity();
+		if (qty <= 0 || suspended <= 0)
+			return qty;
+
+		int restore = Math.min(qty, suspended);
+		tracked.setGroundSuspendedQuantity(suspended - restore);
+		return qty - restore;
 	}
 
 	/** Restores up to {@code qty} cancelled-sell units to held (un-suspends), returning the unconsumed remainder. */
@@ -2666,7 +2880,7 @@ public class StockpilePlugin extends Plugin
 					+ containerCounts.values().stream()
 					.mapToInt(c -> c.getOrDefault(tracked.getItemId(), 0))
 					.sum();
-			int owned = total + tracked.getSuspendedQuantity();
+			int owned = total + tracked.getSuspendedQuantity() + tracked.getGroundSuspendedQuantity();
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
