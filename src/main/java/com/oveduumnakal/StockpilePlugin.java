@@ -1687,7 +1687,9 @@ public class StockpilePlugin extends Plugin
 		int interfaceId = WidgetUtil.componentToInterface(w.getId());
 		if (interfaceId == InterfaceID.INVENTORY
 				|| interfaceId == InterfaceID.BANKMAIN
-				|| interfaceId == InterfaceID.BANKSIDE)
+				|| interfaceId == InterfaceID.BANKSIDE
+				|| interfaceId == InterfaceID.SHOPMAIN
+				|| interfaceId == InterfaceID.SHOPSIDE)
 		{
 			return w.getItemId();
 		}
