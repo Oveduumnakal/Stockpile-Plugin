@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -63,6 +64,18 @@ public class TrackedItem
 	 * legacy records default to 0 (no in-flight sale) — the safe additive default.
 	 */
 	private int suspendedQuantity;
+
+	/**
+	 * Units dropped on the ground and still considered owned: gone from held
+	 * containers but their lots stay open (cost basis intact) until re-picked-up
+	 * (un-suspends, a net no-op) or lost (despawn/expiry closes them at 0). Kept
+	 * transient — floor items rarely survive a logout, so remaining suspensions
+	 * close as losses on logout/shutdown rather than persisting.
+	 */
+	private transient int groundSuspendedQuantity;
+
+	/** When the newest ground suspension was taken, for the lost-drop expiry sweep (transient). */
+	private transient Instant groundSuspendedAt;
 
 	/** Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). */
 	private transient int limitBought;
