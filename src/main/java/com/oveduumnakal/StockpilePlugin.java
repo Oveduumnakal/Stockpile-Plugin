@@ -68,6 +68,7 @@ import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.events.ClientTick;
@@ -80,6 +81,7 @@ import net.runelite.api.events.ItemQuantityChanged;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
@@ -238,6 +240,15 @@ public class StockpilePlugin extends Plugin
 
 	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
 	private boolean shopOpen = false;
+	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
+	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
+			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC);
+
+	/** Per-skill XP as last seen, so a StatChanged can be classified as a real XP gain. */
+	private final Map<Skill, Integer> lastSkillXp = new EnumMap<>(Skill.class);
+
+	/** The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. */
+	private int processingXpTick = -1;
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -1762,6 +1773,7 @@ public class StockpilePlugin extends Plugin
 		if (pendingQuantitySync)
 		{
 			pendingQuantitySync = false;
+			correlateProcessing();
 			syncQuantitiesFromContainers();
 		}
 
@@ -2087,6 +2099,92 @@ public class StockpilePlugin extends Plugin
 					client.getTickCount());
 	}
 
+	/** Marks the tick of processing-skill XP gains, identifying recipe actions for #69. */
+	@Subscribe
+	public void onStatChanged(StatChanged event)
+	{
+		Integer previous = lastSkillXp.put(event.getSkill(), event.getXp());
+		if (previous == null || event.getXp() <= previous)
+			return;
+
+		if (PROCESSING_SKILLS.contains(event.getSkill()))
+			processingXpTick = client.getTickCount();
+	}
+
+	/**
+	 * Pairs this tick's consumed inputs with the produced output when a processing-skill
+	 * XP gain identifies a recipe action (#69), transferring the summed input cost: tracked
+	 * inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their
+	 * fallback market value, and the single output item buys in at the total divided per
+	 * unit. Multi-output ticks are unattributable and left to the fallback; tracked inputs
+	 * with no tracked output close at 0. Coins never participate.
+	 */
+	private void correlateProcessing()
+	{
+		if (pendingItemDeltas.isEmpty() || client.getTickCount() - processingXpTick > 1)
+			return;
+
+		List<int[]> inputs = new ArrayList<>();
+		int outputId = 0;
+		int outputQty = 0;
+		int outputKinds = 0;
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (itemId == ItemID.COINS || delta == 0)
+				continue;
+
+			if (delta < 0)
+			{
+				inputs.add(new int[]{itemId, -delta});
+			}
+			else
+			{
+				outputKinds++;
+				outputId = itemId;
+				outputQty = delta;
+			}
+		}
+
+		if (inputs.isEmpty() || outputKinds > 1)
+			return;
+
+		boolean trackedOutput = outputKinds == 1 && isTracked(outputId);
+		long totalCost = 0;
+		for (int[] input : inputs)
+		{
+			TrackedItem tracked = trackedItems.get(input[0]);
+			if (tracked == null)
+			{
+				totalCost += untrackedInputValue(input[0]) * input[1];
+				continue;
+			}
+
+			long basis = ProcessingBasis.openLotCost(tracked.getAcquisitions(), input[1]);
+			totalCost += basis;
+			sourceAttribution.claim(AcquisitionSource.PROCESSING, input[0], input[1],
+					trackedOutput ? basis / input[1] : 0, client.getTickCount());
+		}
+
+		if (trackedOutput && outputQty > 0)
+			sourceAttribution.claim(AcquisitionSource.PROCESSING, outputId, outputQty,
+					totalCost / outputQty, client.getTickCount());
+	}
+
+	/** @return an untracked processing input's per-unit value under the fallback (Auto Add) policy. */
+	private long untrackedInputValue(int itemId)
+	{
+		switch (config.autoAddItems())
+		{
+			case ZERO:
+			case OFF:
+				return 0;
+			default:
+				return itemManager.getItemPrice(itemId);
+		}
+	}
+
 	/**
 	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
 	 * non-coin item moved: the coins paid or received, divided across the quantity,
@@ -2216,6 +2314,8 @@ public class StockpilePlugin extends Plugin
 				pendingGroundSuspend.clear();
 				pendingGroundUnsuspend.clear();
 				shopOpen = false;
+				lastSkillXp.clear();
+				processingXpTick = -1;
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
