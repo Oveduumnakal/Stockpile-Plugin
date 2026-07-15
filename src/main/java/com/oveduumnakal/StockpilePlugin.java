@@ -78,6 +78,7 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
@@ -1569,6 +1570,36 @@ public class StockpilePlugin extends Plugin
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Claims an upcoming High/Low Alchemy disposal (#68): casting either spell on a
+	 * tracked item registers an {@link AcquisitionSource#ALCHEMY} claim for one unit
+	 * at the coins the cast actually yields — the item's cached high/low alch value —
+	 * so the lot closes at the real proceeds instead of the current average. Casts on
+	 * items with no cached alch value stay unclaimed and take the unknown-source path.
+	 */
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		String target = event.getMenuTarget();
+		if (target == null || event.getItemId() <= 0)
+			return;
+
+		boolean high = target.contains("High Level Alchemy");
+		if (!high && !target.contains("Low Level Alchemy"))
+			return;
+
+		int canonicalId = itemManager.canonicalize(event.getItemId());
+		TrackedItem tracked = trackedItems.get(canonicalId);
+		if (tracked == null)
+			return;
+
+		long alchValue = high ? tracked.getHighAlch() : tracked.getLowAlch();
+		if (alchValue <= 0)
+			return;
+
+		sourceAttribution.claim(AcquisitionSource.ALCHEMY, canonicalId, 1, alchValue, client.getTickCount());
 	}
 
 	/** Adds a "Track Item" / "Stop Tracking" right-click option to item menu entries, when enabled. */
