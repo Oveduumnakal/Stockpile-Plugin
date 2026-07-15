@@ -86,6 +86,7 @@ import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
@@ -234,6 +235,9 @@ public class StockpilePlugin extends Plugin
 
 	private boolean runePouchSeenSinceLogin = false;
 	private int geLoginTick = -1;
+
+	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
+	private boolean shopOpen = false;
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -1683,7 +1687,9 @@ public class StockpilePlugin extends Plugin
 		int interfaceId = WidgetUtil.componentToInterface(w.getId());
 		if (interfaceId == InterfaceID.INVENTORY
 				|| interfaceId == InterfaceID.BANKMAIN
-				|| interfaceId == InterfaceID.BANKSIDE)
+				|| interfaceId == InterfaceID.BANKSIDE
+				|| interfaceId == InterfaceID.SHOPMAIN
+				|| interfaceId == InterfaceID.SHOPSIDE)
 		{
 			return w.getItemId();
 		}
@@ -1730,6 +1736,9 @@ public class StockpilePlugin extends Plugin
 			}
 
 			pendingQuantitySync = true;
+
+			if (shopOpen && containerId == InventoryID.INV)
+				registerShopClaims(oldCounts, newCounts);
 		}
 
 		containerCounts.put(containerId, newCounts);
@@ -1838,9 +1847,12 @@ public class StockpilePlugin extends Plugin
 	{
 		if (event.getGroupId() == InterfaceID.GE_OFFERS)
 			geButton = null;
+
+		if (event.getGroupId() == InterfaceID.SHOPMAIN)
+			shopOpen = true;
 	}
 
-	/** Clears GE-integration state when the offer interface closes. */
+	/** Clears GE-integration state when the offer interface closes, and shop state for #67. */
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
@@ -1849,6 +1861,9 @@ public class StockpilePlugin extends Plugin
 			currentGeItem = -1;
 			geButton = null;
 		}
+
+		if (event.getGroupId() == InterfaceID.SHOPMAIN)
+			shopOpen = false;
 	}
 
 	/** @return the item shown on the visible GE offer setup/details screen, or -1 when none is open. */
@@ -2072,6 +2087,54 @@ public class StockpilePlugin extends Plugin
 					client.getTickCount());
 	}
 
+	/**
+	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
+	 * non-coin item moved: the coins paid or received, divided across the quantity,
+	 * price the item's {@link AcquisitionSource#SHOP} claim. A buy must pay coins; a
+	 * sell must not spend them, and a worthless sell the shop pays nothing for is still
+	 * a shop sale at 0. Anything murkier — multi-item changes, specialty-currency shops
+	 * (tokkul, marks) that move a second item rather than coins — stays unclaimed and
+	 * takes the unknown-source path.
+	 */
+	private void registerShopClaims(Map<Integer, Integer> oldCounts, Map<Integer, Integer> newCounts)
+	{
+		long coinDelta = 0;
+		int changedItem = 0;
+		int itemDelta = 0;
+		int changedCount = 0;
+
+		Set<Integer> allIds = new HashSet<>(oldCounts.keySet());
+		allIds.addAll(newCounts.keySet());
+		for (int itemId : allIds)
+		{
+			int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
+			if (delta == 0)
+				continue;
+
+			if (itemId == ItemID.COINS)
+			{
+				coinDelta = delta;
+			}
+			else
+			{
+				changedCount++;
+				changedItem = itemId;
+				itemDelta = delta;
+			}
+		}
+
+		if (changedCount != 1 || itemDelta == 0 || !isTracked(changedItem))
+			return;
+
+		boolean sell = itemDelta < 0;
+		if (sell ? coinDelta < 0 : coinDelta >= 0)
+			return;
+
+		long unitPrice = Math.abs(coinDelta) / Math.abs(itemDelta);
+		sourceAttribution.claim(AcquisitionSource.SHOP, changedItem, Math.abs(itemDelta), unitPrice,
+				client.getTickCount());
+	}
+
 	/** Closes {@code qty} ground-suspended units of an item as lost: gone from the floor with no pickup. */
 	private void closeGroundLost(int itemId, int qty)
 	{
@@ -2152,6 +2215,7 @@ public class StockpilePlugin extends Plugin
 				myDrops.clear();
 				pendingGroundSuspend.clear();
 				pendingGroundUnsuspend.clear();
+				shopOpen = false;
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
@@ -2775,11 +2839,28 @@ public class StockpilePlugin extends Plugin
 			}
 		}
 
+		remaining = realizeOpenLots(records, remaining, soldAtPrice, sellSource, sellSource);
+		realizeOpenLots(records, remaining, soldAtPrice, sellSource, null);
+	}
+
+	/**
+	 * Realizes up to {@code remaining} units across the open lots oldest-first,
+	 * closing (or splitting) each at {@code soldAtPrice} with {@code sellSource} and
+	 * merging into a matching closed lot where possible. When {@code onlySource} is
+	 * non-null, only lots that entered from that source are eligible — so a sell
+	 * closes its own source's buys before any others (#137), with the caller running
+	 * a matched pass followed by an unrestricted one.
+	 *
+	 * @return the units still unrealized after this pass
+	 */
+	private int realizeOpenLots(List<AcquisitionRecord> records, int remaining, long soldAtPrice,
+			AcquisitionSource sellSource, AcquisitionSource onlySource)
+	{
 		int i = 0;
 		while (i < records.size() && remaining > 0)
 		{
 			AcquisitionRecord r = records.get(i);
-			if (r.getSoldAt() != null)
+			if (r.getSoldAt() != null || (onlySource != null && r.sourceOrUnknown() != onlySource))
 			{
 				i++;
 				continue;
@@ -2814,6 +2895,8 @@ public class StockpilePlugin extends Plugin
 				}
 			}
 		}
+
+		return remaining;
 	}
 
 	/**
