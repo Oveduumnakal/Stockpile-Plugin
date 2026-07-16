@@ -35,6 +35,8 @@ class PersistedItem {
   acquisitions: List<AcquisitionRecord>
   category: String
   costBasisInitialized: boolean
+  deathSuspendedAt: Long
+  deathSuspendedQuantity: int
   favorite: boolean
   itemId: int
   notifications: List<NotificationRule>

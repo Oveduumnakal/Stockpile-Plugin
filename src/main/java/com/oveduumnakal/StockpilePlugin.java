@@ -71,6 +71,7 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
+import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -236,6 +237,13 @@ public class StockpilePlugin extends Plugin
 	private final Set<Integer> seenContainersSinceLogin = new HashSet<>();
 
 	private boolean runePouchSeenSinceLogin = false;
+
+	/**
+	 * Whether the current logged-in session has been initialised. Guards the one-time
+	 * clear+reload so a respawn or region load re-firing {@code LOGGED_IN} mid-session
+	 * doesn't wipe pending quantity changes (e.g. a death loss) or reset held state (#70).
+	 */
+	private boolean sessionInitialized = false;
 	private int geLoginTick = -1;
 
 	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
@@ -252,6 +260,31 @@ public class StockpilePlugin extends Plugin
 
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
+
+	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
+	private int deathTick = -1;
+
+	/** How many ticks after a death removals still count as death losses (respawn wipe + lag). */
+	private static final int DEATH_LOSS_WINDOW_TICKS = 15;
+
+	/** How long a death suspension may await recovery before its units close as lost at 0. */
+	private static final Duration DEATH_SUSPEND_EXPIRY = Duration.ofMinutes(65);
+
+	/**
+	 * True once the player's gravestone has been observed active, so its later
+	 * disappearance is a real transition rather than a login-time reading (#70).
+	 */
+	private boolean graveSeen = false;
+
+	/**
+	 * The tick the observed gravestone vanished (collected or expired), pending the
+	 * recovery grace check; -1 when none.
+	 */
+	private int graveGoneTick = -1;
+
+	/** Ticks to wait after a gravestone vanishes for a collection's items to return before ruling the rest a loss. */
+	private static final int GRAVE_RECOVERY_GRACE_TICKS = 5;
+
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -592,6 +625,8 @@ public class StockpilePlugin extends Plugin
 		boolean favorite;
 		String category;
 		boolean onOverlay;
+		int deathSuspendedQuantity;
+		Long deathSuspendedAt;
 	}
 
 	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
@@ -630,6 +665,7 @@ public class StockpilePlugin extends Plugin
 						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
 							p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
 						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
+						applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
 					}
 				}
 
@@ -659,6 +695,29 @@ public class StockpilePlugin extends Plugin
 			tracked.setFavorite(favorite);
 			tracked.setCategory(category);
 			tracked.setOnOverlay(onOverlay);
+		});
+	}
+
+	/**
+	 * Restores a persisted death suspension after its item has been added, so a
+	 * recovery spanning a relog still un-suspends instead of opening new lots.
+	 * Client-thread-deferred like {@link #applyPersistedGrouping}.
+	 */
+	private void applyPersistedDeathSuspension(int itemId, int quantity, Long suspendedAtEpoch)
+	{
+		if (quantity <= 0)
+			return;
+
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+				return;
+
+			tracked.setDeathSuspendedQuantity(quantity);
+			tracked.setDeathSuspendedAt(suspendedAtEpoch == null
+					? Instant.now()
+					: Instant.ofEpochSecond(suspendedAtEpoch));
 		});
 	}
 
@@ -722,6 +781,10 @@ public class StockpilePlugin extends Plugin
 			p.favorite = item.isFavorite();
 			p.category = item.getCategory();
 			p.onOverlay = item.isOnOverlay();
+			p.deathSuspendedQuantity = item.getDeathSuspendedQuantity();
+			p.deathSuspendedAt = item.getDeathSuspendedAt() == null
+					? null
+					: item.getDeathSuspendedAt().getEpochSecond();
 			list.add(p);
 		}
 
@@ -1820,6 +1883,8 @@ public class StockpilePlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		expireGroundSuspensions();
+		expireDeathSuspensions();
+		closeVanishedGraveLosses();
 
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
@@ -2102,6 +2167,17 @@ public class StockpilePlugin extends Plugin
 					client.getTickCount());
 	}
 
+	/** Marks the local player's death, opening the death-loss suspension window (#70). */
+	@Subscribe
+	public void onActorDeath(ActorDeath event)
+	{
+		if (event.getActor() == client.getLocalPlayer())
+		{
+			deathTick = client.getTickCount();
+			graveGoneTick = -1;
+		}
+	}
+
 	/** Marks the tick of processing-skill XP gains, identifying recipe actions for #69. */
 	@Subscribe
 	public void onStatChanged(StatChanged event)
@@ -2298,32 +2374,39 @@ public class StockpilePlugin extends Plugin
 				tickGroundQuantityChanges.clear();
 				break;
 			case LOGGED_IN:
-				trackedItems.clear();
-				previewItem = null;
-				containerCounts.clear();
-				runePouchCounts.clear();
-				seenContainersSinceLogin.clear();
-				runePouchSeenSinceLogin = false;
-				geLoginTick = client.getTickCount();
-				pendingQuantitySync = false;
-				pendingItemDeltas.clear();
-				loadCategories();
-				loadPersistedItems();
-				loadGeState();
-				geOfferTracker.clear();
-				pendingSellSuspend.clear();
-				pendingSellUnsuspend.clear();
-				pendingSellRealize.clear();
-				myDrops.clear();
-				pendingGroundSuspend.clear();
-				pendingGroundUnsuspend.clear();
-				shopOpen = false;
-				lastSkillXp.clear();
-				processingXpTick = -1;
-				pendingProcessingOutput.clear();
+				if (!sessionInitialized)
+				{
+					sessionInitialized = true;
+					trackedItems.clear();
+					previewItem = null;
+					containerCounts.clear();
+					runePouchCounts.clear();
+					seenContainersSinceLogin.clear();
+					runePouchSeenSinceLogin = false;
+					geLoginTick = client.getTickCount();
+					pendingQuantitySync = false;
+					pendingItemDeltas.clear();
+					loadCategories();
+					loadPersistedItems();
+					loadGeState();
+					geOfferTracker.clear();
+					pendingSellSuspend.clear();
+					pendingSellUnsuspend.clear();
+					pendingSellRealize.clear();
+					myDrops.clear();
+					pendingGroundSuspend.clear();
+					pendingGroundUnsuspend.clear();
+					shopOpen = false;
+					lastSkillXp.clear();
+					processingXpTick = -1;
+					pendingProcessingOutput.clear();
+					deathTick = -1;
+				}
+
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
+				sessionInitialized = false;
 				closeAllGroundSuspensions();
 				refreshPanel();
 				break;
@@ -2346,6 +2429,12 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
+		if (event.getVarbitId() == VarbitID.GRAVESTONE_VISIBLE)
+		{
+			onGravestoneVisibility(event.getValue() != 0);
+			return;
+		}
+
 		if (RUNE_POUCH_VARBITS.contains(event.getVarbitId()))
 		{
 			Map<Integer, Integer> oldPouch = new HashMap<>(runePouchCounts);
@@ -2551,6 +2640,7 @@ public class StockpilePlugin extends Plugin
 			int remaining = delta;
 			remaining = consumeSellUnsuspend(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
+			remaining = consumeDeathUnsuspend(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
 			remaining = consumeProcessingOutput(tracked, remaining);
 			if (remaining > 0)
@@ -2563,11 +2653,125 @@ public class StockpilePlugin extends Plugin
 		{
 			int mag = consumeSellSuspend(tracked, -delta);
 			mag = consumeGroundSuspend(tracked, mag);
+			mag = consumeDeathLoss(tracked, mag);
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
 				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
 			}
+		}
+	}
+
+	/**
+	 * Suspends removals in the post-death window (#70): the units were lost to the
+	 * death, so quantities drop but the lots stay open pending gravestone/Death's
+	 * Office recovery. Returns the unconsumed remainder (0 inside the window).
+	 */
+	private int consumeDeathLoss(TrackedItem tracked, int qty)
+	{
+		if (qty <= 0 || deathTick < 0 || client.getTickCount() - deathTick > DEATH_LOSS_WINDOW_TICKS)
+			return qty;
+
+		tracked.setDeathSuspendedQuantity(tracked.getDeathSuspendedQuantity() + qty);
+		tracked.setDeathSuspendedAt(Instant.now());
+		return 0;
+	}
+
+	/**
+	 * Greedily restores an addition from death suspension — a recovery reactivates
+	 * the suspended lots with their basis intact, opening nothing new. Returns the
+	 * unconsumed remainder.
+	 */
+	private int consumeDeathUnsuspend(TrackedItem tracked, int qty)
+	{
+		int suspended = tracked.getDeathSuspendedQuantity();
+		if (qty <= 0 || suspended <= 0)
+			return qty;
+
+		int restore = Math.min(qty, suspended);
+		tracked.setDeathSuspendedQuantity(suspended - restore);
+		if (tracked.getDeathSuspendedQuantity() == 0)
+			tracked.setDeathSuspendedAt(null);
+
+		return qty - restore;
+	}
+
+	/** Closes death suspensions that outlived {@link #DEATH_SUSPEND_EXPIRY} as unrecovered losses at 0. */
+	private void expireDeathSuspensions()
+	{
+		Instant cutoff = Instant.now().minus(DEATH_SUSPEND_EXPIRY);
+		boolean changed = false;
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getDeathSuspendedQuantity() > 0 && tracked.getDeathSuspendedAt() != null
+					&& tracked.getDeathSuspendedAt().isBefore(cutoff))
+			{
+				closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
+				tracked.setDeathSuspendedQuantity(0);
+				tracked.setDeathSuspendedAt(null);
+				changed = true;
+			}
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
+	}
+
+	/**
+	 * Tracks the local player's gravestone via {@link VarbitID#GRAVESTONE_VISIBLE} (non-zero
+	 * while a grave stands, the value being its type). A grave that vanishes with its
+	 * {@link VarbitID#GRAVESTONE_DURATION} timer run out has expired and its items are lost,
+	 * so this arms the grace check in {@link #closeVanishedGraveLosses()}. A grave that
+	 * vanishes with time still on the clock was collected — its returning items un-suspend
+	 * themselves, so no loss is armed.
+	 */
+	private void onGravestoneVisibility(boolean present)
+	{
+		if (present)
+		{
+			graveSeen = true;
+			graveGoneTick = -1;
+		}
+		else if (graveSeen)
+		{
+			graveSeen = false;
+			if (client.getVarbitValue(VarbitID.GRAVESTONE_DURATION) <= 0)
+				graveGoneTick = client.getTickCount();
+		}
+	}
+
+	/**
+	 * Once an expired gravestone has been gone for {@link #GRAVE_RECOVERY_GRACE_TICKS},
+	 * closes any death suspension it left standing as lost at 0 (#70). The grace absorbs a
+	 * last-tick collection whose items are still landing; anything still suspended after it
+	 * is a genuine loss, so the collection log reflects it the moment the grave expires
+	 * rather than after the blunt {@link #DEATH_SUSPEND_EXPIRY} fallback.
+	 */
+	private void closeVanishedGraveLosses()
+	{
+		if (graveGoneTick < 0 || client.getTickCount() - graveGoneTick < GRAVE_RECOVERY_GRACE_TICKS)
+			return;
+
+		graveGoneTick = -1;
+		boolean changed = false;
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getDeathSuspendedQuantity() <= 0)
+				continue;
+
+			closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
+			tracked.setDeathSuspendedQuantity(0);
+			tracked.setDeathSuspendedAt(null);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
 		}
 	}
 
@@ -3106,7 +3310,8 @@ public class StockpilePlugin extends Plugin
 					+ containerCounts.values().stream()
 					.mapToInt(c -> c.getOrDefault(tracked.getItemId(), 0))
 					.sum();
-			int owned = total + tracked.getSuspendedQuantity() + tracked.getGroundSuspendedQuantity();
+			int owned = total + tracked.getSuspendedQuantity() + tracked.getGroundSuspendedQuantity()
+					+ tracked.getDeathSuspendedQuantity();
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
