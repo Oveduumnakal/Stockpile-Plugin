@@ -237,6 +237,13 @@ public class StockpilePlugin extends Plugin
 	private final Set<Integer> seenContainersSinceLogin = new HashSet<>();
 
 	private boolean runePouchSeenSinceLogin = false;
+
+	/**
+	 * Whether the current logged-in session has been initialised. Guards the one-time
+	 * clear+reload so a respawn or region load re-firing {@code LOGGED_IN} mid-session
+	 * doesn't wipe pending quantity changes (e.g. a death loss) or reset held state (#70).
+	 */
+	private boolean sessionInitialized = false;
 	private int geLoginTick = -1;
 
 	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
@@ -262,6 +269,22 @@ public class StockpilePlugin extends Plugin
 
 	/** How long a death suspension may await recovery before its units close as lost at 0. */
 	private static final Duration DEATH_SUSPEND_EXPIRY = Duration.ofMinutes(65);
+
+	/**
+	 * True once the player's gravestone has been observed active, so its later
+	 * disappearance is a real transition rather than a login-time reading (#70).
+	 */
+	private boolean graveSeen = false;
+
+	/**
+	 * The tick the observed gravestone vanished (collected or expired), pending the
+	 * recovery grace check; -1 when none.
+	 */
+	private int graveGoneTick = -1;
+
+	/** Ticks to wait after a gravestone vanishes for a collection's items to return before ruling the rest a loss. */
+	private static final int GRAVE_RECOVERY_GRACE_TICKS = 5;
+
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -1861,6 +1884,7 @@ public class StockpilePlugin extends Plugin
 	{
 		expireGroundSuspensions();
 		expireDeathSuspensions();
+		closeVanishedGraveLosses();
 
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
@@ -2148,7 +2172,10 @@ public class StockpilePlugin extends Plugin
 	public void onActorDeath(ActorDeath event)
 	{
 		if (event.getActor() == client.getLocalPlayer())
+		{
 			deathTick = client.getTickCount();
+			graveGoneTick = -1;
+		}
 	}
 
 	/** Marks the tick of processing-skill XP gains, identifying recipe actions for #69. */
@@ -2347,33 +2374,39 @@ public class StockpilePlugin extends Plugin
 				tickGroundQuantityChanges.clear();
 				break;
 			case LOGGED_IN:
-				trackedItems.clear();
-				previewItem = null;
-				containerCounts.clear();
-				runePouchCounts.clear();
-				seenContainersSinceLogin.clear();
-				runePouchSeenSinceLogin = false;
-				geLoginTick = client.getTickCount();
-				pendingQuantitySync = false;
-				pendingItemDeltas.clear();
-				loadCategories();
-				loadPersistedItems();
-				loadGeState();
-				geOfferTracker.clear();
-				pendingSellSuspend.clear();
-				pendingSellUnsuspend.clear();
-				pendingSellRealize.clear();
-				myDrops.clear();
-				pendingGroundSuspend.clear();
-				pendingGroundUnsuspend.clear();
-				shopOpen = false;
-				lastSkillXp.clear();
-				processingXpTick = -1;
-				pendingProcessingOutput.clear();
-				deathTick = -1;
+				if (!sessionInitialized)
+				{
+					sessionInitialized = true;
+					trackedItems.clear();
+					previewItem = null;
+					containerCounts.clear();
+					runePouchCounts.clear();
+					seenContainersSinceLogin.clear();
+					runePouchSeenSinceLogin = false;
+					geLoginTick = client.getTickCount();
+					pendingQuantitySync = false;
+					pendingItemDeltas.clear();
+					loadCategories();
+					loadPersistedItems();
+					loadGeState();
+					geOfferTracker.clear();
+					pendingSellSuspend.clear();
+					pendingSellUnsuspend.clear();
+					pendingSellRealize.clear();
+					myDrops.clear();
+					pendingGroundSuspend.clear();
+					pendingGroundUnsuspend.clear();
+					shopOpen = false;
+					lastSkillXp.clear();
+					processingXpTick = -1;
+					pendingProcessingOutput.clear();
+					deathTick = -1;
+				}
+
 				refreshPanel();
 				break;
 			case LOGIN_SCREEN:
+				sessionInitialized = false;
 				closeAllGroundSuspensions();
 				refreshPanel();
 				break;
@@ -2396,6 +2429,12 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
+		if (event.getVarbitId() == VarbitID.GRAVESTONE_VISIBLE)
+		{
+			onGravestoneVisibility(event.getValue() != 0);
+			return;
+		}
+
 		if (RUNE_POUCH_VARBITS.contains(event.getVarbitId()))
 		{
 			Map<Integer, Integer> oldPouch = new HashMap<>(runePouchCounts);
@@ -2672,6 +2711,61 @@ public class StockpilePlugin extends Plugin
 				tracked.setDeathSuspendedAt(null);
 				changed = true;
 			}
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
+	}
+
+	/**
+	 * Tracks the local player's gravestone via {@link VarbitID#GRAVESTONE_VISIBLE} (non-zero
+	 * while a grave stands, the value being its type). A grave that vanishes with its
+	 * {@link VarbitID#GRAVESTONE_DURATION} timer run out has expired and its items are lost,
+	 * so this arms the grace check in {@link #closeVanishedGraveLosses()}. A grave that
+	 * vanishes with time still on the clock was collected — its returning items un-suspend
+	 * themselves, so no loss is armed.
+	 */
+	private void onGravestoneVisibility(boolean present)
+	{
+		if (present)
+		{
+			graveSeen = true;
+			graveGoneTick = -1;
+		}
+		else if (graveSeen)
+		{
+			graveSeen = false;
+			if (client.getVarbitValue(VarbitID.GRAVESTONE_DURATION) <= 0)
+				graveGoneTick = client.getTickCount();
+		}
+	}
+
+	/**
+	 * Once an expired gravestone has been gone for {@link #GRAVE_RECOVERY_GRACE_TICKS},
+	 * closes any death suspension it left standing as lost at 0 (#70). The grace absorbs a
+	 * last-tick collection whose items are still landing; anything still suspended after it
+	 * is a genuine loss, so the collection log reflects it the moment the grave expires
+	 * rather than after the blunt {@link #DEATH_SUSPEND_EXPIRY} fallback.
+	 */
+	private void closeVanishedGraveLosses()
+	{
+		if (graveGoneTick < 0 || client.getTickCount() - graveGoneTick < GRAVE_RECOVERY_GRACE_TICKS)
+			return;
+
+		graveGoneTick = -1;
+		boolean changed = false;
+		for (TrackedItem tracked : trackedItems.values())
+		{
+			if (tracked.getDeathSuspendedQuantity() <= 0)
+				continue;
+
+			closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
+			tracked.setDeathSuspendedQuantity(0);
+			tracked.setDeathSuspendedAt(null);
+			changed = true;
 		}
 
 		if (changed)
