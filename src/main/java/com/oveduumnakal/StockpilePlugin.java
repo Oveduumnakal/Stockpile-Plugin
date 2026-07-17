@@ -466,6 +466,58 @@ public class StockpilePlugin extends Plugin
 		return portfolioHistory.aggregate();
 	}
 
+	/** How long after first launching a new release the "What's New" indicator stays highlighted. */
+	private static final Duration WHATS_NEW_WINDOW = Duration.ofDays(7);
+
+	/** Bundled release notes, parsed once at startup; the newest entry is the current version. */
+	private Changelog changelog;
+
+	/**
+	 * Detects a new plugin version by comparing the changelog's current version to the
+	 * last-seen version in config. On a change, restamps the first-seen time and re-arms
+	 * the "What's New" indicator so late updaters still get their week.
+	 */
+	private void detectVersionChange()
+	{
+		String current = changelog.currentVersion();
+		if (current == null)
+			return;
+
+		String lastSeen = configManager.getConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_LAST_SEEN_VERSION);
+		if (current.equals(lastSeen))
+			return;
+
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_LAST_SEEN_VERSION, current);
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_VERSION_FIRST_SEEN,
+				System.currentTimeMillis());
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_WHATS_NEW_DISMISSED, false);
+	}
+
+	/** @return whether the indicator should read "What's New" — within a week of first launch and not dismissed. */
+	private boolean isWhatsNew()
+	{
+		if (changelog.currentVersion() == null)
+			return false;
+
+		Boolean dismissed = configManager.getConfiguration(StockpileConfig.GROUP,
+				StockpileConfig.KEY_WHATS_NEW_DISMISSED, Boolean.class);
+		if (Boolean.TRUE.equals(dismissed))
+			return false;
+
+		Long firstSeen = configManager.getConfiguration(StockpileConfig.GROUP,
+				StockpileConfig.KEY_VERSION_FIRST_SEEN, Long.class);
+		if (firstSeen == null)
+			return true;
+
+		return System.currentTimeMillis() - firstSeen < WHATS_NEW_WINDOW.toMillis();
+	}
+
+	/** Persists that the user has seen the current release's "What's New", quieting the indicator. */
+	private void markWhatsNewSeen()
+	{
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_WHATS_NEW_DISMISSED, true);
+	}
+
 	/**
 	 * Builds the side panel (wiring its callbacks back to this plugin), registers
 	 * the nav button and overlays, restores persisted items, and kicks off the
@@ -474,6 +526,9 @@ public class StockpilePlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
+		changelog = Changelog.load();
+		detectVersionChange();
+
 		panel = new StockpilePanel(
 				itemManager,
 				config,
@@ -534,7 +589,10 @@ public class StockpilePlugin extends Plugin
 				this::buildShareToken,
 				this::importTrackedList,
 				this::buildAcquisitionsCsv,
-				this::portfolioHistoryPoints
+				this::portfolioHistoryPoints,
+				changelog,
+				isWhatsNew(),
+				this::markWhatsNewSeen
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");

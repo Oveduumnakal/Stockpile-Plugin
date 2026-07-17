@@ -98,6 +98,7 @@ import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
+import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -107,6 +108,7 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
@@ -211,6 +213,14 @@ public class StockpilePanel extends PluginPanel
 	private final Supplier<String> onExportCsv;
 	/** Supplies the portfolio value history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
 	private final Supplier<List<long[]>> onPortfolioHistory;
+	/** Bundled release notes shown in the changelog window. */
+	private final Changelog changelog;
+	/** Callback to persist that the current release's "What's New" has been seen. */
+	private final Runnable onWhatsNewSeen;
+	/** Whether the footer indicator is currently in the highlighted "What's New" state. */
+	private boolean whatsNew;
+	/** The footer "What's New ✨" / "Change log" indicator button. */
+	private JButton changelogButton;
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -600,7 +610,10 @@ public class StockpilePanel extends PluginPanel
 			Supplier<String> onExportList,
 			Function<String, String> onImportList,
 			Supplier<String> onExportCsv,
-			Supplier<List<long[]>> onPortfolioHistory)
+			Supplier<List<long[]>> onPortfolioHistory,
+			Changelog changelog,
+			boolean whatsNew,
+			Runnable onWhatsNewSeen)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -625,6 +638,9 @@ public class StockpilePanel extends PluginPanel
 		this.onImportList = onImportList;
 		this.onExportCsv = onExportCsv;
 		this.onPortfolioHistory = onPortfolioHistory;
+		this.changelog = changelog;
+		this.whatsNew = whatsNew;
+		this.onWhatsNewSeen = onWhatsNewSeen;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -635,9 +651,13 @@ public class StockpilePanel extends PluginPanel
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setBorder(new EmptyBorder(0, 0, 4, 0));
 
+		changelogButton = buildChangelogBadge();
+		applyChangelogButtonStyle();
+
 		JPanel titleWrapper = new JPanel(new BorderLayout());
 		titleWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		titleWrapper.add(title, BorderLayout.CENTER);
+		titleWrapper.add(changelogButton, BorderLayout.EAST);
 
 		searchResultsPanel = new JPanel();
 		searchResultsPanel.setLayout(new BoxLayout(searchResultsPanel, BoxLayout.Y_AXIS));
@@ -1363,6 +1383,134 @@ public class StockpilePanel extends PluginPanel
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
 		return button;
+	}
+
+	/**
+	 * Builds the top-right header badge that opens the changelog window;
+	 * {@link #applyChangelogButtonStyle} sets its label and colour.
+	 */
+	private JButton buildChangelogBadge()
+	{
+		JButton badge = new JButton();
+		badge.setFont(FontManager.getRunescapeSmallFont());
+		badge.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		badge.setFocusPainted(false);
+		badge.setBorderPainted(false);
+		badge.setContentAreaFilled(false);
+		badge.setBorder(new EmptyBorder(0, 6, 4, 0));
+		badge.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		badge.setToolTipText("See what's new in this release");
+		badge.addActionListener(e -> openChangelogWindow());
+
+		return badge;
+	}
+
+	/** @return the indicator label: highlighted "What's New" for a new release, else "Change log". */
+	private String changelogButtonText()
+	{
+		return whatsNew ? "What's New ✨" : "Change log";
+	}
+
+	/** Applies the indicator styling — gold while "What's New", muted once seen. */
+	private void applyChangelogButtonStyle()
+	{
+		changelogButton.setText(changelogButtonText());
+		changelogButton.setForeground(whatsNew ? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR);
+	}
+
+	/** Opens the changelog window; the first open of a new release quiets the "What's New" indicator. */
+	private void openChangelogWindow()
+	{
+		if (whatsNew)
+		{
+			whatsNew = false;
+			onWhatsNewSeen.run();
+			applyChangelogButtonStyle();
+		}
+
+		showPopout("What's New", buildChangelogContent(), item -> { }, null);
+	}
+
+	/**
+	 * Builds the changelog window: a version table of contents on the left (current
+	 * release preselected) and the selected release's highlights on the right.
+	 */
+	private JComponent buildChangelogContent()
+	{
+		List<Changelog.Release> releases = changelog.releases();
+
+		DefaultListModel<String> model = new DefaultListModel<>();
+		for (Changelog.Release release : releases)
+			model.addElement(release.getVersion());
+
+		JList<String> toc = new JList<>(model);
+		toc.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		toc.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		toc.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+
+		JEditorPane body = new JEditorPane();
+		body.setContentType("text/html");
+		body.setEditable(false);
+		body.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		toc.addListSelectionListener(e -> renderSelectedRelease(toc, releases, body));
+		if (!releases.isEmpty())
+			toc.setSelectedIndex(0);
+
+		JScrollPane tocScroll = new JScrollPane(toc);
+		tocScroll.setPreferredSize(new Dimension(70, 320));
+
+		JScrollPane bodyScroll = new JScrollPane(body);
+		bodyScroll.setPreferredSize(new Dimension(330, 320));
+
+		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tocScroll, bodyScroll);
+		split.setDividerLocation(70);
+		return split;
+	}
+
+	/** Renders the release selected in the TOC into the body pane. */
+	private void renderSelectedRelease(JList<String> toc, List<Changelog.Release> releases, JEditorPane body)
+	{
+		int index = toc.getSelectedIndex();
+		if (index < 0 || index >= releases.size())
+			return;
+
+		body.setText(renderReleaseHtml(releases.get(index)));
+		body.setCaretPosition(0);
+	}
+
+	/** Escapes the HTML-significant characters so text renders literally inside an HTML label. */
+	private static String escapeHtml(String text)
+	{
+		return text
+				.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;");
+	}
+
+	/** @return an HTML rendering of one release: version, date, and highlight bullets. */
+	private String renderReleaseHtml(Changelog.Release release)
+	{
+		StringBuilder sb = new StringBuilder("<html><body style='font-family:sans-serif;'>");
+		sb.append("<h2 style='margin-bottom:2px;'>");
+		sb.append(escapeHtml(release.getVersion()));
+		if (release.getDate() != null)
+		{
+			sb.append(" <span style='color:gray;font-weight:normal;font-size:9px;'>");
+			sb.append(escapeHtml(release.getDate()));
+			sb.append("</span>");
+		}
+
+		sb.append("</h2><ul style='margin-left:-18px;'>");
+		for (String highlight : release.getHighlights())
+		{
+			sb.append("<li style='margin-bottom:3px;'>");
+			sb.append(escapeHtml(highlight));
+			sb.append("</li>");
+		}
+
+		sb.append("</ul></body></html>");
+		return sb.toString();
 	}
 
 	/** Copies the shareable tracked-list code to the clipboard. */
