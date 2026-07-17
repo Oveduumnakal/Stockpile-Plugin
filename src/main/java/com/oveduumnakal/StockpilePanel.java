@@ -432,6 +432,12 @@ public class StockpilePanel extends PluginPanel
 	private final JPanel trackedItemsPanel;
 	private final JPanel bottomPanel;
 	private final JLabel totalsTitle;
+	/** Title row hosting {@link #totalsTitle} and the chart pop-out button; carries the toggle-able divider. */
+	private JPanel totalsTitleRow;
+	/** Opens the portfolio value chart; hidden until at least two history points exist to plot. */
+	private JButton portfolioChartButton;
+	/** WEST strut balancing {@link #portfolioChartButton} so the title stays centred; toggled with it. */
+	private Component portfolioChartStrut;
 	private final JPanel geEstimatesSlotTop = new JPanel(new BorderLayout());
 	private final JPanel geEstimatesSlotBottom = new JPanel(new BorderLayout());
 	private EstimatesPosition currentEstimatesPosition;
@@ -838,7 +844,20 @@ public class StockpilePanel extends PluginPanel
 		totalsTitle = new JLabel("Estimated GE Sell Value", SwingConstants.CENTER);
 		totalsTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		totalsTitle.setFont(FontManager.getRunescapeBoldFont());
-		totalsTitle.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
+
+		portfolioChartButton = buildIconButton(buildChartIcon(), "View total tracked value over time",
+				this::openPortfolioChart);
+		portfolioChartButton.setVisible(false);
+
+		portfolioChartStrut = Box.createHorizontalStrut(portfolioChartButton.getPreferredSize().width);
+		portfolioChartStrut.setVisible(false);
+
+		totalsTitleRow = new JPanel(new BorderLayout());
+		totalsTitleRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		totalsTitleRow.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
+		totalsTitleRow.add(portfolioChartStrut, BorderLayout.WEST);
+		totalsTitleRow.add(totalsTitle, BorderLayout.CENTER);
+		totalsTitleRow.add(portfolioChartButton, BorderLayout.EAST);
 
 		totalsRows = new JPanel();
 		totalsRows.setLayout(new BoxLayout(totalsRows, BoxLayout.Y_AXIS));
@@ -915,6 +934,8 @@ public class StockpilePanel extends PluginPanel
 		JLabel profitPrefixLabel = new JLabel("Est. Profit:");
 		profitPrefixLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		profitPrefixLabel.setFont(FontManager.getRunescapeSmallFont());
+		profitPrefixLabel.setToolTipText("Realized profit from sold lots plus unrealized "
+				+ "gain/loss on held lots (marked to the current average price)");
 
 		profitLabel = new JLabel("—");
 		profitLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -967,7 +988,7 @@ public class StockpilePanel extends PluginPanel
 		bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		bottomPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-		bottomPanel.add(totalsTitle, BorderLayout.NORTH);
+		bottomPanel.add(totalsTitleRow, BorderLayout.NORTH);
 		bottomPanel.add(totalsPanel, BorderLayout.CENTER);
 
 		geEstimatesSlotTop.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -1073,20 +1094,8 @@ public class StockpilePanel extends PluginPanel
 		linksRow.add(buildFooterMenu("Feedback", feedbackMenu,
 				"Report a bug or request a feature"));
 
-		JPanel chartRow = new JPanel(new GridLayout(1, 1, 0, 0));
-		chartRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		chartRow.setBorder(new EmptyBorder(6, 0, 0, 0));
-		chartRow.add(buildFooterLink("Portfolio Chart", this::openPortfolioChart,
-				"View total tracked value over time"));
-
-		JPanel southRows = new JPanel();
-		southRows.setLayout(new BoxLayout(southRows, BoxLayout.Y_AXIS));
-		southRows.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		southRows.add(linksRow);
-		southRows.add(chartRow);
-
 		footerPanel.add(refreshRow, BorderLayout.CENTER);
-		footerPanel.add(southRows, BorderLayout.SOUTH);
+		footerPanel.add(linksRow, BorderLayout.SOUTH);
 
 		footerPanel.setVisible(false);
 		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
@@ -1123,13 +1132,13 @@ public class StockpilePanel extends PluginPanel
 		geEstimatesSlotBottom.removeAll();
 		if (position == EstimatesPosition.TOP)
 		{
-			totalsTitle.setBorder(TITLE_BORDER_NO_DIVIDER);
+			totalsTitleRow.setBorder(TITLE_BORDER_NO_DIVIDER);
 			geEstimatesSlotTop.add(bottomPanel, BorderLayout.CENTER);
 			geEstimatesSlotTop.add(buildDividerStrip(), BorderLayout.SOUTH);
 		}
 		else
 		{
-			totalsTitle.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
+			totalsTitleRow.setBorder(TITLE_BORDER_WITH_TOP_DIVIDER);
 			geEstimatesSlotBottom.add(bottomPanel, BorderLayout.NORTH);
 		}
 
@@ -1214,7 +1223,7 @@ public class StockpilePanel extends PluginPanel
 	 * The profit parenthetical is coloured per-part — grey parentheses with a green/red profit —
 	 * while the parenthetical is dropped entirely when there is no cost-basis profit to show.
 	 */
-	private void updateCompactTotals(int itemCount, long totalAvg, long totalCostBasis,
+	private void updateCompactTotals(int itemCount, long totalAvg, long profit,
 			boolean hasPrices, boolean showProfit, ValueFormat fmt)
 	{
 		compactTotalsCountLabel.setText(itemCount + " itm");
@@ -1236,7 +1245,6 @@ public class StockpilePanel extends PluginPanel
 			return;
 		}
 
-		long profit = totalAvg - totalCostBasis;
 		String sign = profit > 0 ? "+" : "";
 		Color profitColor = profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW);
 		String grey = StockpileColors.toHex(ColorScheme.LIGHT_GRAY_COLOR);
@@ -1408,6 +1416,19 @@ public class StockpilePanel extends PluginPanel
 		PortfolioChartPanel chart = new PortfolioChartPanel();
 		chart.setData(onPortfolioHistory.get());
 		showPopout("Portfolio Value", chart, item -> chart.repaint(), chart::repaint);
+	}
+
+	/** Shows the chart pop-out button (and its balancing strut) only once at least two history points exist to plot. */
+	private void updatePortfolioChartButton()
+	{
+		boolean enough = onPortfolioHistory != null && onPortfolioHistory.get().size() >= 2;
+		if (portfolioChartButton.isVisible() == enough)
+			return;
+
+		portfolioChartButton.setVisible(enough);
+		portfolioChartStrut.setVisible(enough);
+		totalsTitleRow.revalidate();
+		totalsTitleRow.repaint();
 	}
 
 	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */
@@ -1890,6 +1911,7 @@ public class StockpilePanel extends PluginPanel
 
 			long totalHigh = 0, totalLow = 0, totalAvg = 0;
 			long totalCostBasis = 0;
+			long totalRealized = 0;
 			boolean anyProfitData = false;
 			long prevPriceTotalHigh = 0, prevPriceTotalLow = 0, prevPriceTotalAvg = 0;
 			boolean anyDeltas = false;
@@ -1904,11 +1926,16 @@ public class StockpilePanel extends PluginPanel
 				totalHigh += item.getHighValue();
 				totalLow  += item.getLowValue();
 				totalAvg  += item.getAvgValue();
+				long realized = item.getRealizedProfit();
+				totalRealized += realized;
 				if (item.isCostBasisInitialized())
 				{
 					totalCostBasis += item.getCostBasis();
 					anyProfitData = true;
 				}
+
+				if (realized != 0)
+					anyProfitData = true;
 
 				if (item.isHasDeltas())
 				{
@@ -1954,6 +1981,7 @@ public class StockpilePanel extends PluginPanel
 
 			equalizeTotalsLabelWidths();
 			bottomPanel.setVisible(config.showGeEstimates() && !reorderMode);
+			updatePortfolioChartButton();
 			applyEstimatesPosition(config.geEstimatesPosition());
 			applyEstimatesSpacing(config.geEstimatesSpacing());
 
@@ -1966,15 +1994,15 @@ public class StockpilePanel extends PluginPanel
 				pulseIfShown(totalAvgDeltaLabel,  Long.compare(totalAvg,  prevPriceTotalAvg),  indicatorMode);
 			}
 
+			long totalProfit = (totalAvg - totalCostBasis) + totalRealized;
 			if (anyProfitData && hasPrices && showEstProfit)
 			{
-				long profit = totalAvg - totalCostBasis;
-				String sign = profit > 0 ? "+" : "";
-				profitLabel.setText(sign + formatTotalGp(profit, totalFmt));
-				applyTotalTooltip(profitLabel, profit, totalFmt);
-				profitLabel.setForeground(profit == 0
+				String sign = totalProfit > 0 ? "+" : "";
+				profitLabel.setText(sign + formatTotalGp(totalProfit, totalFmt));
+				applyTotalTooltip(profitLabel, totalProfit, totalFmt);
+				profitLabel.setForeground(totalProfit == 0
 						? ColorScheme.LIGHT_GRAY_COLOR
-						: (profit > 0 ? COLOR_HIGH : COLOR_LOW));
+						: (totalProfit > 0 ? COLOR_HIGH : COLOR_LOW));
 				profitSection.setVisible(true);
 			}
 			else
@@ -1986,7 +2014,7 @@ public class StockpilePanel extends PluginPanel
 			totalsRows.setVisible(!compact);
 			compactTotalsRows.setVisible(compact);
 			if (compact)
-				updateCompactTotals(items.size(), totalAvg, totalCostBasis, hasPrices,
+				updateCompactTotals(items.size(), totalAvg, totalProfit, hasPrices,
 						anyProfitData && showEstProfit, totalFmt);
 
 			trackedItemsPanel.revalidate();
@@ -3134,13 +3162,15 @@ public class StockpilePanel extends PluginPanel
 			if (config.showItemProfitRow()
 					&& item.isCostBasisInitialized() && item.hasPrices())
 			{
-				long itemProfit = (long) item.getRecordQuantitySum() * item.getAvgPrice() - item.getCostBasis();
+				long itemProfit = item.getProfitAt(item.getAvgPrice());
 				String sign = itemProfit > 0 ? "+" : "";
 				ValueFormat fmt = config.geEstimatesFormat();
 
 				JLabel itemProfitPrefix = new JLabel("Est. Profit:");
 				itemProfitPrefix.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 				itemProfitPrefix.setFont(FontManager.getRunescapeSmallFont());
+				itemProfitPrefix.setToolTipText("Realized profit from sold lots plus unrealized "
+						+ "gain/loss on held lots (marked to the current average price)");
 
 				JLabel itemProfitValue = new JLabel(sign + formatTotalGp(itemProfit, fmt));
 				itemProfitValue.setFont(FontManager.getRunescapeSmallFont());
@@ -5210,17 +5240,58 @@ public class StockpilePanel extends PluginPanel
 		return new ImageIcon(img);
 	}
 
+	/** Paints the small line-chart icon used to open the portfolio value chart. */
+	private Icon buildChartIcon()
+	{
+		int s = 11;
+		BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(ColorScheme.LIGHT_GRAY_COLOR);
+		g.setStroke(new BasicStroke(1f));
+
+		g.drawLine(1, 0, 1, s - 1);
+		g.drawLine(1, s - 1, s - 1, s - 1);
+		g.drawLine(2, 8, 4, 5);
+		g.drawLine(4, 5, 6, 7);
+		g.drawLine(6, 7, 9, 2);
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
 	/** Builds a borderless pop-out button that runs the given action when clicked. */
 	private JButton buildPopoutButton(Runnable onClick)
 	{
-		JButton btn = new JButton(buildPopoutIcon());
-		btn.setToolTipText("Open in a larger window");
+		return buildIconButton(buildPopoutIcon(), "Open in a larger window", onClick);
+	}
+
+	/** Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight. */
+	private JButton buildIconButton(Icon icon, String tooltip, Runnable onClick)
+	{
+		JButton btn = new JButton(icon);
+		btn.setToolTipText(tooltip);
 		btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		btn.setFocusPainted(false);
 		btn.setBorder(new EmptyBorder(2, 4, 2, 4));
 		btn.setContentAreaFilled(false);
 		btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btn.addActionListener(e -> onClick.run());
+		btn.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				btn.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+				btn.setContentAreaFilled(true);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				btn.setContentAreaFilled(false);
+				btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
+			}
+		});
 		return btn;
 	}
 

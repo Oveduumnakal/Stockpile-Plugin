@@ -15,18 +15,21 @@ import java.util.Map;
  * costBasis}}.
  *
  * <p>To stay inside config-size limits, recent history is kept at hourly resolution
- * (at most one point per hour for the last {@value #HOURLY_HOURS} hours) and older
- * history is collapsed to one point per day, up to {@value #DAILY_DAYS} days;
- * anything older is dropped. Points are stored as {@code long[]} so persistence is a
- * plain primitive list with no schema shape to guard.
+ * (at most one point per hour for the last {@value #HOURLY_HOURS} hours ≈ 7 days) and
+ * older history is collapsed to one point per {@value #BUCKET_HOURS}-hour bucket, up to
+ * {@value #RETENTION_DAYS} days; anything older is dropped. Points are stored as
+ * {@code long[]} so persistence is a plain primitive list with no schema shape to guard.
  */
 public final class PortfolioHistory
 {
-	/** Hours of recent history kept at one-point-per-hour resolution. */
-	static final int HOURLY_HOURS = 48;
+	/** Hours of recent history kept at one-point-per-hour resolution (7 days). */
+	static final int HOURLY_HOURS = 168;
 
-	/** Days of older history kept at one-point-per-day resolution. */
-	static final int DAILY_DAYS = 90;
+	/** Bucket width, in hours, that history older than the hourly window is thinned to. */
+	static final int BUCKET_HOURS = 3;
+
+	/** Days of history retained before points are dropped. */
+	static final int RETENTION_DAYS = 90;
 
 	private static final long HOUR = 3600L;
 
@@ -72,13 +75,17 @@ public final class PortfolioHistory
 		thin(epochSeconds);
 	}
 
-	/** Collapses points older than the hourly window to one-per-day and drops points beyond the daily window. */
+	/**
+	 * Collapses points older than the hourly window to one per {@value #BUCKET_HOURS}-hour
+	 * bucket (keeping the latest in each bucket) and drops points beyond the retention window.
+	 */
 	private void thin(long nowSeconds)
 	{
-		long dropBefore = nowSeconds - DAILY_DAYS * DAY;
+		long dropBefore = nowSeconds - RETENTION_DAYS * DAY;
 		long hourlyCutoff = nowSeconds - HOURLY_HOURS * HOUR;
+		long bucket = BUCKET_HOURS * HOUR;
 
-		Map<Long, long[]> dailyKept = new LinkedHashMap<>();
+		Map<Long, long[]> bucketKept = new LinkedHashMap<>();
 		List<long[]> recent = new ArrayList<>();
 
 		for (long[] p : points)
@@ -87,12 +94,12 @@ public final class PortfolioHistory
 				continue;
 
 			if (p[0] < hourlyCutoff)
-				dailyKept.put(p[0] / DAY, p);
+				bucketKept.put(p[0] / bucket, p);
 			else
 				recent.add(p);
 		}
 
-		List<long[]> merged = new ArrayList<>(dailyKept.values());
+		List<long[]> merged = new ArrayList<>(bucketKept.values());
 		merged.addAll(recent);
 		merged.sort((a, b) -> Long.compare(a[0], b[0]));
 
@@ -112,5 +119,11 @@ public final class PortfolioHistory
 	public boolean isEmpty()
 	{
 		return points.isEmpty();
+	}
+
+	/** Drops all stored points, e.g. when the tracked list is emptied. */
+	public void clear()
+	{
+		points.clear();
 	}
 }

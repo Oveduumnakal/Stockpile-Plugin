@@ -400,7 +400,12 @@ public class StockpilePlugin extends Plugin
 
 	private Instant lastPortfolioSave;
 
-	/** Records the current total tracked value (and cost basis) into the history, persisting throttled. */
+	/**
+	 * Records a portfolio snapshot into the history (persisting throttled): the running
+	 * value — held lots marked to the current average plus sold lots at their actual sale
+	 * price — against the invested cost basis of every logged lot, which stays fixed as
+	 * lots sell. Their gap is thus the realized-plus-unrealized profit.
+	 */
 	private void recordPortfolioSnapshot()
 	{
 		long total = 0;
@@ -412,9 +417,9 @@ public class StockpilePlugin extends Plugin
 				continue;
 
 			priced = true;
-			total += item.getAvgValue();
+			total += item.getAvgValue() + item.getRealizedProceeds();
 			if (item.isCostBasisInitialized())
-				costBasis += item.getCostBasis();
+				costBasis += item.getInvestedCostBasis();
 		}
 
 		if (!priced)
@@ -1012,9 +1017,19 @@ public class StockpilePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.remove(itemId);
+			if (trackedItems.isEmpty())
+				clearPortfolioHistory();
+
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/** Wipes the portfolio value history (in memory and in config) once nothing is tracked, so it restarts clean. */
+	private void clearPortfolioHistory()
+	{
+		portfolioHistory.clear();
+		persistPortfolioHistory();
 	}
 
 	/** @return a shareable code for the current tracked list (ids, modes, categories, favorites), or "" when empty. */
@@ -1475,6 +1490,7 @@ public class StockpilePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.clear();
+			clearPortfolioHistory();
 			persistTrackedItems();
 			refreshPanel();
 		});

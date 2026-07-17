@@ -11,7 +11,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-/** Verifies hourly de-duplication, daily collapsing, and bounded retention of {@link PortfolioHistory}. */
+/** Verifies hourly de-duplication, 3-hour-bucket collapsing, and bounded retention of {@link PortfolioHistory}. */
 public class PortfolioHistoryTest
 {
 	private static final long HOUR = 3600L;
@@ -44,31 +44,38 @@ public class PortfolioHistoryTest
 	}
 
 	@Test
-	public void oldPointsCollapseToOnePerDay()
+	public void oldPointsCollapseToThreeHourBuckets()
 	{
 		PortfolioHistory history = new PortfolioHistory();
 		long start = 100 * DAY;
+		int hours = 10 * 24;
 
-		for (int h = 0; h < 72; h++)
+		for (int h = 0; h < hours; h++)
 			history.record(start + h * HOUR, h, 0);
 
-		long now = start + 71 * HOUR;
+		long now = start + (hours - 1) * HOUR;
 		long hourlyCutoff = now - PortfolioHistory.HOURLY_HOURS * HOUR;
+		long bucket = PortfolioHistory.BUCKET_HOURS * HOUR;
 
 		List<long[]> points = history.points();
-		long oldCount = points.stream().filter(p -> p[0] < hourlyCutoff).count();
+		List<long[]> old = points.stream()
+				.filter(p -> p[0] < hourlyCutoff)
+				.collect(java.util.stream.Collectors.toList());
 		long recentCount = points.stream().filter(p -> p[0] >= hourlyCutoff).count();
 
-		assertTrue("older-than-48h points collapse to at most one per day", oldCount <= 2);
-		assertTrue("recent points stay hourly", recentCount >= 24);
+		int oldHours = (int) (hourlyCutoff - start) / (int) HOUR;
+		long distinctBuckets = old.stream().map(p -> p[0] / bucket).distinct().count();
+		assertEquals("no two old points share a 3-hour bucket", distinctBuckets, old.size());
+		assertTrue("old history is thinned below hourly", old.size() < oldHours);
+		assertTrue("recent week stays hourly", recentCount >= 160);
 	}
 
 	@Test
-	public void pointsBeyondDailyWindowAreDropped()
+	public void pointsBeyondRetentionWindowAreDropped()
 	{
 		PortfolioHistory history = new PortfolioHistory();
 		history.record(0, 100, 0);
-		history.record((PortfolioHistory.DAILY_DAYS + 5) * DAY, 200, 0);
+		history.record((PortfolioHistory.RETENTION_DAYS + 5) * DAY, 200, 0);
 
 		List<long[]> points = history.points();
 		assertEquals(1, points.size());
