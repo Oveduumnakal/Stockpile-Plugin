@@ -101,6 +101,7 @@ import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
@@ -1042,6 +1043,20 @@ public class StockpilePanel extends PluginPanel
 		clearButton.addActionListener(e -> confirmAndClearAll());
 		refreshRow.add(clearButton, BorderLayout.EAST);
 
+		JPopupMenu shareMenu = new JPopupMenu();
+		shareMenu.add(buildFooterMenuItem("Export list", this::exportTrackedList,
+				"Copy a shareable code for your tracked list to the clipboard"));
+		shareMenu.add(buildFooterMenuItem("Import list", this::importTrackedList,
+				"Paste a tracked-list code to merge it into this profile"));
+		shareMenu.add(buildFooterMenuItem("Export acquisitions (CSV)", this::exportAcquisitionsCsv,
+				"Copy the acquisitions log as CSV to the clipboard"));
+
+		JPopupMenu feedbackMenu = new JPopupMenu();
+		feedbackMenu.add(buildFooterMenuItem("Report a bug", this::openReportIssueForm,
+				"Report a bug — fill it in here, then submit on GitHub"));
+		feedbackMenu.add(buildFooterMenuItem("Request a feature", this::openRequestFeatureForm,
+				"Request a feature — fill it in here, then submit on GitHub"));
+
 		JPanel linksRow = new JPanel(new GridLayout(1, 2, 6, 0));
 		linksRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		linksRow.setBorder(BorderFactory.createCompoundBorder(
@@ -1049,29 +1064,13 @@ public class StockpilePanel extends PluginPanel
 				BorderFactory.createCompoundBorder(
 						new MatteBorder(1, 0, 0, 0, FOOTER_DIVIDER_COLOR),
 						new EmptyBorder(6, 0, 0, 0))));
-		linksRow.add(buildFooterLink("Report Issue", this::openReportIssueForm,
-				"Report a bug — fill it in here, then submit on GitHub"));
-		linksRow.add(buildFooterLink("Request Feature", this::openRequestFeatureForm,
-				"Request a feature — fill it in here, then submit on GitHub"));
-
-		JPanel dataRow = new JPanel(new GridLayout(1, 3, 6, 0));
-		dataRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		dataRow.setBorder(new EmptyBorder(6, 0, 0, 0));
-		dataRow.add(buildFooterLink("Export List", this::exportTrackedList,
-				"Copy a shareable code for your tracked list to the clipboard"));
-		dataRow.add(buildFooterLink("Import List", this::importTrackedList,
-				"Paste a tracked-list code to merge it into this profile"));
-		dataRow.add(buildFooterLink("Export CSV", this::exportAcquisitionsCsv,
-				"Copy the acquisitions log as CSV to the clipboard"));
-
-		JPanel southRows = new JPanel();
-		southRows.setLayout(new BoxLayout(southRows, BoxLayout.Y_AXIS));
-		southRows.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		southRows.add(linksRow);
-		southRows.add(dataRow);
+		linksRow.add(buildFooterMenu("Share", shareMenu,
+				"Export or import your tracked list, or export the acquisitions log"));
+		linksRow.add(buildFooterMenu("Feedback", feedbackMenu,
+				"Report a bug or request a feature"));
 
 		footerPanel.add(refreshRow, BorderLayout.CENTER);
-		footerPanel.add(southRows, BorderLayout.SOUTH);
+		footerPanel.add(linksRow, BorderLayout.SOUTH);
 
 		footerPanel.setVisible(false);
 		getWrappedPanel().add(footerPanel, BorderLayout.SOUTH);
@@ -1299,6 +1298,35 @@ public class StockpilePanel extends PluginPanel
 	/** Builds a small footer button that runs the given action when clicked. */
 	private JButton buildFooterLink(String text, Runnable onClick, String tooltip)
 	{
+		JButton button = styledFooterButton(text, tooltip);
+		button.addActionListener(e -> onClick.run());
+
+		return button;
+	}
+
+	/** A footer button that drops {@code menu} below itself, grouping related actions so the footer stays one row. */
+	private JButton buildFooterMenu(String text, JPopupMenu menu, String tooltip)
+	{
+		JButton button = styledFooterButton(text + "  ▾", tooltip);
+		button.addActionListener(e -> menu.show(button, 0, button.getHeight()));
+
+		return button;
+	}
+
+	/** One action inside a footer dropdown, styled to match the footer links. */
+	private JMenuItem buildFooterMenuItem(String text, Runnable onClick, String tooltip)
+	{
+		JMenuItem item = new JMenuItem(text);
+		item.setFont(FontManager.getRunescapeSmallFont());
+		item.setToolTipText(tooltip);
+		item.addActionListener(e -> onClick.run());
+
+		return item;
+	}
+
+	/** Shared styling for the footer's link and dropdown buttons. */
+	private JButton styledFooterButton(String text, String tooltip)
+	{
 		JButton button = new JButton(text);
 		button.setFont(FontManager.getRunescapeSmallFont());
 		button.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -1307,7 +1335,6 @@ public class StockpilePanel extends PluginPanel
 		button.setMargin(new Insets(2, 2, 2, 2));
 		button.setToolTipText(tooltip);
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		button.addActionListener(e -> onClick.run());
 
 		return button;
 	}
