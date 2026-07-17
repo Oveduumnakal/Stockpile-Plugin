@@ -78,6 +78,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.stream.Stream;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -461,8 +462,10 @@ public class StockpilePanel extends PluginPanel
 	private final JPanel totalLowRow;
 	private final JPanel totalAvgRow;
 
-	/** Value gained/lost since the session baseline (login or manual reset); clickable to reset. */
-	private final JLabel sessionLabel = new JLabel();
+	/** Static grey "Session:" prefix; never recoloured, mirroring the profit row's prefix. */
+	private final JLabel sessionLabel = new JLabel("Session:");
+	/** Value gained/lost since the session baseline (login or manual reset); the only part recoloured. */
+	private final JLabel sessionValueLabel = new JLabel();
 	/** The row wrapping {@link #sessionLabel}; toggled as a whole so no empty row lingers when hidden. */
 	private JPanel sessionRow;
 	/** In-memory session tracking; baseline captured on the first priced render after a reset. */
@@ -909,24 +912,35 @@ public class StockpilePanel extends PluginPanel
 
 		sessionLabel.setFont(FontManager.getRunescapeSmallFont());
 		sessionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		sessionLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		sessionLabel.setToolTipText("Value change since login — click to reset the session baseline");
-		sessionLabel.addMouseListener(new MouseAdapter()
-		{
-			@Override
-			public void mousePressed(MouseEvent e)
-			{
-				resetSession();
-			}
-		});
+
+		sessionValueLabel.setFont(FontManager.getRunescapeSmallFont());
+		sessionValueLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 
 		sessionRow = new JPanel();
 		sessionRow.setLayout(new BoxLayout(sessionRow, BoxLayout.X_AXIS));
 		sessionRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		sessionRow.setBorder(ESTIMATE_ROW_BORDER_DEFAULT);
 		sessionRow.add(sessionLabel);
+		sessionRow.add(Box.createRigidArea(new Dimension(6, 0)));
+		sessionRow.add(sessionValueLabel);
 		sessionRow.add(Box.createHorizontalGlue());
 		totalsRows.add(sessionRow);
+
+		MouseAdapter sessionResetListener = new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				resetSession();
+			}
+		};
+
+		Stream.of(sessionRow, sessionLabel, sessionValueLabel).forEach(component ->
+		{
+			component.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			component.setToolTipText("Value change since login — click to reset the session baseline");
+			component.addMouseListener(sessionResetListener);
+		});
 
 		bottomPanel = new JPanel(new BorderLayout(0, 0));
 		bottomPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -1214,12 +1228,14 @@ public class StockpilePanel extends PluginPanel
 		long total = delta.getTotal();
 		Color color = total == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (total > 0 ? COLOR_HIGH : COLOR_LOW);
 
-		sessionLabel.setForeground(color);
-		sessionLabel.setText("Session: " + signedShort(total));
-		sessionLabel.setToolTipText("<html>Since login:<br>"
+		sessionValueLabel.setForeground(color);
+		sessionValueLabel.setText(signedShort(total));
+
+		String tooltip = "<html>Since login:<br>"
 				+ "Price movement: " + signedGp(delta.getPrice()) + "<br>"
 				+ "Quantity change: " + signedGp(delta.getQuantity()) + "<br>"
-				+ "<i>click to reset</i></html>");
+				+ "<i>click to reset</i></html>";
+		Stream.of(sessionRow, sessionLabel, sessionValueLabel).forEach(component -> component.setToolTipText(tooltip));
 		sessionRow.setVisible(true);
 	}
 
