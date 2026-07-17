@@ -390,6 +390,81 @@ public class StockpilePlugin extends Plugin
 
 	private Instant lastGeStateSave;
 
+	/** Thinned time series of total portfolio value for the history chart. */
+	private final PortfolioHistory portfolioHistory = new PortfolioHistory();
+
+	private static final Type PORTFOLIO_HISTORY_TYPE = new TypeToken<List<long[]>>(){}.getType();
+
+	/** How often at most the portfolio history is rewritten to config. */
+	private static final Duration PORTFOLIO_SAVE_INTERVAL = Duration.ofMinutes(5);
+
+	private Instant lastPortfolioSave;
+
+	/**
+	 * Records a portfolio snapshot into the history (persisting throttled): the running
+	 * value — held lots marked to the current average plus sold lots at their actual sale
+	 * price — against the invested cost basis of every logged lot, which stays fixed as
+	 * lots sell. Their gap is thus the realized-plus-unrealized profit.
+	 */
+	private void recordPortfolioSnapshot()
+	{
+		long total = 0;
+		long costBasis = 0;
+		boolean priced = false;
+		for (TrackedItem item : trackedItems.values())
+		{
+			if (!item.hasPrices())
+				continue;
+
+			priced = true;
+			total += item.getAvgValue() + item.getRealizedProceeds();
+			if (item.isCostBasisInitialized())
+				costBasis += item.getInvestedCostBasis();
+		}
+
+		if (!priced)
+			return;
+
+		portfolioHistory.record(Instant.now().getEpochSecond(), total, costBasis);
+
+		if (lastPortfolioSave == null
+				|| Duration.between(lastPortfolioSave, Instant.now()).compareTo(PORTFOLIO_SAVE_INTERVAL) >= 0)
+			persistPortfolioHistory();
+	}
+
+	/** Serializes the portfolio history to per-profile config. */
+	private void persistPortfolioHistory()
+	{
+		lastPortfolioSave = Instant.now();
+		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_PORTFOLIO_HISTORY,
+				gson.toJson(portfolioHistory.points(), PORTFOLIO_HISTORY_TYPE));
+	}
+
+	/** Restores the portfolio history from per-profile config, ignoring a corrupt value. */
+	private void loadPortfolioHistory()
+	{
+		String saved = configManager.getRSProfileConfiguration(StockpileConfig.GROUP,
+				StockpileConfig.KEY_PORTFOLIO_HISTORY);
+		if (saved == null || saved.trim().isEmpty())
+			return;
+
+		try
+		{
+			List<long[]> stored = gson.fromJson(saved.trim(), PORTFOLIO_HISTORY_TYPE);
+			portfolioHistory.load(stored);
+		}
+		catch (JsonSyntaxException e)
+		{
+			log.warn("Failed to parse persisted portfolio history; ignoring", e);
+		}
+	}
+
+	/** @return the portfolio history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
+	List<long[]> portfolioHistoryPoints()
+	{
+		return portfolioHistory.points();
+	}
+
 	/**
 	 * Builds the side panel (wiring its callbacks back to this plugin), registers
 	 * the nav button and overlays, restores persisted items, and kicks off the
@@ -457,7 +532,8 @@ public class StockpilePlugin extends Plugin
 				},
 				this::buildShareToken,
 				this::importTrackedList,
-				this::buildAcquisitionsCsv
+				this::buildAcquisitionsCsv,
+				this::portfolioHistoryPoints
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
@@ -484,6 +560,7 @@ public class StockpilePlugin extends Plugin
 			loadCategories();
 			loadPersistedItems();
 			loadGeState();
+			loadPortfolioHistory();
 
 			refreshPanel();
 			clientThread.invokeLater(this::hydratePriceCache);
@@ -578,6 +655,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		persistGeState();
+		persistPortfolioHistory();
 		trackedItems.clear();
 		containerCounts.clear();
 		runePouchCounts.clear();
@@ -939,9 +1017,19 @@ public class StockpilePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.remove(itemId);
+			if (trackedItems.isEmpty())
+				clearPortfolioHistory();
+
 			persistTrackedItems();
 			refreshPanel();
 		});
+	}
+
+	/** Wipes the portfolio value history (in memory and in config) once nothing is tracked, so it restarts clean. */
+	private void clearPortfolioHistory()
+	{
+		portfolioHistory.clear();
+		persistPortfolioHistory();
 	}
 
 	/** @return a shareable code for the current tracked list (ids, modes, categories, favorites), or "" when empty. */
@@ -1402,6 +1490,7 @@ public class StockpilePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.clear();
+			clearPortfolioHistory();
 			persistTrackedItems();
 			refreshPanel();
 		});
@@ -1594,6 +1683,8 @@ public class StockpilePlugin extends Plugin
 		if (lastPriceCacheSave == null
 				|| Duration.between(lastPriceCacheSave, Instant.now()).compareTo(PRICE_CACHE_SAVE_INTERVAL) >= 0)
 			persistPriceCache();
+
+		recordPortfolioSnapshot();
 
 		evaluateNotifications();
 		refreshPanel(true);
@@ -2707,6 +2798,7 @@ public class StockpilePlugin extends Plugin
 					loadCategories();
 					loadPersistedItems();
 					loadGeState();
+					loadPortfolioHistory();
 					geOfferTracker.clear();
 					pendingSellSuspend.clear();
 					pendingSellUnsuspend.clear();

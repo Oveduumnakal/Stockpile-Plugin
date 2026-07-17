@@ -197,6 +197,27 @@ public class TrackedItem
 				.sum();
 	}
 
+	/**
+	 * @return total gp paid across every logged lot, held and sold. Unlike {@link #getCostBasis()}
+	 *         (held lots only), this stays fixed as lots are sold, so it is the running invested
+	 *         baseline for the portfolio value chart.
+	 */
+	public long getInvestedCostBasis()
+	{
+		return acquisitions.stream()
+				.mapToLong(r -> (long) r.getQuantity() * r.getBoughtAt())
+				.sum();
+	}
+
+	/** @return realized sale proceeds: sum of qty * sold price across sold lots (0 while nothing is sold). */
+	public long getRealizedProceeds()
+	{
+		return acquisitions.stream()
+				.filter(r -> r.getSoldAt() != null)
+				.mapToLong(r -> (long) r.getQuantity() * r.getSoldAt())
+				.sum();
+	}
+
 	/** @return total units across the lots still held (unsold acquisitions). */
 	public int getRecordQuantitySum()
 	{
