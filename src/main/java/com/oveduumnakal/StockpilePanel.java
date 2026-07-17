@@ -45,6 +45,9 @@ import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -77,7 +80,9 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -96,6 +101,7 @@ import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
@@ -197,6 +203,12 @@ public class StockpilePanel extends PluginPanel
 	private final BiConsumer<String, Boolean> onSetGroupCollapsed;
 	/** Category create/rename/delete/reorder and per-item assignment operations. */
 	private final CategoryActions categoryActions;
+	/** Builds the shareable tracked-list token for the current profile. */
+	private final Supplier<String> onExportList;
+	/** Imports a tracked-list token (merge, non-destructive); returns a user-facing result message. */
+	private final Function<String, String> onImportList;
+	/** Builds the acquisitions CSV for the current profile. */
+	private final Supplier<String> onExportCsv;
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -576,7 +588,10 @@ public class StockpilePanel extends PluginPanel
 			BiConsumer<Integer, Boolean> onSetFavorite,
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
-			CategoryActions categoryActions)
+			CategoryActions categoryActions,
+			Supplier<String> onExportList,
+			Function<String, String> onImportList,
+			Supplier<String> onExportCsv)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -597,6 +612,9 @@ public class StockpilePanel extends PluginPanel
 		this.onSetOnOverlay = onSetOnOverlay;
 		this.onSetGroupCollapsed = onSetGroupCollapsed;
 		this.categoryActions = categoryActions;
+		this.onExportList = onExportList;
+		this.onImportList = onImportList;
+		this.onExportCsv = onExportCsv;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -1025,6 +1043,20 @@ public class StockpilePanel extends PluginPanel
 		clearButton.addActionListener(e -> confirmAndClearAll());
 		refreshRow.add(clearButton, BorderLayout.EAST);
 
+		JPopupMenu shareMenu = new JPopupMenu();
+		shareMenu.add(buildFooterMenuItem("Export list", this::exportTrackedList,
+				"Copy a shareable code for your tracked list to the clipboard"));
+		shareMenu.add(buildFooterMenuItem("Import list", this::importTrackedList,
+				"Paste a tracked-list code to merge it into this profile"));
+		shareMenu.add(buildFooterMenuItem("Export acquisitions (CSV)", this::exportAcquisitionsCsv,
+				"Copy the acquisitions log as CSV to the clipboard"));
+
+		JPopupMenu feedbackMenu = new JPopupMenu();
+		feedbackMenu.add(buildFooterMenuItem("Report a bug", this::openReportIssueForm,
+				"Report a bug — fill it in here, then submit on GitHub"));
+		feedbackMenu.add(buildFooterMenuItem("Request a feature", this::openRequestFeatureForm,
+				"Request a feature — fill it in here, then submit on GitHub"));
+
 		JPanel linksRow = new JPanel(new GridLayout(1, 2, 6, 0));
 		linksRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		linksRow.setBorder(BorderFactory.createCompoundBorder(
@@ -1032,10 +1064,10 @@ public class StockpilePanel extends PluginPanel
 				BorderFactory.createCompoundBorder(
 						new MatteBorder(1, 0, 0, 0, FOOTER_DIVIDER_COLOR),
 						new EmptyBorder(6, 0, 0, 0))));
-		linksRow.add(buildFooterLink("Report Issue", this::openReportIssueForm,
-				"Report a bug — fill it in here, then submit on GitHub"));
-		linksRow.add(buildFooterLink("Request Feature", this::openRequestFeatureForm,
-				"Request a feature — fill it in here, then submit on GitHub"));
+		linksRow.add(buildFooterMenu("Share", shareMenu,
+				"Export or import your tracked list, or export the acquisitions log"));
+		linksRow.add(buildFooterMenu("Feedback", feedbackMenu,
+				"Report a bug or request a feature"));
 
 		footerPanel.add(refreshRow, BorderLayout.CENTER);
 		footerPanel.add(linksRow, BorderLayout.SOUTH);
@@ -1266,6 +1298,35 @@ public class StockpilePanel extends PluginPanel
 	/** Builds a small footer button that runs the given action when clicked. */
 	private JButton buildFooterLink(String text, Runnable onClick, String tooltip)
 	{
+		JButton button = styledFooterButton(text, tooltip);
+		button.addActionListener(e -> onClick.run());
+
+		return button;
+	}
+
+	/** A footer button that drops {@code menu} below itself, grouping related actions so the footer stays one row. */
+	private JButton buildFooterMenu(String text, JPopupMenu menu, String tooltip)
+	{
+		JButton button = styledFooterButton(text + "  ▾", tooltip);
+		button.addActionListener(e -> menu.show(button, 0, button.getHeight()));
+
+		return button;
+	}
+
+	/** One action inside a footer dropdown, styled to match the footer links. */
+	private JMenuItem buildFooterMenuItem(String text, Runnable onClick, String tooltip)
+	{
+		JMenuItem item = new JMenuItem(text);
+		item.setFont(FontManager.getRunescapeSmallFont());
+		item.setToolTipText(tooltip);
+		item.addActionListener(e -> onClick.run());
+
+		return item;
+	}
+
+	/** Shared styling for the footer's link and dropdown buttons. */
+	private JButton styledFooterButton(String text, String tooltip)
+	{
 		JButton button = new JButton(text);
 		button.setFont(FontManager.getRunescapeSmallFont());
 		button.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -1274,9 +1335,55 @@ public class StockpilePanel extends PluginPanel
 		button.setMargin(new Insets(2, 2, 2, 2));
 		button.setToolTipText(tooltip);
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		button.addActionListener(e -> onClick.run());
 
 		return button;
+	}
+
+	/** Copies the shareable tracked-list code to the clipboard. */
+	private void exportTrackedList()
+	{
+		String token = onExportList.get();
+		if (token == null || token.isEmpty())
+		{
+			JOptionPane.showMessageDialog(this, "Nothing tracked to export.", "Export List",
+					JOptionPane.INFORMATION_MESSAGE);
+			return;
+		}
+
+		copyToClipboard(token);
+		JOptionPane.showMessageDialog(this, "Tracked-list code copied to the clipboard.", "Export List",
+				JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	/** Prompts for a tracked-list code and merges it into the current profile. */
+	private void importTrackedList()
+	{
+		JTextArea input = new JTextArea(5, 24);
+		input.setLineWrap(true);
+		JScrollPane scroll = new JScrollPane(input);
+
+		int choice = JOptionPane.showConfirmDialog(this, scroll, "Paste tracked-list code",
+				JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+		if (choice != JOptionPane.OK_OPTION)
+			return;
+
+		String result = onImportList.apply(input.getText());
+		JOptionPane.showMessageDialog(this, result, "Import List", JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	/** Copies the acquisitions log as CSV to the clipboard. */
+	private void exportAcquisitionsCsv()
+	{
+		String csv = onExportCsv.get();
+		copyToClipboard(csv);
+		JOptionPane.showMessageDialog(this, "Acquisitions CSV copied to the clipboard.", "Export CSV",
+				JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	private void copyToClipboard(String text)
+	{
+		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+		clipboard.setContents(new StringSelection(text), null);
 	}
 
 	/** Feature-template "Related area" dropdown options, matched exactly for URL prefill. */
