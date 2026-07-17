@@ -261,6 +261,12 @@ public class StockpilePlugin extends Plugin
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
 
+	/**
+	 * A worthless destroyed processing output (burnt food, crushed gem) to drop this
+	 * tick rather than record (#144); 0 when none.
+	 */
+	private int pendingDestroyedOutput = 0;
+
 	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
 	private int deathTick = -1;
 
@@ -2197,12 +2203,16 @@ public class StockpilePlugin extends Plugin
 	 * fallback market value, and the total is carried onto the output's new lot(s) by
 	 * {@link #consumeProcessingOutput} so their basis sums exactly to it. Multi-output ticks
 	 * are unattributable and left to the fallback; tracked inputs with no tracked output
-	 * close at 0. Coins never participate.
+	 * close at 0. A worthless, non-tradeable output is a destroyed product (burnt food,
+	 * crushed gem) and is handled without an XP signal — a burn gives none — closing each
+	 * tracked input as a realized loss at 0 and dropping the output (#144). Coins never
+	 * participate.
 	 */
 	private void correlateProcessing()
 	{
 		pendingProcessingOutput.clear();
-		if (pendingItemDeltas.isEmpty() || client.getTickCount() - processingXpTick > 1)
+		pendingDestroyedOutput = 0;
+		if (pendingItemDeltas.isEmpty())
 			return;
 
 		List<int[]> inputs = new ArrayList<>();
@@ -2231,6 +2241,20 @@ public class StockpilePlugin extends Plugin
 		if (inputs.isEmpty() || outputKinds > 1)
 			return;
 
+		if (outputKinds == 1 && isDestroyedProduct(outputId))
+		{
+			for (int[] input : inputs)
+				if (isTracked(input[0]))
+					sourceAttribution.claim(AcquisitionSource.BURNED, input[0], input[1], 0,
+							client.getTickCount());
+
+			pendingDestroyedOutput = outputId;
+			return;
+		}
+
+		if (client.getTickCount() - processingXpTick > 1)
+			return;
+
 		boolean trackedOutput = outputKinds == 1 && isTracked(outputId);
 		long totalCost = 0;
 		for (int[] input : inputs)
@@ -2250,6 +2274,19 @@ public class StockpilePlugin extends Plugin
 
 		if (trackedOutput && outputQty > 0)
 			pendingProcessingOutput.put(outputId, totalCost);
+	}
+
+	/**
+	 * @return whether {@code itemId} is a worthless destroyed processing product — a
+	 * non-tradeable item (absent from the GE mapping) with no market value, such as burnt
+	 * food or a crushed gem. Requires the mapping to have loaded so a genuine tradeable
+	 * item is never mistaken for one before its price is known.
+	 */
+	private boolean isDestroyedProduct(int itemId)
+	{
+		return mappingsLoaded
+				&& !itemMappings.containsKey(itemId)
+				&& itemManager.getItemPrice(itemId) <= 0;
 	}
 
 	/** @return an untracked processing input's per-unit value under the fallback (Auto Add) policy. */
@@ -2400,6 +2437,7 @@ public class StockpilePlugin extends Plugin
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					pendingProcessingOutput.clear();
+					pendingDestroyedOutput = 0;
 					deathTick = -1;
 				}
 
@@ -3251,6 +3289,9 @@ public class StockpilePlugin extends Plugin
 		for (TrackedItem tracked : trackedItems.values())
 		{
 			if (tracked.getMode() != TrackItemMode.TRACK)
+				continue;
+
+			if (tracked.getItemId() == pendingDestroyedOutput)
 				continue;
 
 			Integer delta = deltas.get(tracked.getItemId());

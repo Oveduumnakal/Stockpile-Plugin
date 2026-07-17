@@ -36,6 +36,9 @@ enum AcquisitionSource
 	/** Consumed or produced by processing, priced by transferred cost basis. */
 	PROCESSING("Processing"),
 
+	/** Destroyed by processing (burnt food, crushed gem); the input closes as a loss at 0. */
+	BURNED("Burned"),
+
 	/** Lost to or recovered after a death; lots suspend rather than close. */
 	DEATH("Death");
 
