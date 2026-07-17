@@ -1408,7 +1408,7 @@ public class StockpilePanel extends PluginPanel
 	/** @return the indicator label: highlighted "What's New" for a new release, else "Change log". */
 	private String changelogButtonText()
 	{
-		return whatsNew ? "What's New ✨" : "Change log";
+		return whatsNew ? "What's New" : "Change log";
 	}
 
 	/** Applies the indicator styling — gold while "What's New", muted once seen. */
@@ -1447,6 +1447,8 @@ public class StockpilePanel extends PluginPanel
 		toc.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		toc.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		toc.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		toc.setFixedCellHeight(24);
+		toc.setBorder(new EmptyBorder(4, 8, 4, 4));
 
 		JEditorPane body = new JEditorPane();
 		body.setContentType("text/html");
@@ -1458,13 +1460,13 @@ public class StockpilePanel extends PluginPanel
 			toc.setSelectedIndex(0);
 
 		JScrollPane tocScroll = new JScrollPane(toc);
-		tocScroll.setPreferredSize(new Dimension(70, 320));
+		tocScroll.setPreferredSize(new Dimension(72, 340));
 
 		JScrollPane bodyScroll = new JScrollPane(body);
-		bodyScroll.setPreferredSize(new Dimension(330, 320));
+		bodyScroll.setPreferredSize(new Dimension(360, 340));
 
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tocScroll, bodyScroll);
-		split.setDividerLocation(70);
+		split.setDividerLocation(72);
 		return split;
 	}
 
@@ -1488,28 +1490,32 @@ public class StockpilePanel extends PluginPanel
 				.replace(">", "&gt;");
 	}
 
-	/** @return an HTML rendering of one release: version, date, and highlight bullets. */
+	/**
+	 * @return an HTML rendering of one release: version, date, and highlight bullets. A two-column
+	 *         table (bullet, text) gives a clean hanging indent; Swing's HTML renderer detaches the
+	 *         markers of a plain {@code <ul>}.
+	 */
 	private String renderReleaseHtml(Changelog.Release release)
 	{
-		StringBuilder sb = new StringBuilder("<html><body style='font-family:sans-serif;'>");
-		sb.append("<h2 style='margin-bottom:2px;'>");
+		StringBuilder sb = new StringBuilder("<html><body style='font-family:sans-serif; margin:4px 8px;'>");
+		sb.append("<div style='font-size:14px; font-weight:bold;'>");
 		sb.append(escapeHtml(release.getVersion()));
 		if (release.getDate() != null)
 		{
-			sb.append(" <span style='color:gray;font-weight:normal;font-size:9px;'>");
+			sb.append(" <span style='color:gray; font-weight:normal; font-size:9px;'>");
 			sb.append(escapeHtml(release.getDate()));
 			sb.append("</span>");
 		}
 
-		sb.append("</h2><ul style='margin-left:-18px;'>");
+		sb.append("</div><table cellspacing='0' cellpadding='2' style='margin-top:4px;'>");
 		for (String highlight : release.getHighlights())
 		{
-			sb.append("<li style='margin-bottom:3px;'>");
+			sb.append("<tr><td valign='top'>&#8226;</td><td valign='top'>");
 			sb.append(escapeHtml(highlight));
-			sb.append("</li>");
+			sb.append("</td></tr>");
 		}
 
-		sb.append("</ul></body></html>");
+		sb.append("</table></body></html>");
 		return sb.toString();
 	}
 
