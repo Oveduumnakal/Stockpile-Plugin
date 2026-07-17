@@ -2203,10 +2203,11 @@ public class StockpilePlugin extends Plugin
 	 * fallback market value, and the total is carried onto the output's new lot(s) by
 	 * {@link #consumeProcessingOutput} so their basis sums exactly to it. Multi-output ticks
 	 * are unattributable and left to the fallback; tracked inputs with no tracked output
-	 * close at 0. A worthless, non-tradeable output is a destroyed product (burnt food,
-	 * crushed gem) and is handled without an XP signal — a burn gives none — closing each
-	 * tracked input as a realized loss at 0 and dropping the output (#144). Coins never
-	 * participate.
+	 * close at 0. A worthless, non-tradeable output is a destroyed product and is handled
+	 * without an XP signal — a burn or crush gives none — closing each tracked input as a
+	 * realized loss at 0 and dropping the output (#144): a crushed gem tags the input
+	 * {@link AcquisitionSource#CRUSHED}, any other destroyed product {@link AcquisitionSource#BURNED}.
+	 * Coins never participate.
 	 */
 	private void correlateProcessing()
 	{
@@ -2243,10 +2244,12 @@ public class StockpilePlugin extends Plugin
 
 		if (outputKinds == 1 && isDestroyedProduct(outputId))
 		{
+			AcquisitionSource loss = outputId == ItemID.CRUSHED_GEMSTONE
+					? AcquisitionSource.CRUSHED
+					: AcquisitionSource.BURNED;
 			for (int[] input : inputs)
 				if (isTracked(input[0]))
-					sourceAttribution.claim(AcquisitionSource.BURNED, input[0], input[1], 0,
-							client.getTickCount());
+					sourceAttribution.claim(loss, input[0], input[1], 0, client.getTickCount());
 
 			pendingDestroyedOutput = outputId;
 			return;
