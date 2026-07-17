@@ -50,6 +50,23 @@ public final class SessionStats
 	}
 
 	/**
+	 * Folds any ids present in {@code current} but absent from the baseline into the baseline at
+	 * their current {@code {quantity, unitPrice}}, so an item newly tracked mid-session enters at
+	 * its current value and contributes zero to {@link #delta} instead of counting its whole
+	 * holding as a quantity gain. Its later price and quantity moves still register normally. This
+	 * is the mirror of the "dropped item keeps its baseline price" handling in {@link #delta}.
+	 *
+	 * <p>No-op until a baseline exists (the first snapshot is captured wholesale by {@link #reset}).
+	 */
+	public void absorbNewItems(Map<Integer, long[]> current)
+	{
+		if (!hasBaseline)
+			return;
+
+		current.forEach((id, qtyPrice) -> baseline.computeIfAbsent(id, k -> new long[]{qtyPrice[0], qtyPrice[1]}));
+	}
+
+	/**
 	 * Computes the session change for {@code current} (id → {@code {quantity, unitPrice}})
 	 * against the baseline. A dropped item keeps its baseline price, so its loss lands
 	 * entirely on the quantity side.
