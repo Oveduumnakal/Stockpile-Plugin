@@ -90,4 +90,53 @@ public class SessionStatsTest
 		stats.clear();
 		assertFalse(stats.hasBaseline());
 	}
+
+	@Test
+	public void newlyTrackedOwnedItemContributesNothing()
+	{
+		SessionStats stats = new SessionStats();
+		stats.reset(snap(560, 100, 95));
+
+		Map<Integer, long[]> withNewItem = snap(560, 100, 95, 4151, 3, 2_000_000);
+		stats.absorbNewItems(withNewItem);
+
+		SessionStats.Delta d = stats.delta(withNewItem);
+		assertEquals(0, d.getTotal());
+		assertEquals(0, d.getPrice());
+		assertEquals(0, d.getQuantity());
+	}
+
+	@Test
+	public void absorbedItemStillRegistersLaterMoves()
+	{
+		SessionStats stats = new SessionStats();
+		stats.reset(snap(560, 100, 95));
+		stats.absorbNewItems(snap(560, 100, 95, 4151, 3, 2_000_000));
+
+		SessionStats.Delta d = stats.delta(snap(560, 100, 95, 4151, 5, 2_100_000));
+		assertEquals(3 * 100_000 + 2 * 2_100_000, d.getTotal());
+		assertEquals(3 * 100_000, d.getPrice());
+		assertEquals(2 * 2_100_000, d.getQuantity());
+	}
+
+	@Test
+	public void itemTrackedAtZeroThenBoughtCountsThePurchase()
+	{
+		SessionStats stats = new SessionStats();
+		stats.reset(snap(560, 100, 95));
+		stats.absorbNewItems(snap(560, 100, 95, 4151, 0, 2_000_000));
+
+		SessionStats.Delta d = stats.delta(snap(560, 100, 95, 4151, 4, 2_000_000));
+		assertEquals(4 * 2_000_000, d.getTotal());
+		assertEquals(0, d.getPrice());
+		assertEquals(4 * 2_000_000, d.getQuantity());
+	}
+
+	@Test
+	public void absorbNewItemsIsNoOpWithoutBaseline()
+	{
+		SessionStats stats = new SessionStats();
+		stats.absorbNewItems(snap(560, 100, 95));
+		assertFalse(stats.hasBaseline());
+	}
 }

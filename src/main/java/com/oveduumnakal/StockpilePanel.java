@@ -1279,6 +1279,8 @@ public class StockpilePanel extends PluginPanel
 
 		if (!sessionStats.hasBaseline())
 			sessionStats.reset(snapshot);
+		else
+			sessionStats.absorbNewItems(snapshot);
 
 		SessionStats.Delta delta = sessionStats.delta(snapshot);
 		long total = delta.getTotal();
