@@ -390,10 +390,10 @@ public class StockpilePlugin extends Plugin
 
 	private Instant lastGeStateSave;
 
-	/** Thinned time series of total portfolio value for the history chart. */
+	/** Per-item thinned time series of portfolio value/cost for the history chart. */
 	private final PortfolioHistory portfolioHistory = new PortfolioHistory();
 
-	private static final Type PORTFOLIO_HISTORY_TYPE = new TypeToken<List<long[]>>(){}.getType();
+	private static final Type PORTFOLIO_HISTORY_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
 
 	/** How often at most the portfolio history is rewritten to config. */
 	private static final Duration PORTFOLIO_SAVE_INTERVAL = Duration.ofMinutes(5);
@@ -408,49 +408,50 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void recordPortfolioSnapshot()
 	{
-		long total = 0;
-		long costBasis = 0;
-		boolean priced = false;
+		Map<Integer, long[]> perItem = new HashMap<>();
 		for (TrackedItem item : trackedItems.values())
 		{
 			if (!item.hasPrices())
 				continue;
 
-			priced = true;
-			total += item.getAvgValue() + item.getRealizedProceeds();
-			if (item.isCostBasisInitialized())
-				costBasis += item.getInvestedCostBasis();
+			long value = item.getAvgValue() + item.getRealizedProceeds();
+			long cost = item.isCostBasisInitialized() ? item.getInvestedCostBasis() : 0;
+			perItem.put(item.getItemId(), new long[]{value, cost});
 		}
 
-		if (!priced)
+		if (perItem.isEmpty())
 			return;
 
-		portfolioHistory.record(Instant.now().getEpochSecond(), total, costBasis);
+		portfolioHistory.record(Instant.now().getEpochSecond(), perItem);
 
 		if (lastPortfolioSave == null
 				|| Duration.between(lastPortfolioSave, Instant.now()).compareTo(PORTFOLIO_SAVE_INTERVAL) >= 0)
 			persistPortfolioHistory();
 	}
 
-	/** Serializes the portfolio history to per-profile config. */
+	/** Serializes the per-item portfolio history to per-profile config. */
 	private void persistPortfolioHistory()
 	{
 		lastPortfolioSave = Instant.now();
 		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_PORTFOLIO_HISTORY,
-				gson.toJson(portfolioHistory.points(), PORTFOLIO_HISTORY_TYPE));
+				gson.toJson(portfolioHistory.seriesByItem(), PORTFOLIO_HISTORY_TYPE));
 	}
 
-	/** Restores the portfolio history from per-profile config, ignoring a corrupt value. */
+	/**
+	 * Restores the per-item portfolio history from per-profile config, ignoring a corrupt
+	 * value. The pre-#152 aggregate format (a JSON array rather than an object) can't be
+	 * split per item, so it is discarded — history simply rebuilds from the next snapshot.
+	 */
 	private void loadPortfolioHistory()
 	{
 		String saved = configManager.getRSProfileConfiguration(StockpileConfig.GROUP,
 				StockpileConfig.KEY_PORTFOLIO_HISTORY);
-		if (saved == null || saved.trim().isEmpty())
+		if (saved == null || !saved.trim().startsWith("{"))
 			return;
 
 		try
 		{
-			List<long[]> stored = gson.fromJson(saved.trim(), PORTFOLIO_HISTORY_TYPE);
+			Map<Integer, List<long[]>> stored = gson.fromJson(saved.trim(), PORTFOLIO_HISTORY_TYPE);
 			portfolioHistory.load(stored);
 		}
 		catch (JsonSyntaxException e)
@@ -459,10 +460,10 @@ public class StockpilePlugin extends Plugin
 		}
 	}
 
-	/** @return the portfolio history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
+	/** @return the aggregated portfolio history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
 	List<long[]> portfolioHistoryPoints()
 	{
-		return portfolioHistory.points();
+		return portfolioHistory.aggregate();
 	}
 
 	/**
@@ -1017,15 +1018,14 @@ public class StockpilePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.remove(itemId);
-			if (trackedItems.isEmpty())
-				clearPortfolioHistory();
-
+			portfolioHistory.removeItem(itemId);
 			persistTrackedItems();
+			persistPortfolioHistory();
 			refreshPanel();
 		});
 	}
 
-	/** Wipes the portfolio value history (in memory and in config) once nothing is tracked, so it restarts clean. */
+	/** Wipes the portfolio value history (in memory and in config), e.g. when the whole tracked list is cleared. */
 	private void clearPortfolioHistory()
 	{
 		portfolioHistory.clear();

@@ -1410,12 +1410,15 @@ public class StockpilePanel extends PluginPanel
 		clipboard.setContents(new StringSelection(text), null);
 	}
 
-	/** Opens a pop-out with the portfolio value history chart, fed from the plugin's stored points. */
+	/** Opens a pop-out with the portfolio value history chart, fed live from the plugin's stored points. */
 	private void openPortfolioChart()
 	{
 		PortfolioChartPanel chart = new PortfolioChartPanel();
-		chart.setData(onPortfolioHistory.get());
-		showPopout("Portfolio Value", chart, item -> chart.repaint(), chart::repaint);
+		Runnable refresh = () -> chart.setData(onPortfolioHistory.get());
+		refresh.run();
+		portfolioPopoutRefreshers.add(refresh);
+		showPopout("Portfolio Value", chart, item -> refresh.run(),
+				() -> portfolioPopoutRefreshers.remove(refresh));
 	}
 
 	/** Shows the chart pop-out button (and its balancing strut) only once at least two history points exist to plot. */
@@ -1982,6 +1985,7 @@ public class StockpilePanel extends PluginPanel
 			equalizeTotalsLabelWidths();
 			bottomPanel.setVisible(config.showGeEstimates() && !reorderMode);
 			updatePortfolioChartButton();
+			portfolioPopoutRefreshers.forEach(Runnable::run);
 			applyEstimatesPosition(config.geEstimatesPosition());
 			applyEstimatesSpacing(config.geEstimatesSpacing());
 
@@ -4885,6 +4889,8 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	private final List<PopoutHandle> openPopouts = new ArrayList<>();
+	/** Re-fetch actions for open portfolio-chart pop-outs; run on every rebuild so they update live. */
+	private final List<Runnable> portfolioPopoutRefreshers = new ArrayList<>();
 
 	private boolean graphSmooth = true;
 	private PriceGraphPanel.LineSet graphLineSet = PriceGraphPanel.LineSet.ALL;
