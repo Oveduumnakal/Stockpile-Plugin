@@ -51,6 +51,7 @@ class SourceGlyphRenderer extends DefaultTableCellRenderer
 		icons.put(AcquisitionSource.ALCHEMY, icon("source_alchemy.png"));
 		icons.put(AcquisitionSource.PROCESSING, icon("source_processing.png"));
 		icons.put(AcquisitionSource.BURNED, icon("source_burned.png"));
+		icons.put(AcquisitionSource.CRUSHED, icon("source_crushed.png"));
 		icons.put(AcquisitionSource.DEATH, icon("source_death.png"));
 		return icons;
 	}
