@@ -58,6 +58,7 @@ import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
@@ -72,6 +73,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -248,6 +250,20 @@ public class StockpilePlugin extends Plugin
 
 	/** Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). */
 	private boolean shopOpen = false;
+
+	/** The partner-side trade container: the offer container id with the "other player" bit set. */
+	private static final int TRADE_OTHER_CONTAINER = InventoryID.TRADEOFFER | 0x8000;
+
+	/** Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). */
+	private final Map<Integer, Integer> myTradeOffer = new HashMap<>();
+	private final Map<Integer, Integer> theirTradeOffer = new HashMap<>();
+
+	/** Per-item units queued to move into trade suspension when this tick's offer removals apply (#66). */
+	private final Map<Integer, Integer> pendingTradeSuspend = new HashMap<>();
+
+	/** Per-item units queued to leave trade suspension when this tick's additions apply (offer withdrawn). */
+	private final Map<Integer, Integer> pendingTradeUnsuspend = new HashMap<>();
+
 	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
 			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC);
@@ -567,6 +583,8 @@ public class StockpilePlugin extends Plugin
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
 		pendingSellRealize.clear();
+		pendingTradeSuspend.clear();
+		pendingTradeUnsuspend.clear();
 		lastPriceRefresh = null;
 	}
 
@@ -1790,6 +1808,13 @@ public class StockpilePlugin extends Plugin
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
 		int containerId = event.getContainerId();
+		if (containerId == InventoryID.TRADEOFFER || containerId == TRADE_OTHER_CONTAINER)
+		{
+			boolean mine = containerId == InventoryID.TRADEOFFER;
+			captureTradeOffer(mine ? myTradeOffer : theirTradeOffer, event.getItemContainer(), mine);
+			return;
+		}
+
 		if (!TRACKED_CONTAINERS.contains(containerId))
 			return;
 
@@ -2306,6 +2331,152 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
+	 * Snapshots one side of the trade window (canonical id → quantity) as its container
+	 * changes. For our own side, diffs the new offer against the previous snapshot and
+	 * queues the change so the matching inventory removal suspends (rather than closes) the
+	 * offered lots, and a later withdrawal un-suspends them (#66).
+	 */
+	private void captureTradeOffer(Map<Integer, Integer> side, ItemContainer container, boolean mine)
+	{
+		Map<Integer, Integer> previous = mine ? new HashMap<>(side) : null;
+		side.clear();
+		if (container != null)
+		{
+			for (Item item : container.getItems())
+			{
+				if (item.getId() > 0)
+					side.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
+			}
+		}
+
+		if (mine)
+			queueTradeSuspension(previous, side);
+	}
+
+	/**
+	 * Turns the change in our own offer into pending suspend/un-suspend intents: items added to
+	 * the offer left our inventory and should suspend, items withdrawn returned and should
+	 * un-suspend. Only tracked, non-coin items queue — coins are the trade's numerator, not a
+	 * lot, and untracked items never flow through {@link #applyDelta} to consume the intent.
+	 */
+	private void queueTradeSuspension(Map<Integer, Integer> before, Map<Integer, Integer> after)
+	{
+		Set<Integer> ids = new HashSet<>(before.keySet());
+		ids.addAll(after.keySet());
+		for (int id : ids)
+		{
+			if (id == ItemID.COINS || !isTracked(id))
+				continue;
+
+			int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
+			if (delta > 0)
+				pendingTradeSuspend.merge(id, delta, Integer::sum);
+			else if (delta < 0)
+				pendingTradeUnsuspend.merge(id, -delta, Integer::sum);
+		}
+	}
+
+	/** Registers the completed trade's claims when the game confirms the exchange (#66). */
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() == ChatMessageType.TRADE && "Accepted trade.".equals(event.getMessage()))
+			registerTradeClaims();
+	}
+
+	/**
+	 * Books a completed trade's item movements as {@link AcquisitionSource#PLAYER_TRADE} (#66):
+	 * items received buy in at the gp we gave apportioned across them by market value, and
+	 * items given close at the gp we received apportioned the same way. Pure item-for-item
+	 * legs price at 0; coins are the numerator, never an apportionment target.
+	 *
+	 * <p>The two sides settle differently. Received items only enter our inventory now, so they
+	 * are registered as claims for the imminent additions to match. Given items already left our
+	 * inventory when they were offered (suspended, not closed), so there is no delta to match —
+	 * they are closed here directly against their trade suspension.
+	 */
+	private void registerTradeClaims()
+	{
+		long gpPaid = myTradeOffer.getOrDefault(ItemID.COINS, 0);
+		long gpReceived = theirTradeOffer.getOrDefault(ItemID.COINS, 0);
+
+		claimReceivedItems(theirTradeOffer, gpPaid);
+		closeGivenItems(myTradeOffer, gpReceived);
+
+		myTradeOffer.clear();
+		theirTradeOffer.clear();
+	}
+
+	/** Builds one trade side's non-coin apportionment legs, each weighted by its unit market value. */
+	private List<TradeApportioner.Leg> tradeLegs(Map<Integer, Integer> side)
+	{
+		List<TradeApportioner.Leg> legs = new ArrayList<>();
+		for (Map.Entry<Integer, Integer> entry : side.entrySet())
+		{
+			if (entry.getKey() != ItemID.COINS && entry.getValue() > 0)
+				legs.add(new TradeApportioner.Leg(entry.getKey(), entry.getValue(),
+						marketUnitValue(entry.getKey())));
+		}
+
+		return legs;
+	}
+
+	/** Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. */
+	private void claimReceivedItems(Map<Integer, Integer> side, long gp)
+	{
+		List<TradeApportioner.Leg> legs = tradeLegs(side);
+		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
+		for (TradeApportioner.Leg leg : legs)
+		{
+			if (isTracked(leg.itemId))
+				sourceAttribution.claim(AcquisitionSource.PLAYER_TRADE, leg.itemId, leg.quantity,
+						prices.get(leg.itemId), client.getTickCount());
+		}
+	}
+
+	/**
+	 * Closes given items as sells at the apportioned per-unit price, realizing them against the
+	 * trade suspension taken when they were offered (bounded by it, so a partial or already-settled
+	 * suspension can never over-close).
+	 */
+	private void closeGivenItems(Map<Integer, Integer> side, long gp)
+	{
+		List<TradeApportioner.Leg> legs = tradeLegs(side);
+		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
+		boolean changed = false;
+		for (TradeApportioner.Leg leg : legs)
+		{
+			TrackedItem tracked = trackedItems.get(leg.itemId);
+			if (tracked == null)
+				continue;
+
+			int qty = Math.min(leg.quantity, tracked.getTradeSuspendedQuantity());
+			if (qty <= 0)
+				continue;
+
+			closeFifo(tracked, qty, prices.get(leg.itemId), AcquisitionSource.PLAYER_TRADE);
+			tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() - qty);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
+	}
+
+	/** @return an item's unit market value for apportionment weights: the tracked avg, or the wiki price. */
+	private long marketUnitValue(int itemId)
+	{
+		TrackedItem tracked = trackedItems.get(itemId);
+		if (tracked != null && tracked.getAvgPrice() > 0)
+			return tracked.getAvgPrice();
+
+		return itemManager.getItemPrice(itemId);
+	}
+
+	/**
 	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
 	 * non-coin item moved: the coins paid or received, divided across the quantity,
 	 * price the item's {@link AcquisitionSource#SHOP} claim. A buy must pay coins; a
@@ -2437,6 +2608,10 @@ public class StockpilePlugin extends Plugin
 					pendingGroundSuspend.clear();
 					pendingGroundUnsuspend.clear();
 					shopOpen = false;
+					myTradeOffer.clear();
+					theirTradeOffer.clear();
+					pendingTradeSuspend.clear();
+					pendingTradeUnsuspend.clear();
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					pendingProcessingOutput.clear();
@@ -2679,6 +2854,7 @@ public class StockpilePlugin extends Plugin
 		if (delta > 0)
 		{
 			int remaining = delta;
+			remaining = consumeTradeUnsuspend(tracked, remaining);
 			remaining = consumeSellUnsuspend(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeDeathUnsuspend(tracked, remaining);
@@ -2692,7 +2868,8 @@ public class StockpilePlugin extends Plugin
 		}
 		else
 		{
-			int mag = consumeSellSuspend(tracked, -delta);
+			int mag = consumeTradeSuspend(tracked, -delta);
+			mag = consumeSellSuspend(tracked, mag);
 			mag = consumeGroundSuspend(tracked, mag);
 			mag = consumeDeathLoss(tracked, mag);
 			if (mag > 0)
@@ -2861,6 +3038,51 @@ public class StockpilePlugin extends Plugin
 			pendingGroundUnsuspend.remove(tracked.getItemId());
 
 		tracked.setGroundSuspendedQuantity(suspended - restore);
+		return qty - restore;
+	}
+
+	/**
+	 * Moves up to {@code qty} of a removal into trade suspension — the units were placed into a
+	 * player-trade offer, so they left the containers but stay owned with their lots intact until
+	 * the trade finalizes or is withdrawn. Returns the unconsumed remainder.
+	 */
+	private int consumeTradeSuspend(TrackedItem tracked, int qty)
+	{
+		Integer pending = pendingTradeSuspend.get(tracked.getItemId());
+		if (qty <= 0 || pending == null || pending <= 0)
+			return qty;
+
+		int take = Math.min(qty, pending);
+		int left = pending - take;
+		if (left > 0)
+			pendingTradeSuspend.put(tracked.getItemId(), left);
+		else
+			pendingTradeSuspend.remove(tracked.getItemId());
+
+		tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() + take);
+		return qty - take;
+	}
+
+	/**
+	 * Restores an addition from trade suspension — an offered item withdrawn from the trade
+	 * returns to the inventory, a net no-op that opens no new lot. Bounded by both the queued
+	 * withdrawal and the units actually suspended. Returns the unconsumed remainder.
+	 */
+	private int consumeTradeUnsuspend(TrackedItem tracked, int qty)
+	{
+		Integer pending = pendingTradeUnsuspend.get(tracked.getItemId());
+		int suspended = tracked.getTradeSuspendedQuantity();
+		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
+			return qty;
+
+		int restore = Math.min(qty, Math.min(pending, suspended));
+		int left = pending - restore;
+		if (left > 0)
+			pendingTradeUnsuspend.put(tracked.getItemId(), left);
+		else
+			pendingTradeUnsuspend.remove(tracked.getItemId());
+
+		tracked.setTradeSuspendedQuantity(suspended - restore);
 		return qty - restore;
 	}
 
@@ -3355,7 +3577,7 @@ public class StockpilePlugin extends Plugin
 					.mapToInt(c -> c.getOrDefault(tracked.getItemId(), 0))
 					.sum();
 			int owned = total + tracked.getSuspendedQuantity() + tracked.getGroundSuspendedQuantity()
-					+ tracked.getDeathSuspendedQuantity();
+					+ tracked.getDeathSuspendedQuantity() + tracked.getTradeSuspendedQuantity();
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
