@@ -2945,7 +2945,23 @@ public class StockpilePanel extends PluginPanel
 
 		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
 
-		JPanel eastPanel = new JPanel();
+		JPanel eastPanel = new JPanel()
+		{
+			/**
+			 * Reserves the hidden overlay button's height so revealing it on hover changes only
+			 * appearance, not layout size. Without this a short row (e.g. a non-tradeable item)
+			 * grows on hover and shifts the rows beneath it.
+			 */
+			@Override
+			public Dimension getPreferredSize()
+			{
+				Dimension d = super.getPreferredSize();
+				if (overlayBtn != null && !overlayBtn.isVisible())
+					d.height += overlayBtn.getPreferredSize().height;
+
+				return d;
+			}
+		};
 		eastPanel.setLayout(new BoxLayout(eastPanel, BoxLayout.Y_AXIS));
 		eastPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		eastPanel.add(removeBtn);
