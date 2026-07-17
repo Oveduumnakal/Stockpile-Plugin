@@ -89,6 +89,16 @@ public class TrackedItem
 	/** When the newest ground suspension was taken, for the lost-drop expiry sweep (transient). */
 	private transient Instant groundSuspendedAt;
 
+	/**
+	 * Units placed into a player-trade offer and still considered owned: gone from
+	 * held containers the moment they were offered, but their lots stay open (cost
+	 * basis intact) until the trade finalizes (closes them at the apportioned
+	 * trade price) or is withdrawn/declined (un-suspends, a net no-op). Kept
+	 * transient — a trade cannot survive a logout, so the offer returns to the
+	 * inventory and any remaining suspension is moot on relog (#66).
+	 */
+	private transient int tradeSuspendedQuantity;
+
 	/** Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). */
 	private transient int limitBought;
 
