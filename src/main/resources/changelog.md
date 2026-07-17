@@ -21,17 +21,17 @@ new entry before anything can ship.
 - Notification rules can now repeat, re-arming after the condition clears and returns.
 - Smoother panel: fixed client freezes during heavy activity, detail-view scroll jumps, and bank placeholders counting as owned items.
 
-## 1.3 — 2026-05-30
+## 1.3 — 2026-07-03
 - Collection log overhaul: FIFO cost basis, realized vs. unrealized profit, and per-lot acquisitions.
 - Latest-price staleness dimming with age tooltips.
 - Detail-view market ratings: volatility, liquidity, and 30-day range.
 
-## 1.2 — 2026-04-18
+## 1.2 — 2026-06-26
 - Price alerts with configurable metric, timeframe, and threshold.
 - Per-item price charts with selectable timeframes and pop-out windows.
 - Grouping and favorites for the tracked list.
 
-## 1.1 — 2026-03-12
+## 1.1 — 2026-06-22
 - Live GE and wiki realtime prices with high/low/average and 24h change.
 - Ground and inventory item highlights.
 - In-plugin bug report and feature request forms.
