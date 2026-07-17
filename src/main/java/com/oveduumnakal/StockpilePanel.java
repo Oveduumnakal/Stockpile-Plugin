@@ -1400,6 +1400,8 @@ public class StockpilePanel extends PluginPanel
 		badge.setBorder(new EmptyBorder(0, 6, 4, 0));
 		badge.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		badge.setToolTipText("See what's new in this release");
+		badge.setHorizontalTextPosition(SwingConstants.LEFT);
+		badge.setIconTextGap(3);
 		badge.addActionListener(e -> openChangelogWindow());
 
 		return badge;
@@ -1416,6 +1418,7 @@ public class StockpilePanel extends PluginPanel
 	{
 		changelogButton.setText(changelogButtonText());
 		changelogButton.setForeground(whatsNew ? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR);
+		changelogButton.setIcon(whatsNew ? sparkleIcon(COLOR_AVG) : null);
 	}
 
 	/** Opens the changelog window; the first open of a new release quiets the "What's New" indicator. */
@@ -2404,6 +2407,35 @@ public class StockpilePanel extends PluginPanel
 		g.drawRect(2, 2, size - 5, size - 8);
 		g.fillRect(size / 2 - 2, size - 5, 4, 2);
 		g.fillRect(size / 2 - 4, size - 3, 8, 1);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/** Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge. */
+	private static Icon sparkleIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+		double centre = size / 2.0;
+		double inner = 1.6;
+		double outer = centre - 1.0;
+		for (int i = 0; i < 8; i++)
+		{
+			double angle = Math.PI * i / 4.0;
+			double length = i % 2 == 0 ? outer : outer - 2.2;
+			int x1 = (int) Math.round(centre + Math.cos(angle) * inner);
+			int y1 = (int) Math.round(centre + Math.sin(angle) * inner);
+			int x2 = (int) Math.round(centre + Math.cos(angle) * length);
+			int y2 = (int) Math.round(centre + Math.sin(angle) * length);
+			g.drawLine(x1, y1, x2, y2);
+			g.fillOval(x2 - 1, y2 - 1, 2, 2);
+		}
 
 		g.dispose();
 		return new ImageIcon(img);
