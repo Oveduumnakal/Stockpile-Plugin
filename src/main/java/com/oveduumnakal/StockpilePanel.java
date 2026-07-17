@@ -4868,6 +4868,9 @@ public class StockpilePanel extends PluginPanel
 		frame.setContentPane(holder);
 
 		TrackedItem current = currentItems.get(detailItemId);
+		if (current == null && previewItem != null && previewItem.getItemId() == detailItemId)
+			current = previewItem;
+
 		if (current != null)
 			refresher.accept(current);
 
