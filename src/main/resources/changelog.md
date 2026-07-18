@@ -5,6 +5,8 @@ Breakdown (features grouped by area, each with the issues that make it up), and
 Bug Fixes. The build fails if the top entry's version does not match
 runelite-plugin.properties (see ChangelogGuardTest), so a version bump forces a
 new entry before anything can ship. Order features within a section by user impact.
+Bug Fixes lists only bugs that shipped in a previous release; bugs introduced and
+fixed within the same release cycle are omitted, since users never saw them.
 -->
 
 # 1.4 - July 25 2026
@@ -87,16 +89,10 @@ Price alerts can now re-arm: once the condition clears and happens again, the al
 
 ### Bug Fixes
 
-[#153](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/153) - Fixed the Session value counting items you already owned as fresh profit when you started tracking them
-[#143](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/143) - Fixed the "Session:" label turning red/green; now only the number is coloured
-[#144](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/144) - Fixed burnt food and destroyed outputs corrupting the collection log; they're now valued at 0
-[#137](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/137) - Shop sells now close out shop buys first instead of your oldest lot
 [#136](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/136) - You can now track items from the shop or your inventory while a shop is open
 [#123](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/123) - Bank placeholders no longer count as real items and create phantom quantities
-[#128](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/128) - Fixed the detail view flashing to the top for a frame when prices refresh
 [#125](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/125) - Fixed the detail view scroll jumping back to the top on every price refresh
 [#120](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/120) - Fixed the client freezing during heavy activity from too many panel rebuilds
-[#117](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/117) - Gave the Reorganize and Sort buttons their own distinct icons
 [#112](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/112) - Fixed tracked rows changing height and shifting the list when you hover them
 [#141](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/141) - Fixed the graph pop-out showing no data for view-only items
 [#99](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/99) - Fixed examine/flavour text not wrapping properly
@@ -165,7 +161,6 @@ Show chosen items as an on-screen overlay so you can watch them without the pane
 
 [#36](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/36) - Fixed high/low prices that could invert; added staleness tooltips, dimming, and a 5-minute window
 [#27](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/27) - Market sections are now hidden in the detailed view for non-tradeable items
-[#54](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/54) - Fixed the injected Grand Exchange button lingering after the plugin shut down
 [#40](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/40) - Removed the stray scroll bar on the logged-out message
 
 # 1.2 - June 26 2026
@@ -194,7 +189,7 @@ The price graph line is now coloured to make trends easier to read.
 
 ### Bug Fixes
 
-[#13](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/13) - Fixed long item names being clipped in search/detail and blank in the list
+[#13](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/13) - Fixed long item names being clipped in search results and blank in the tracked list
 [#14](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/14) - Centered the "Stockpile" header in the main view
 [#26](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/26) - Untradeable items now read "Item not tradeable" instead of "Unable to Load Price"
 [#15](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/15) - Centered and wrapped the logged-out placeholder message
