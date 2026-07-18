@@ -2312,6 +2312,7 @@ public class StockpilePanel extends PluginPanel
 			long totalHigh = 0, totalLow = 0, totalAvg = 0;
 			long totalCostBasis = 0;
 			long totalRealized = 0;
+			long totalSuspendedValue = 0;
 			boolean anyProfitData = false;
 			long prevPriceTotalHigh = 0, prevPriceTotalLow = 0, prevPriceTotalAvg = 0;
 			boolean anyDeltas = false;
@@ -2326,6 +2327,7 @@ public class StockpilePanel extends PluginPanel
 				totalHigh += item.getHighValue();
 				totalLow  += item.getLowValue();
 				totalAvg  += item.getAvgValue();
+				totalSuspendedValue += item.getSuspendedValue();
 				long realized = item.getRealizedProfit();
 				totalRealized += realized;
 				if (item.isCostBasisInitialized())
@@ -2395,7 +2397,7 @@ public class StockpilePanel extends PluginPanel
 				pulseIfShown(totalAvgDeltaLabel,  Long.compare(totalAvg,  prevPriceTotalAvg),  indicatorMode);
 			}
 
-			long totalProfit = (totalAvg - totalCostBasis) + totalRealized;
+			long totalProfit = (totalAvg + totalSuspendedValue - totalCostBasis) + totalRealized;
 			if (anyProfitData && hasPrices && showEstProfit)
 			{
 				String sign = totalProfit > 0 ? "+" : "";
