@@ -1798,7 +1798,9 @@ public class StockpilePlugin extends Plugin
 	 * last-known values (dimmed by the existing staleness treatment once their trade
 	 * times age past the threshold) instead of placeholders. Live fetches simply
 	 * overwrite these; items that already have prices are never touched. Runs on the
-	 * client thread after the persisted items have been restored.
+	 * client thread after the persisted items have been restored — enqueued from both
+	 * initialization paths, since at startUp on the login screen the RS-profile config
+	 * isn't available yet and only the {@code LOGGED_IN} load can hydrate.
 	 */
 	private void hydratePriceCache()
 	{
@@ -2874,6 +2876,7 @@ public class StockpilePlugin extends Plugin
 					pendingProcessingOutput.clear();
 					pendingDestroyedOutput = 0;
 					deathTick = -1;
+					clientThread.invokeLater(this::hydratePriceCache);
 				}
 
 				refreshPanel();
