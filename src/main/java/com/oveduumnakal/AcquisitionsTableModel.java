@@ -186,9 +186,11 @@ class AcquisitionsTableModel extends AbstractTableModel
 			{
 				case 0:
 					rec.setQuantity(Math.max(0, Integer.parseInt(s)));
+					rec.setSource(AcquisitionSource.MANUAL);
 					break;
 				case 1:
 					rec.setBoughtAt(Math.max(0, Long.parseLong(s)));
+					rec.setSource(AcquisitionSource.MANUAL);
 					break;
 				case 2:
 					if (s.isEmpty())
@@ -207,7 +209,6 @@ class AcquisitionsTableModel extends AbstractTableModel
 					return;
 			}
 
-			rec.setSource(AcquisitionSource.MANUAL);
 			fireTableRowsUpdated(r, r);
 			onAcquisitionsEdited.accept(detailItemId.getAsInt());
 		}
