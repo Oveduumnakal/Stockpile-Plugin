@@ -139,4 +139,29 @@ public class SessionStatsTest
 		stats.absorbNewItems(snap(560, 100, 95));
 		assertFalse(stats.hasBaseline());
 	}
+
+	@Test
+	public void untrackingAnItemIsSessionNeutral()
+	{
+		SessionStats stats = new SessionStats();
+		stats.reset(snap(560, 100, 95, 4151, 1, 1_200_000_000));
+
+		stats.removeItem(4151);
+
+		SessionStats.Delta d = stats.delta(snap(560, 100, 95));
+		assertEquals("untracking must not read as a loss", 0, d.getTotal());
+		assertEquals(0, d.getQuantity());
+	}
+
+	@Test
+	public void genuineLossOnStillTrackedItemsSurvivesARemoval()
+	{
+		SessionStats stats = new SessionStats();
+		stats.reset(snap(560, 100, 95, 4151, 1, 1_200_000_000));
+
+		stats.removeItem(4151);
+
+		SessionStats.Delta d = stats.delta(snap(560, 60, 95));
+		assertEquals("the runes actually lost still count", -40 * 95, d.getQuantity());
+	}
 }
