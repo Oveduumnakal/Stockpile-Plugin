@@ -134,6 +134,7 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import javax.swing.text.DefaultCaret;
 
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import net.runelite.api.gameval.ItemID;
@@ -1453,24 +1454,13 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
-	 * Builds the changelog window: a version table of contents on the left (current
-	 * release preselected) and the selected release's highlights on the right.
+	 * Builds the changelog window: a left navigation column listing each release, with the selected
+	 * release's sections expanded beneath it as quick-links that jump to that section, and the
+	 * selected release's notes rendered on the right.
 	 */
 	private JComponent buildChangelogContent()
 	{
 		List<Changelog.Release> releases = changelog.releases();
-
-		DefaultListModel<String> model = new DefaultListModel<>();
-		for (Changelog.Release release : releases)
-			model.addElement(release.getVersion());
-
-		JList<String> toc = new JList<>(model);
-		toc.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-		toc.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		toc.setFont(FontManager.getRunescapeBoldFont());
-		toc.setFixedCellHeight(34);
-		toc.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		installChangelogTocRenderer(toc);
 
 		JEditorPane body = new JEditorPane();
 		body.setContentType("text/html");
@@ -1482,92 +1472,168 @@ public class StockpilePanel extends PluginPanel
 				LinkBrowser.browse(e.getURL().toString());
 		});
 
-		toc.addListSelectionListener(e -> renderSelectedRelease(toc, releases, body));
-		if (!releases.isEmpty())
-			toc.setSelectedIndex(0);
+		JPanel nav = new JPanel();
+		nav.setLayout(new BoxLayout(nav, BoxLayout.Y_AXIS));
+		nav.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		nav.setBorder(new EmptyBorder(4, 4, 4, 4));
 
-		JScrollPane tocScroll = new JScrollPane(toc);
-		tocScroll.setPreferredSize(new Dimension(92, 560));
+		if (!releases.isEmpty())
+		{
+			body.setText(renderReleaseHtml(releases.get(0)));
+			body.setCaretPosition(0);
+		}
+
+		rebuildChangelogNav(nav, releases, 0, body);
+
+		JScrollPane navScroll = new JScrollPane(nav);
+		navScroll.setPreferredSize(new Dimension(168, 560));
+		navScroll.getVerticalScrollBar().setUnitIncrement(16);
 
 		JScrollPane bodyScroll = new JScrollPane(body);
-		bodyScroll.setPreferredSize(new Dimension(480, 560));
+		bodyScroll.setPreferredSize(new Dimension(440, 560));
 
-		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tocScroll, bodyScroll);
-		split.setDividerLocation(92);
+		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, navScroll, bodyScroll);
+		split.setDividerLocation(168);
 		return split;
 	}
 
 	/**
-	 * Gives the changelog's version list a hover highlight and a clear selected state: the
-	 * selected release is gold on a lighter row, the hovered release brightens to white, and the
-	 * rest sit muted. A mouse-motion listener tracks the hovered row so the renderer can paint it.
+	 * (Re)populates the changelog nav: one clickable row per release (selecting it loads its notes),
+	 * and beneath the selected release its section quick-links, each of which scrolls the notes to
+	 * that section.
 	 */
-	private void installChangelogTocRenderer(JList<String> toc)
+	private void rebuildChangelogNav(JPanel nav, List<Changelog.Release> releases, int selectedIndex, JEditorPane body)
 	{
-		int[] hovered = {-1};
-		DefaultListCellRenderer renderer = new DefaultListCellRenderer()
+		nav.removeAll();
+		for (int i = 0; i < releases.size(); i++)
 		{
-			@Override
-			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-					boolean selected, boolean focused)
-			{
-				super.getListCellRendererComponent(list, value, index, selected, focused);
-				setBorder(new EmptyBorder(5, 12, 5, 8));
-				setFont(FontManager.getRunescapeBoldFont());
-				setOpaque(true);
-				if (selected)
-				{
-					setBackground(ColorScheme.DARK_GRAY_COLOR);
-					setForeground(COLOR_AVG);
-				}
-				else if (index == hovered[0])
-				{
-					setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
-					setForeground(Color.WHITE);
-				}
-				else
-				{
-					setBackground(ColorScheme.DARKER_GRAY_COLOR);
-					setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-				}
+			final int index = i;
+			Changelog.Release release = releases.get(i);
+			boolean selected = index == selectedIndex;
 
-				return this;
-			}
-		};
-		toc.setCellRenderer(renderer);
-		toc.addMouseMotionListener(new MouseMotionAdapter()
-		{
-			@Override
-			public void mouseMoved(MouseEvent e)
+			JLabel versionRow = buildChangelogNavVersion(release.getVersion(), selected);
+			versionRow.addMouseListener(new MouseAdapter()
 			{
-				int index = toc.locationToIndex(e.getPoint());
-				if (index != hovered[0])
+				@Override
+				public void mouseClicked(MouseEvent e)
 				{
-					hovered[0] = index;
-					toc.repaint();
+					body.setText(renderReleaseHtml(releases.get(index)));
+					body.setCaretPosition(0);
+					rebuildChangelogNav(nav, releases, index, body);
+				}
+			});
+			nav.add(versionRow);
+
+			if (selected)
+			{
+				for (ChangelogSection section : extractSections(release.getBody()))
+				{
+					JLabel link = buildChangelogNavLink(section);
+					link.addMouseListener(new MouseAdapter()
+					{
+						@Override
+						public void mouseClicked(MouseEvent e)
+						{
+							body.scrollToReference(section.getAnchor());
+						}
+					});
+					nav.add(link);
 				}
 			}
-		});
-		toc.addMouseListener(new MouseAdapter()
+		}
+
+		nav.revalidate();
+		nav.repaint();
+	}
+
+	/** Builds one clickable release row for the changelog nav; the selected release is gold, the rest muted. */
+	private JLabel buildChangelogNavVersion(String version, boolean selected)
+	{
+		JLabel row = new JLabel(version);
+		row.setFont(FontManager.getRunescapeBoldFont());
+		row.setOpaque(true);
+		row.setBorder(new EmptyBorder(5, 10, 5, 8));
+		row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height + 12));
+
+		Color restFg = selected ? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR;
+		Color restBg = selected ? ColorScheme.DARK_GRAY_COLOR : ColorScheme.DARKER_GRAY_COLOR;
+		row.setForeground(restFg);
+		row.setBackground(restBg);
+		installChangelogNavHover(row, restFg, restBg);
+		return row;
+	}
+
+	/** Builds one indented, clickable section quick-link for the changelog nav. */
+	private JLabel buildChangelogNavLink(ChangelogSection section)
+	{
+		JLabel link = new JLabel(section.getText());
+		link.setFont(FontManager.getRunescapeSmallFont());
+		link.setOpaque(true);
+		link.setBorder(new EmptyBorder(2, 14 + section.getLevel() * 10, 2, 6));
+		link.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		link.setAlignmentX(Component.LEFT_ALIGNMENT);
+		link.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		link.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		link.setMaximumSize(new Dimension(Integer.MAX_VALUE, link.getPreferredSize().height + 4));
+		installChangelogNavHover(link, ColorScheme.LIGHT_GRAY_COLOR, ColorScheme.DARKER_GRAY_COLOR);
+		return link;
+	}
+
+	/** Adds a hover highlight (brighten to white on a lighter row) that restores the given resting colours. */
+	private void installChangelogNavHover(JLabel label, Color restFg, Color restBg)
+	{
+		label.addMouseListener(new MouseAdapter()
 		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				label.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+				label.setForeground(Color.WHITE);
+			}
+
 			@Override
 			public void mouseExited(MouseEvent e)
 			{
-				hovered[0] = -1;
-				toc.repaint();
+				label.setBackground(restBg);
+				label.setForeground(restFg);
 			}
 		});
 	}
 
-	/** Renders the release selected in the TOC into the body pane. */
-	private void renderSelectedRelease(JList<String> toc, List<Changelog.Release> releases, JEditorPane body)
+	/** @return the {@code ##}/{@code ###} section headings of a release body, in order, with scroll anchors. */
+	private static List<ChangelogSection> extractSections(String body)
 	{
-		int index = toc.getSelectedIndex();
-		if (index < 0 || index >= releases.size())
-			return;
+		List<ChangelogSection> sections = new ArrayList<>();
+		int index = 0;
+		for (String raw : body.split("\n", -1))
+		{
+			String line = raw.trim();
+			if (line.startsWith("### "))
+			{
+				sections.add(new ChangelogSection(1, line.substring(4), "sec" + index));
+				index++;
+			}
+			else if (line.startsWith("## "))
+			{
+				sections.add(new ChangelogSection(0, line.substring(3), "sec" + index));
+				index++;
+			}
+		}
 
-		body.setText(renderReleaseHtml(releases.get(index)));
-		body.setCaretPosition(0);
+		return sections;
+	}
+
+	/** One navigable changelog section: heading depth (0 for {@code ##}, 1 for {@code ###}), text, and anchor. */
+	@Value
+	private static class ChangelogSection
+	{
+		int level;
+
+		String text;
+
+		String anchor;
 	}
 
 	/** Escapes the HTML-significant characters so text renders literally inside an HTML label. */
@@ -1619,6 +1685,7 @@ public class StockpilePanel extends PluginPanel
 	{
 		StringBuilder sb = new StringBuilder();
 		int contentLevel = 0;
+		int sectionIndex = 0;
 		for (String raw : body.split("\n", -1))
 		{
 			String line = raw.trim();
@@ -1632,11 +1699,15 @@ public class StockpilePanel extends PluginPanel
 			}
 			else if (line.startsWith("### "))
 			{
+				appendChangelogAnchor(sb, sectionIndex);
+				sectionIndex++;
 				appendChangelogDiv(sb, CL_AREA_STYLE, 1, inlineLinks(line.substring(4)));
 				contentLevel = 2;
 			}
 			else if (line.startsWith("## "))
 			{
+				appendChangelogAnchor(sb, sectionIndex);
+				sectionIndex++;
 				appendChangelogDiv(sb, CL_SECTION_STYLE, 0, inlineLinks(line.substring(3)));
 				contentLevel = 1;
 			}
@@ -1647,6 +1718,14 @@ public class StockpilePanel extends PluginPanel
 		}
 
 		return sb.toString();
+	}
+
+	/** Appends a named scroll anchor ({@code sec<n>}) matching the ids {@link #extractSections} hands the nav. */
+	private static void appendChangelogAnchor(StringBuilder sb, int sectionIndex)
+	{
+		sb.append("<a name='sec");
+		sb.append(sectionIndex);
+		sb.append("'></a>");
 	}
 
 	/** Appends a {@code <div>} with the given inline CSS {@code style} and left indent, wrapping {@code html}. */
