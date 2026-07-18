@@ -2980,9 +2980,8 @@ public class StockpilePlugin extends Plugin
 				|| state == GrandExchangeOfferState.CANCELLED_SELL;
 		boolean empty = state == GrandExchangeOfferState.EMPTY;
 
-		GeOfferTracker.Event e = geOfferTracker.onOffer(event.getSlot(), offer.getItemId(),
-				buying, cancelled, empty, offer.getTotalQuantity(), offer.getQuantitySold(), offer.getSpent());
-		if (e != null)
+		for (GeOfferTracker.Event e : geOfferTracker.onOffer(event.getSlot(), offer.getItemId(),
+				buying, cancelled, empty, offer.getTotalQuantity(), offer.getQuantitySold(), offer.getSpent()))
 			handleGeEvent(e);
 	}
 

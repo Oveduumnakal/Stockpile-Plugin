@@ -4,7 +4,10 @@
  */
 package com.oveduumnakal;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -56,20 +59,23 @@ class GeOfferTracker
 	private final Map<Integer, SlotState> slots = new HashMap<>();
 
 	/**
-	 * Records an offer event and returns what it means, or {@code null} when it carries
-	 * no actionable change (baseline seed, empty slot, or a no-progress update).
+	 * Records an offer event and returns the discrete changes it means, oldest first;
+	 * empty when it carries no actionable change (baseline seed, empty slot, or a
+	 * no-progress update). A cancellation whose event also advanced the fill counters
+	 * emits that final {@code FILL} before the {@code CANCELLED} remainder, so the
+	 * filled units realize at their true price instead of being discarded.
 	 *
 	 * @param buying whether the state is a buy side ({@code BUYING}/{@code BOUGHT}/{@code CANCELLED_BUY})
 	 * @param cancelled whether the state is a cancellation ({@code CANCELLED_BUY}/{@code CANCELLED_SELL})
 	 * @param empty whether the slot is now empty (offer collected/removed)
 	 */
-	Event onOffer(int slot, int itemId, boolean buying, boolean cancelled, boolean empty,
+	List<Event> onOffer(int slot, int itemId, boolean buying, boolean cancelled, boolean empty,
 			int totalQuantity, int quantitySold, long spent)
 	{
 		if (empty)
 		{
 			slots.remove(slot);
-			return null;
+			return Collections.emptyList();
 		}
 
 		Kind kind = buying ? Kind.BUY : Kind.SELL;
@@ -83,9 +89,9 @@ class GeOfferTracker
 			slots.put(slot, state);
 
 			if (quantitySold == 0 && !cancelled)
-				return new Event(Type.PLACED, kind, itemId, totalQuantity, 0);
+				return Collections.singletonList(new Event(Type.PLACED, kind, itemId, totalQuantity, 0));
 
-			return null;
+			return Collections.emptyList();
 		}
 
 		int qtyDelta = quantitySold - state.lastQuantitySold;
@@ -93,17 +99,18 @@ class GeOfferTracker
 		state.lastQuantitySold = quantitySold;
 		state.lastSpent = spent;
 
+		List<Event> events = new ArrayList<>();
+		if (qtyDelta > 0)
+			events.add(new Event(Type.FILL, kind, itemId, qtyDelta, coinsDelta / qtyDelta));
+
 		if (cancelled)
 		{
 			int returned = totalQuantity - quantitySold;
-			return returned > 0 ? new Event(Type.CANCELLED, kind, itemId, returned, 0) : null;
+			if (returned > 0)
+				events.add(new Event(Type.CANCELLED, kind, itemId, returned, 0));
 		}
 
-		if (qtyDelta <= 0)
-			return null;
-
-		long unitPrice = coinsDelta / qtyDelta;
-		return new Event(Type.FILL, kind, itemId, qtyDelta, unitPrice);
+		return events;
 	}
 
 	/**
