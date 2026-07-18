@@ -1406,6 +1406,21 @@ public class StockpilePanel extends PluginPanel
 		badge.setHorizontalTextPosition(SwingConstants.LEFT);
 		badge.setIconTextGap(3);
 		badge.addActionListener(e -> openChangelogWindow());
+		badge.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				badge.setForeground(Color.WHITE);
+				badge.setIcon(whatsNew ? sparkleIcon(Color.WHITE) : null);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				applyChangelogButtonStyle();
+			}
+		});
 
 		return badge;
 	}
@@ -1452,9 +1467,10 @@ public class StockpilePanel extends PluginPanel
 		JList<String> toc = new JList<>(model);
 		toc.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		toc.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		toc.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		toc.setFixedCellHeight(24);
-		toc.setBorder(new EmptyBorder(4, 8, 4, 4));
+		toc.setFont(FontManager.getRunescapeBoldFont());
+		toc.setFixedCellHeight(34);
+		toc.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		installChangelogTocRenderer(toc);
 
 		JEditorPane body = new JEditorPane();
 		body.setContentType("text/html");
@@ -1471,14 +1487,76 @@ public class StockpilePanel extends PluginPanel
 			toc.setSelectedIndex(0);
 
 		JScrollPane tocScroll = new JScrollPane(toc);
-		tocScroll.setPreferredSize(new Dimension(72, 340));
+		tocScroll.setPreferredSize(new Dimension(92, 560));
 
 		JScrollPane bodyScroll = new JScrollPane(body);
-		bodyScroll.setPreferredSize(new Dimension(360, 340));
+		bodyScroll.setPreferredSize(new Dimension(480, 560));
 
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tocScroll, bodyScroll);
-		split.setDividerLocation(72);
+		split.setDividerLocation(92);
 		return split;
+	}
+
+	/**
+	 * Gives the changelog's version list a hover highlight and a clear selected state: the
+	 * selected release is gold on a lighter row, the hovered release brightens to white, and the
+	 * rest sit muted. A mouse-motion listener tracks the hovered row so the renderer can paint it.
+	 */
+	private void installChangelogTocRenderer(JList<String> toc)
+	{
+		int[] hovered = {-1};
+		DefaultListCellRenderer renderer = new DefaultListCellRenderer()
+		{
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean selected, boolean focused)
+			{
+				super.getListCellRendererComponent(list, value, index, selected, focused);
+				setBorder(new EmptyBorder(5, 12, 5, 8));
+				setFont(FontManager.getRunescapeBoldFont());
+				setOpaque(true);
+				if (selected)
+				{
+					setBackground(ColorScheme.DARK_GRAY_COLOR);
+					setForeground(COLOR_AVG);
+				}
+				else if (index == hovered[0])
+				{
+					setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+					setForeground(Color.WHITE);
+				}
+				else
+				{
+					setBackground(ColorScheme.DARKER_GRAY_COLOR);
+					setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+				}
+
+				return this;
+			}
+		};
+		toc.setCellRenderer(renderer);
+		toc.addMouseMotionListener(new MouseMotionAdapter()
+		{
+			@Override
+			public void mouseMoved(MouseEvent e)
+			{
+				int index = toc.locationToIndex(e.getPoint());
+				if (index != hovered[0])
+				{
+					hovered[0] = index;
+					toc.repaint();
+				}
+			}
+		});
+		toc.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				hovered[0] = -1;
+				toc.repaint();
+			}
+		});
 	}
 
 	/** Renders the release selected in the TOC into the body pane. */
@@ -1523,20 +1601,24 @@ public class StockpilePanel extends PluginPanel
 		return sb.toString();
 	}
 
-	private static final String CHANGELOG_FEATURE_STYLE = "font-weight:bold; margin-top:8px;";
-	private static final String CHANGELOG_AREA_STYLE = "font-size:13px;font-weight:bold;color:#e0a54a;margin-top:12px;";
-	private static final String CHANGELOG_SECTION_STYLE = "font-size:14px; font-weight:bold; margin-top:14px;";
-	private static final String CHANGELOG_TEXT_STYLE = "margin-top:2px;";
+	private static final String CL_SECTION_STYLE = "font-size:14px;font-weight:bold;color:#ffffff;margin-top:14px;";
+	private static final String CL_AREA_STYLE = "font-size:13px;font-weight:bold;color:#e0a54a;margin-top:12px;";
+	private static final String CL_FEATURE_STYLE = "font-weight:bold;color:#d4d4d4;margin-top:8px;";
+	private static final String CL_TEXT_STYLE = "color:#9a9a9a;margin-top:2px;";
+
+	/** Pixels of left indent added per nesting level in the changelog body. */
+	private static final int CL_INDENT_STEP = 12;
 
 	/**
 	 * Renders a release's markdown body to HTML for the changelog window: {@code ##}/{@code ###}/{@code ####}
-	 * headings become sized/weighted headers, {@code [#12](url)} issue links become clickable anchors, and
-	 * every other non-blank line is a paragraph. Deliberately minimal — it only covers the constructs the
-	 * bundled changelog uses, since Swing's HTML renderer is HTML-3.2-era.
+	 * headings become sized/weighted/coloured headers that each indent one level deeper, their content indents
+	 * one level further still, and {@code [#12](url)} issue links become clickable anchors. Deliberately minimal
+	 * — it only covers the constructs the bundled changelog uses, since Swing's HTML renderer is HTML-3.2-era.
 	 */
 	private String renderChangelogBody(String body)
 	{
 		StringBuilder sb = new StringBuilder();
+		int contentLevel = 0;
 		for (String raw : body.split("\n", -1))
 		{
 			String line = raw.trim();
@@ -1544,23 +1626,41 @@ public class StockpilePanel extends PluginPanel
 				continue;
 
 			if (line.startsWith("#### "))
-				appendChangelogDiv(sb, CHANGELOG_FEATURE_STYLE, inlineLinks(line.substring(5)));
+			{
+				appendChangelogDiv(sb, CL_FEATURE_STYLE, 2, inlineLinks(line.substring(5)));
+				contentLevel = 3;
+			}
 			else if (line.startsWith("### "))
-				appendChangelogDiv(sb, CHANGELOG_AREA_STYLE, inlineLinks(line.substring(4)));
+			{
+				appendChangelogDiv(sb, CL_AREA_STYLE, 1, inlineLinks(line.substring(4)));
+				contentLevel = 2;
+			}
 			else if (line.startsWith("## "))
-				appendChangelogDiv(sb, CHANGELOG_SECTION_STYLE, inlineLinks(line.substring(3)));
+			{
+				appendChangelogDiv(sb, CL_SECTION_STYLE, 0, inlineLinks(line.substring(3)));
+				contentLevel = 1;
+			}
 			else
-				appendChangelogDiv(sb, CHANGELOG_TEXT_STYLE, inlineLinks(line));
+			{
+				appendChangelogDiv(sb, CL_TEXT_STYLE, contentLevel, inlineLinks(line));
+			}
 		}
 
 		return sb.toString();
 	}
 
-	/** Appends a {@code <div>} with the given inline CSS {@code style} wrapping already-rendered {@code html}. */
-	private static void appendChangelogDiv(StringBuilder sb, String style, String html)
+	/** Appends a {@code <div>} with the given inline CSS {@code style} and left indent, wrapping {@code html}. */
+	private static void appendChangelogDiv(StringBuilder sb, String style, int indentLevel, String html)
 	{
 		sb.append("<div style='");
 		sb.append(style);
+		if (indentLevel > 0)
+		{
+			sb.append("margin-left:");
+			sb.append(indentLevel * CL_INDENT_STEP);
+			sb.append("px;");
+		}
+
 		sb.append("'>");
 		sb.append(html);
 		sb.append("</div>");
