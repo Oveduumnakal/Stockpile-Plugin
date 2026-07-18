@@ -244,6 +244,9 @@ public class StockpilePlugin extends Plugin
 	 * Whether the current logged-in session has been initialised. Guards the one-time
 	 * clear+reload so a respawn or region load re-firing {@code LOGGED_IN} mid-session
 	 * doesn't wipe pending quantity changes (e.g. a death loss) or reset held state (#70).
+	 * Set by whichever path initialises the session: the {@code LOGGED_IN} handler, or
+	 * {@code startUp} when the plugin is enabled while already logged in — the two do the
+	 * same load, so leaving the flag false there let the next region crossing re-clear.
 	 */
 	private boolean sessionInitialized = false;
 	private int geLoginTick = -1;
@@ -616,6 +619,12 @@ public class StockpilePlugin extends Plugin
 
 		clientThread.invokeLater(() ->
 		{
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				sessionInitialized = true;
+				geLoginTick = client.getTickCount();
+			}
+
 			loadCategories();
 			loadPersistedItems();
 			loadGeState();
