@@ -209,12 +209,12 @@ public class StockpilePanel extends PluginPanel
 	private final BiConsumer<String, Boolean> onSetGroupCollapsed;
 	/** Category create/rename/delete/reorder and per-item assignment operations. */
 	private final CategoryActions categoryActions;
-	/** Builds the shareable tracked-list token for the current profile. */
-	private final Supplier<String> onExportList;
-	/** Imports a tracked-list token (merge, non-destructive); returns a user-facing result message. */
-	private final Function<String, String> onImportList;
-	/** Builds the acquisitions CSV for the current profile. */
-	private final Supplier<String> onExportCsv;
+	/** Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. */
+	private final Consumer<Consumer<String>> onExportList;
+	/** Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. */
+	private final BiConsumer<String, Consumer<String>> onImportList;
+	/** Builds the acquisitions CSV on the client thread and delivers it back on the EDT. */
+	private final Consumer<Consumer<String>> onExportCsv;
 	/** Supplies the portfolio value history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
 	private final Supplier<List<long[]>> onPortfolioHistory;
 	/** Bundled release notes shown in the changelog window. */
@@ -611,9 +611,9 @@ public class StockpilePanel extends PluginPanel
 			BiConsumer<Integer, Boolean> onSetOnOverlay,
 			BiConsumer<String, Boolean> onSetGroupCollapsed,
 			CategoryActions categoryActions,
-			Supplier<String> onExportList,
-			Function<String, String> onImportList,
-			Supplier<String> onExportCsv,
+			Consumer<Consumer<String>> onExportList,
+			BiConsumer<String, Consumer<String>> onImportList,
+			Consumer<Consumer<String>> onExportCsv,
 			Supplier<List<long[]>> onPortfolioHistory,
 			Changelog changelog,
 			boolean whatsNew,
@@ -1760,23 +1760,25 @@ public class StockpilePanel extends PluginPanel
 		return sb.toString();
 	}
 
-	/** Copies the shareable tracked-list code to the clipboard. */
+	/** Copies the shareable tracked-list code to the clipboard once the plugin has built it. */
 	private void exportTrackedList()
 	{
-		String token = onExportList.get();
-		if (token == null || token.isEmpty())
+		onExportList.accept(token ->
 		{
-			JOptionPane.showMessageDialog(this, "Nothing tracked to export.", "Export List",
-					JOptionPane.INFORMATION_MESSAGE);
-			return;
-		}
+			if (token == null || token.isEmpty())
+			{
+				JOptionPane.showMessageDialog(this, "Nothing tracked to export.", "Export List",
+						JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
 
-		copyToClipboard(token);
-		JOptionPane.showMessageDialog(this, "Tracked-list code copied to the clipboard.", "Export List",
-				JOptionPane.INFORMATION_MESSAGE);
+			copyToClipboard(token);
+			JOptionPane.showMessageDialog(this, "Tracked-list code copied to the clipboard.", "Export List",
+					JOptionPane.INFORMATION_MESSAGE);
+		});
 	}
 
-	/** Prompts for a tracked-list code and merges it into the current profile. */
+	/** Prompts for a tracked-list code, merges it into the current profile, and reports the outcome. */
 	private void importTrackedList()
 	{
 		JTextArea input = new JTextArea(5, 24);
@@ -1788,17 +1790,19 @@ public class StockpilePanel extends PluginPanel
 		if (choice != JOptionPane.OK_OPTION)
 			return;
 
-		String result = onImportList.apply(input.getText());
-		JOptionPane.showMessageDialog(this, result, "Import List", JOptionPane.INFORMATION_MESSAGE);
+		onImportList.accept(input.getText(), result ->
+				JOptionPane.showMessageDialog(this, result, "Import List", JOptionPane.INFORMATION_MESSAGE));
 	}
 
-	/** Copies the acquisitions log as CSV to the clipboard. */
+	/** Copies the acquisitions log as CSV to the clipboard once the plugin has built it. */
 	private void exportAcquisitionsCsv()
 	{
-		String csv = onExportCsv.get();
-		copyToClipboard(csv);
-		JOptionPane.showMessageDialog(this, "Acquisitions CSV copied to the clipboard.", "Export CSV",
-				JOptionPane.INFORMATION_MESSAGE);
+		onExportCsv.accept(csv ->
+		{
+			copyToClipboard(csv);
+			JOptionPane.showMessageDialog(this, "Acquisitions CSV copied to the clipboard.", "Export CSV",
+					JOptionPane.INFORMATION_MESSAGE);
+		});
 	}
 
 	private void copyToClipboard(String text)

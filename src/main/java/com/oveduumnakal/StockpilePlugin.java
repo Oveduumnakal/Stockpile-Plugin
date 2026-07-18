@@ -47,6 +47,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -1090,29 +1091,48 @@ public class StockpilePlugin extends Plugin
 		persistPortfolioHistory();
 	}
 
-	/** @return a shareable code for the current tracked list (ids, modes, categories, favorites), or "" when empty. */
-	String buildShareToken()
+	/**
+	 * Builds a shareable code for the current tracked list (ids, modes, categories,
+	 * favorites) — "" when empty — and hands it to {@code onResult} on the EDT.
+	 * {@code trackedItems} is client-thread state, so the snapshot is taken there
+	 * rather than on the EDT the panel's button handler runs on, where a concurrent
+	 * mutation (login replay, auto-add, GE fill) could tear the iteration.
+	 */
+	void buildShareToken(Consumer<String> onResult)
 	{
-		List<PortfolioShareCodec.Entry> entries = trackedItems.values().stream()
-				.map(t -> new PortfolioShareCodec.Entry(t.getItemId(), t.getMode(), t.getCategory(), t.isFavorite()))
-				.collect(Collectors.toList());
-		if (entries.isEmpty())
-			return "";
-
-		return new PortfolioShareCodec(gson)
-				.encode(new PortfolioShareCodec.Snapshot(1, entries, new ArrayList<>(categories)));
+		clientThread.invokeLater(() ->
+		{
+			List<PortfolioShareCodec.Entry> entries = trackedItems.values().stream()
+					.map(t -> new PortfolioShareCodec.Entry(t.getItemId(), t.getMode(), t.getCategory(),
+							t.isFavorite()))
+					.collect(Collectors.toList());
+			String token = entries.isEmpty()
+					? ""
+					: new PortfolioShareCodec(gson)
+							.encode(new PortfolioShareCodec.Snapshot(1, entries, new ArrayList<>(categories)));
+			SwingUtilities.invokeLater(() -> onResult.accept(token));
+		});
 	}
 
 	/**
 	 * Merges a shared tracked-list code into the current profile: adds items that
 	 * aren't already tracked (with their mode, category, and favorite flag) plus any
 	 * missing categories they reference. Non-destructive — existing items are left
-	 * untouched. The merge runs on the client thread; the returned message reports the
-	 * outcome immediately.
-	 *
-	 * @return a user-facing summary of what was imported
+	 * untouched. Decode, count, and merge all run on the client thread (the counts
+	 * read {@code trackedItems}); the outcome summary is handed to {@code onResult}
+	 * on the EDT.
 	 */
-	String importTrackedList(String token)
+	void importTrackedList(String token, Consumer<String> onResult)
+	{
+		clientThread.invokeLater(() ->
+		{
+			String message = applyImportedList(token);
+			SwingUtilities.invokeLater(() -> onResult.accept(message));
+		});
+	}
+
+	/** Decodes and merges a share code on the client thread. @return the user-facing outcome summary */
+	private String applyImportedList(String token)
 	{
 		PortfolioShareCodec.Snapshot snapshot = new PortfolioShareCodec(gson).decode(token);
 		if (snapshot == null || snapshot.getItems() == null)
@@ -1126,7 +1146,7 @@ public class StockpilePlugin extends Plugin
 		long fresh = incoming.stream().filter(e -> !trackedItems.containsKey(e.getId())).count();
 		long skipped = incoming.size() - fresh;
 
-		clientThread.invokeLater(() -> mergeImportedList(incoming, incomingCategories));
+		mergeImportedList(incoming, incomingCategories);
 
 		if (fresh == 0)
 			return "Nothing new — all " + skipped + " item(s) are already tracked.";
@@ -1188,10 +1208,19 @@ public class StockpilePlugin extends Plugin
 			categories.add(new CategoryState(name, collapsed));
 	}
 
-	/** @return the acquisitions log of all tracked items as CSV (see {@link AcquisitionCsvExporter}). */
-	String buildAcquisitionsCsv()
+	/**
+	 * Builds the acquisitions log of all tracked items as CSV (see
+	 * {@link AcquisitionCsvExporter}) on the client thread — the items and their
+	 * acquisition lists are client-thread state — and hands it to {@code onResult}
+	 * on the EDT.
+	 */
+	void buildAcquisitionsCsv(Consumer<String> onResult)
 	{
-		return AcquisitionCsvExporter.toCsv(new ArrayList<>(trackedItems.values()));
+		clientThread.invokeLater(() ->
+		{
+			String csv = AcquisitionCsvExporter.toCsv(new ArrayList<>(trackedItems.values()));
+			SwingUtilities.invokeLater(() -> onResult.accept(csv));
+		});
 	}
 
 	/**
