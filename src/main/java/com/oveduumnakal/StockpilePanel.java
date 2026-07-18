@@ -1338,6 +1338,12 @@ public class StockpilePanel extends PluginPanel
 		sessionStats.clear();
 	}
 
+	/** Drops one item's session-baseline entry when it is untracked, so removal is session-neutral. */
+	public void removeSessionBaseline(int itemId)
+	{
+		sessionStats.removeItem(itemId);
+	}
+
 	/** @return the value in short gp with an explicit +/- sign (e.g. {@code +1.2M}, {@code -350K}). */
 	private String signedShort(long value)
 	{

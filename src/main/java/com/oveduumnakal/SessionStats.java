@@ -67,6 +67,17 @@ public final class SessionStats
 	}
 
 	/**
+	 * Drops one item's baseline entry when it is untracked mid-session, so untracking is
+	 * session-neutral instead of reading as the item's whole value lost — the removal-side
+	 * mirror of {@link #absorbNewItems}. Genuine quantity losses on items that stay tracked
+	 * are unaffected: their ids remain in the baseline.
+	 */
+	public void removeItem(int itemId)
+	{
+		baseline.remove(itemId);
+	}
+
+	/**
 	 * Computes the session change for {@code current} (id → {@code {quantity, unitPrice}})
 	 * against the baseline. A dropped item keeps its baseline price, so its loss lands
 	 * entirely on the quantity side.

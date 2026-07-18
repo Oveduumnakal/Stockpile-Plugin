@@ -1093,13 +1093,18 @@ public class StockpilePlugin extends Plugin
 		});
 	}
 
-	/** Stops tracking an item, then persists and refreshes. Runs on the client thread. */
+	/**
+	 * Stops tracking an item, then persists and refreshes. Also drops the item from the
+	 * session baseline — before the panel's next rebuild computes the session delta — so
+	 * untracking doesn't read as the item's whole value lost. Runs on the client thread.
+	 */
 	private void removeTrackedItem(int itemId)
 	{
 		clientThread.invokeLater(() ->
 		{
 			trackedItems.remove(itemId);
 			portfolioHistory.removeItem(itemId);
+			SwingUtilities.invokeLater(() -> panel.removeSessionBaseline(itemId));
 			persistTrackedItems();
 			persistPortfolioHistory();
 			refreshPanel();
@@ -1572,6 +1577,7 @@ public class StockpilePlugin extends Plugin
 		{
 			trackedItems.clear();
 			clearPortfolioHistory();
+			SwingUtilities.invokeLater(panel::clearSessionBaseline);
 			persistTrackedItems();
 			refreshPanel();
 		});
