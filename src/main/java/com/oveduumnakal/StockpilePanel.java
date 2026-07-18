@@ -83,6 +83,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -98,6 +100,7 @@ import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
+import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -107,6 +110,7 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
@@ -122,6 +126,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
@@ -129,6 +134,7 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import javax.swing.text.DefaultCaret;
 
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import net.runelite.api.gameval.ItemID;
@@ -211,6 +217,14 @@ public class StockpilePanel extends PluginPanel
 	private final Supplier<String> onExportCsv;
 	/** Supplies the portfolio value history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
 	private final Supplier<List<long[]>> onPortfolioHistory;
+	/** Bundled release notes shown in the changelog window. */
+	private final Changelog changelog;
+	/** Callback to persist that the current release's "What's New" has been seen. */
+	private final Runnable onWhatsNewSeen;
+	/** Whether the footer indicator is currently in the highlighted "What's New" state. */
+	private boolean whatsNew;
+	/** The footer "What's New ✨" / "Change log" indicator button. */
+	private JButton changelogButton;
 
 	/** Latest category state from the plugin, used to render the grouped/accordion list. */
 	private List<CategoryState> categories = new ArrayList<>();
@@ -600,7 +614,10 @@ public class StockpilePanel extends PluginPanel
 			Supplier<String> onExportList,
 			Function<String, String> onImportList,
 			Supplier<String> onExportCsv,
-			Supplier<List<long[]>> onPortfolioHistory)
+			Supplier<List<long[]>> onPortfolioHistory,
+			Changelog changelog,
+			boolean whatsNew,
+			Runnable onWhatsNewSeen)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
@@ -625,6 +642,9 @@ public class StockpilePanel extends PluginPanel
 		this.onImportList = onImportList;
 		this.onExportCsv = onExportCsv;
 		this.onPortfolioHistory = onPortfolioHistory;
+		this.changelog = changelog;
+		this.whatsNew = whatsNew;
+		this.onWhatsNewSeen = onWhatsNewSeen;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -635,9 +655,13 @@ public class StockpilePanel extends PluginPanel
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setBorder(new EmptyBorder(0, 0, 4, 0));
 
+		changelogButton = buildChangelogBadge();
+		applyChangelogButtonStyle();
+
 		JPanel titleWrapper = new JPanel(new BorderLayout());
 		titleWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		titleWrapper.add(title, BorderLayout.CENTER);
+		titleWrapper.add(changelogButton, BorderLayout.EAST);
 
 		searchResultsPanel = new JPanel();
 		searchResultsPanel.setLayout(new BoxLayout(searchResultsPanel, BoxLayout.Y_AXIS));
@@ -1363,6 +1387,377 @@ public class StockpilePanel extends PluginPanel
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
 		return button;
+	}
+
+	/**
+	 * Builds the top-right header badge that opens the changelog window;
+	 * {@link #applyChangelogButtonStyle} sets its label and colour.
+	 */
+	private JButton buildChangelogBadge()
+	{
+		JButton badge = new JButton();
+		badge.setFont(FontManager.getRunescapeSmallFont());
+		badge.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		badge.setFocusPainted(false);
+		badge.setBorderPainted(false);
+		badge.setContentAreaFilled(false);
+		badge.setBorder(new EmptyBorder(0, 6, 4, 0));
+		badge.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		badge.setToolTipText("See what's new in this release");
+		badge.setHorizontalTextPosition(SwingConstants.LEFT);
+		badge.setIconTextGap(3);
+		badge.addActionListener(e -> openChangelogWindow());
+		badge.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				badge.setForeground(Color.WHITE);
+				badge.setIcon(whatsNew ? sparkleIcon(Color.WHITE) : null);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				applyChangelogButtonStyle();
+			}
+		});
+
+		return badge;
+	}
+
+	/** @return the indicator label: highlighted "What's New" for a new release, else "Change log". */
+	private String changelogButtonText()
+	{
+		return whatsNew ? "What's New" : "Change log";
+	}
+
+	/** Applies the indicator styling — gold while "What's New", muted once seen. */
+	private void applyChangelogButtonStyle()
+	{
+		changelogButton.setText(changelogButtonText());
+		changelogButton.setForeground(whatsNew ? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR);
+		changelogButton.setIcon(whatsNew ? sparkleIcon(COLOR_AVG) : null);
+	}
+
+	/** Opens the changelog window; the first open of a new release quiets the "What's New" indicator. */
+	private void openChangelogWindow()
+	{
+		if (whatsNew)
+		{
+			whatsNew = false;
+			onWhatsNewSeen.run();
+			applyChangelogButtonStyle();
+		}
+
+		showPopout("What's New", buildChangelogContent(), item -> { }, null);
+	}
+
+	/**
+	 * Builds the changelog window: a left navigation column listing each release, with the selected
+	 * release's sections expanded beneath it as quick-links that jump to that section, and the
+	 * selected release's notes rendered on the right.
+	 */
+	private JComponent buildChangelogContent()
+	{
+		List<Changelog.Release> releases = changelog.releases();
+
+		JEditorPane body = new JEditorPane();
+		body.setContentType("text/html");
+		body.setEditable(false);
+		body.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		body.addHyperlinkListener(e ->
+		{
+			if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED && e.getURL() != null)
+				LinkBrowser.browse(e.getURL().toString());
+		});
+
+		JPanel nav = new JPanel();
+		nav.setLayout(new BoxLayout(nav, BoxLayout.Y_AXIS));
+		nav.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		nav.setBorder(new EmptyBorder(4, 4, 4, 4));
+
+		if (!releases.isEmpty())
+		{
+			body.setText(renderReleaseHtml(releases.get(0)));
+			body.setCaretPosition(0);
+		}
+
+		rebuildChangelogNav(nav, releases, 0, body);
+
+		JScrollPane navScroll = new JScrollPane(nav);
+		navScroll.setPreferredSize(new Dimension(168, 560));
+		navScroll.getVerticalScrollBar().setUnitIncrement(16);
+
+		JScrollPane bodyScroll = new JScrollPane(body);
+		bodyScroll.setPreferredSize(new Dimension(440, 560));
+
+		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, navScroll, bodyScroll);
+		split.setDividerLocation(168);
+		return split;
+	}
+
+	/**
+	 * (Re)populates the changelog nav: one clickable row per release (selecting it loads its notes),
+	 * and beneath the selected release its section quick-links, each of which scrolls the notes to
+	 * that section.
+	 */
+	private void rebuildChangelogNav(JPanel nav, List<Changelog.Release> releases, int selectedIndex, JEditorPane body)
+	{
+		nav.removeAll();
+		for (int i = 0; i < releases.size(); i++)
+		{
+			final int index = i;
+			Changelog.Release release = releases.get(i);
+			boolean selected = index == selectedIndex;
+
+			JLabel versionRow = buildChangelogNavVersion(release.getVersion(), selected);
+			versionRow.addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mouseClicked(MouseEvent e)
+				{
+					body.setText(renderReleaseHtml(releases.get(index)));
+					body.setCaretPosition(0);
+					rebuildChangelogNav(nav, releases, index, body);
+				}
+			});
+			nav.add(versionRow);
+
+			if (selected)
+			{
+				for (ChangelogSection section : extractSections(release.getBody()))
+				{
+					JLabel link = buildChangelogNavLink(section);
+					link.addMouseListener(new MouseAdapter()
+					{
+						@Override
+						public void mouseClicked(MouseEvent e)
+						{
+							body.scrollToReference(section.getAnchor());
+						}
+					});
+					nav.add(link);
+				}
+			}
+		}
+
+		nav.revalidate();
+		nav.repaint();
+	}
+
+	/** Builds one clickable release row for the changelog nav; the selected release is gold, the rest muted. */
+	private JLabel buildChangelogNavVersion(String version, boolean selected)
+	{
+		JLabel row = new JLabel(version);
+		row.setFont(FontManager.getRunescapeBoldFont());
+		row.setOpaque(true);
+		row.setBorder(new EmptyBorder(5, 10, 5, 8));
+		row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height + 12));
+
+		Color restFg = selected ? COLOR_AVG : ColorScheme.LIGHT_GRAY_COLOR;
+		Color restBg = selected ? ColorScheme.DARK_GRAY_COLOR : ColorScheme.DARKER_GRAY_COLOR;
+		row.setForeground(restFg);
+		row.setBackground(restBg);
+		installChangelogNavHover(row, restFg, restBg);
+		return row;
+	}
+
+	/** Builds one indented, clickable section quick-link for the changelog nav. */
+	private JLabel buildChangelogNavLink(ChangelogSection section)
+	{
+		JLabel link = new JLabel(section.getText());
+		link.setFont(FontManager.getRunescapeSmallFont());
+		link.setOpaque(true);
+		link.setBorder(new EmptyBorder(2, 14 + section.getLevel() * 10, 2, 6));
+		link.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		link.setAlignmentX(Component.LEFT_ALIGNMENT);
+		link.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		link.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		link.setMaximumSize(new Dimension(Integer.MAX_VALUE, link.getPreferredSize().height + 4));
+		installChangelogNavHover(link, ColorScheme.LIGHT_GRAY_COLOR, ColorScheme.DARKER_GRAY_COLOR);
+		return link;
+	}
+
+	/** Adds a hover highlight (brighten to white on a lighter row) that restores the given resting colours. */
+	private void installChangelogNavHover(JLabel label, Color restFg, Color restBg)
+	{
+		label.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				label.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+				label.setForeground(Color.WHITE);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				label.setBackground(restBg);
+				label.setForeground(restFg);
+			}
+		});
+	}
+
+	/** @return the {@code ##}/{@code ###} section headings of a release body, in order, with scroll anchors. */
+	private static List<ChangelogSection> extractSections(String body)
+	{
+		List<ChangelogSection> sections = new ArrayList<>();
+		int index = 0;
+		for (String raw : body.split("\n", -1))
+		{
+			String line = raw.trim();
+			if (line.startsWith("### "))
+			{
+				sections.add(new ChangelogSection(1, line.substring(4), "sec" + index));
+				index++;
+			}
+			else if (line.startsWith("## "))
+			{
+				sections.add(new ChangelogSection(0, line.substring(3), "sec" + index));
+				index++;
+			}
+		}
+
+		return sections;
+	}
+
+	/** One navigable changelog section: heading depth (0 for {@code ##}, 1 for {@code ###}), text, and anchor. */
+	@Value
+	private static class ChangelogSection
+	{
+		int level;
+
+		String text;
+
+		String anchor;
+	}
+
+	/** Escapes the HTML-significant characters so text renders literally inside an HTML label. */
+	private static String escapeHtml(String text)
+	{
+		return text
+				.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;");
+	}
+
+	/** A markdown link {@code [label](url)} used for the changelog's issue references. */
+	private static final Pattern MD_LINK = Pattern.compile("\\[([^\\]]+)\\]\\(([^)]+)\\)");
+
+	/** @return an HTML rendering of one release: its version and date heading, then its markdown body. */
+	private String renderReleaseHtml(Changelog.Release release)
+	{
+		StringBuilder sb = new StringBuilder("<html><body style='font-family:sans-serif; margin:4px 8px;'>");
+		sb.append("<div style='font-size:15px; font-weight:bold;'>");
+		sb.append(escapeHtml(release.getVersion()));
+		if (release.getDate() != null)
+		{
+			sb.append(" <span style='color:gray; font-weight:normal; font-size:10px;'>");
+			sb.append(escapeHtml(release.getDate()));
+			sb.append("</span>");
+		}
+
+		sb.append("</div>");
+		sb.append(renderChangelogBody(release.getBody()));
+		sb.append("</body></html>");
+		return sb.toString();
+	}
+
+	private static final String CL_SECTION_STYLE = "font-size:14px;font-weight:bold;color:#ffffff;margin-top:14px;";
+	private static final String CL_AREA_STYLE = "font-size:13px;font-weight:bold;color:#e0a54a;margin-top:12px;";
+	private static final String CL_FEATURE_STYLE = "font-weight:bold;color:#d4d4d4;margin-top:8px;";
+	private static final String CL_TEXT_STYLE = "color:#9a9a9a;margin-top:2px;";
+
+	/** Pixels of left indent added per nesting level in the changelog body. */
+	private static final int CL_INDENT_STEP = 12;
+
+	/**
+	 * Renders a release's markdown body to HTML for the changelog window: {@code ##}/{@code ###}/{@code ####}
+	 * headings become sized/weighted/coloured headers that each indent one level deeper, their content indents
+	 * one level further still, and {@code [#12](url)} issue links become clickable anchors. Deliberately minimal
+	 * — it only covers the constructs the bundled changelog uses, since Swing's HTML renderer is HTML-3.2-era.
+	 */
+	private String renderChangelogBody(String body)
+	{
+		StringBuilder sb = new StringBuilder();
+		int contentLevel = 0;
+		int sectionIndex = 0;
+		for (String raw : body.split("\n", -1))
+		{
+			String line = raw.trim();
+			if (line.isEmpty())
+				continue;
+
+			if (line.startsWith("#### "))
+			{
+				appendChangelogDiv(sb, CL_FEATURE_STYLE, 2, inlineLinks(line.substring(5)));
+				contentLevel = 3;
+			}
+			else if (line.startsWith("### "))
+			{
+				appendChangelogAnchor(sb, sectionIndex);
+				sectionIndex++;
+				appendChangelogDiv(sb, CL_AREA_STYLE, 1, inlineLinks(line.substring(4)));
+				contentLevel = 2;
+			}
+			else if (line.startsWith("## "))
+			{
+				appendChangelogAnchor(sb, sectionIndex);
+				sectionIndex++;
+				appendChangelogDiv(sb, CL_SECTION_STYLE, 0, inlineLinks(line.substring(3)));
+				contentLevel = 1;
+			}
+			else
+			{
+				appendChangelogDiv(sb, CL_TEXT_STYLE, contentLevel, inlineLinks(line));
+			}
+		}
+
+		return sb.toString();
+	}
+
+	/** Appends a named scroll anchor ({@code sec<n>}) matching the ids {@link #extractSections} hands the nav. */
+	private static void appendChangelogAnchor(StringBuilder sb, int sectionIndex)
+	{
+		sb.append("<a name='sec");
+		sb.append(sectionIndex);
+		sb.append("'></a>");
+	}
+
+	/** Appends a {@code <div>} with the given inline CSS {@code style} and left indent, wrapping {@code html}. */
+	private static void appendChangelogDiv(StringBuilder sb, String style, int indentLevel, String html)
+	{
+		sb.append("<div style='");
+		sb.append(style);
+		if (indentLevel > 0)
+		{
+			sb.append("margin-left:");
+			sb.append(indentLevel * CL_INDENT_STEP);
+			sb.append("px;");
+		}
+
+		sb.append("'>");
+		sb.append(html);
+		sb.append("</div>");
+	}
+
+	/** Escapes {@code text}, then turns markdown {@code [label](url)} links into clickable HTML anchors. */
+	private static String inlineLinks(String text)
+	{
+		Matcher matcher = MD_LINK.matcher(escapeHtml(text));
+		StringBuffer sb = new StringBuffer();
+		while (matcher.find())
+		{
+			String anchor = "<a href='" + matcher.group(2) + "'>" + matcher.group(1) + "</a>";
+			matcher.appendReplacement(sb, Matcher.quoteReplacement(anchor));
+		}
+
+		matcher.appendTail(sb);
+		return sb.toString();
 	}
 
 	/** Copies the shareable tracked-list code to the clipboard. */
@@ -2250,6 +2645,35 @@ public class StockpilePanel extends PluginPanel
 		g.drawRect(2, 2, size - 5, size - 8);
 		g.fillRect(size / 2 - 2, size - 5, 4, 2);
 		g.fillRect(size / 2 - 4, size - 3, 8, 1);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/** Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge. */
+	private static Icon sparkleIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+		double centre = size / 2.0;
+		double inner = 1.6;
+		double outer = centre - 1.0;
+		for (int i = 0; i < 8; i++)
+		{
+			double angle = Math.PI * i / 4.0;
+			double length = i % 2 == 0 ? outer : outer - 2.2;
+			int x1 = (int) Math.round(centre + Math.cos(angle) * inner);
+			int y1 = (int) Math.round(centre + Math.sin(angle) * inner);
+			int x2 = (int) Math.round(centre + Math.cos(angle) * length);
+			int y2 = (int) Math.round(centre + Math.sin(angle) * length);
+			g.drawLine(x1, y1, x2, y2);
+			g.fillOval(x2 - 1, y2 - 1, 2, 2);
+		}
 
 		g.dispose();
 		return new ImageIcon(img);
