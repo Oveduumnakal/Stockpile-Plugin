@@ -238,6 +238,17 @@ public class TrackedItem
 	}
 
 	/**
+	 * @return the suspended units valued at the average price. Suspended units are still
+	 *         owned and their lots still open, so value/profit figures that subtract an
+	 *         open-lot cost basis must add this back — otherwise every in-flight sell,
+	 *         trade, drop, or death reads as a loss for its duration
+	 */
+	public long getSuspendedValue()
+	{
+		return (long) getTotalSuspendedQuantity() * avgPrice;
+	}
+
+	/**
 	 * Total profit if the held lots were valued at {@code markPrice}: realized
 	 * profit from sold lots plus the unrealized gain/loss on still-held lots.
 	 *

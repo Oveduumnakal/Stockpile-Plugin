@@ -402,9 +402,12 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Records a portfolio snapshot into the history (persisting throttled): the running
-	 * value — held lots marked to the current average plus sold lots at their actual sale
-	 * price — against the invested cost basis of every logged lot, which stays fixed as
-	 * lots sell. Their gap is thus the realized-plus-unrealized profit.
+	 * value — owned units (held plus suspended) marked to the current average plus sold
+	 * lots at their actual sale price — against the invested cost basis of every logged
+	 * lot, which stays fixed as lots sell. Their gap is thus the realized-plus-unrealized
+	 * profit. Suspended units must count: their lots are still open on the cost side, so
+	 * omitting their value would carve a false loss into the chart for the duration of
+	 * every in-flight sell, trade, drop, or death.
 	 */
 	private void recordPortfolioSnapshot()
 	{
@@ -414,7 +417,7 @@ public class StockpilePlugin extends Plugin
 			if (!item.hasPrices())
 				continue;
 
-			long value = item.getAvgValue() + item.getRealizedProceeds();
+			long value = item.getAvgValue() + item.getSuspendedValue() + item.getRealizedProceeds();
 			long cost = item.isCostBasisInitialized() ? item.getInvestedCostBasis() : 0;
 			perItem.put(item.getItemId(), new long[]{value, cost});
 		}
