@@ -2612,8 +2612,9 @@ public class StockpilePlugin extends Plugin
 	/**
 	 * Turns the change in our own offer into pending suspend/un-suspend intents: items added to
 	 * the offer left our inventory and should suspend, items withdrawn returned and should
-	 * un-suspend. Only tracked, non-coin items queue — coins are the trade's numerator, not a
-	 * lot, and untracked items never flow through {@link #applyDelta} to consume the intent.
+	 * un-suspend. Only tracked, non-currency items queue — coins and platinum tokens are the
+	 * trade's numerator, not a lot, and untracked items never flow through {@link #applyDelta}
+	 * to consume the intent.
 	 */
 	private void queueTradeSuspension(Map<Integer, Integer> before, Map<Integer, Integer> after)
 	{
@@ -2621,7 +2622,7 @@ public class StockpilePlugin extends Plugin
 		ids.addAll(after.keySet());
 		for (int id : ids)
 		{
-			if (id == ItemID.COINS || !isTracked(id))
+			if (isTradeCurrency(id) || !isTracked(id))
 				continue;
 
 			int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
@@ -2644,7 +2645,8 @@ public class StockpilePlugin extends Plugin
 	 * Books a completed trade's item movements as {@link AcquisitionSource#PLAYER_TRADE} (#66):
 	 * items received buy in at the gp we gave apportioned across them by market value, and
 	 * items given close at the gp we received apportioned the same way. Pure item-for-item
-	 * legs price at 0; coins are the numerator, never an apportionment target.
+	 * legs price at 0; coins and platinum tokens (valued at 1,000 gp each) are the
+	 * numerator, never an apportionment target.
 	 *
 	 * <p>The two sides settle differently. Received items only enter our inventory now, so they
 	 * are registered as claims for the imminent additions to match. Given items already left our
@@ -2653,8 +2655,8 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void registerTradeClaims()
 	{
-		long gpPaid = myTradeOffer.getOrDefault(ItemID.COINS, 0);
-		long gpReceived = theirTradeOffer.getOrDefault(ItemID.COINS, 0);
+		long gpPaid = tradeGp(myTradeOffer);
+		long gpReceived = tradeGp(theirTradeOffer);
 
 		claimReceivedItems(theirTradeOffer, gpPaid);
 		closeGivenItems(myTradeOffer, gpReceived);
@@ -2663,13 +2665,32 @@ public class StockpilePlugin extends Plugin
 		theirTradeOffer.clear();
 	}
 
-	/** Builds one trade side's non-coin apportionment legs, each weighted by its unit market value. */
+	/** Gp value of one platinum token, the coin-equivalent currency for trades above max cash. */
+	private static final long PLATINUM_TOKEN_GP = 1_000L;
+
+	/**
+	 * @return whether the item is trade currency — coins or platinum tokens — which
+	 *         forms the trade's gp numerator rather than a lot-bearing item leg
+	 */
+	private static boolean isTradeCurrency(int itemId)
+	{
+		return itemId == ItemID.COINS || itemId == ItemID.PLATINUM;
+	}
+
+	/** @return one trade side's money in gp: coins plus platinum tokens at 1,000 gp each. */
+	private static long tradeGp(Map<Integer, Integer> side)
+	{
+		return side.getOrDefault(ItemID.COINS, 0)
+				+ PLATINUM_TOKEN_GP * side.getOrDefault(ItemID.PLATINUM, 0);
+	}
+
+	/** Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. */
 	private List<TradeApportioner.Leg> tradeLegs(Map<Integer, Integer> side)
 	{
 		List<TradeApportioner.Leg> legs = new ArrayList<>();
 		for (Map.Entry<Integer, Integer> entry : side.entrySet())
 		{
-			if (entry.getKey() != ItemID.COINS && entry.getValue() > 0)
+			if (!isTradeCurrency(entry.getKey()) && entry.getValue() > 0)
 				legs.add(new TradeApportioner.Leg(entry.getKey(), entry.getValue(),
 						marketUnitValue(entry.getKey())));
 		}
