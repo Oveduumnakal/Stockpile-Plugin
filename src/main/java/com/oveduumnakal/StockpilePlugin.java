@@ -3481,12 +3481,37 @@ public class StockpilePlugin extends Plugin
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
 		pendingSellRealize.clear();
+		seedCancelledSellReturns(offers);
 		reconcileSuspendedFromOffers();
 	}
 
 	/**
-	 * Rewrites {@code suspendedQuantity} from the live open sell offers so offline fills or
-	 * cancels self-heal at login; released units are then re-priced by {@link #reconcileAllQuantities}.
+	 * Queues the uncollected remainder of every cancelled sell offer as a pending un-suspend,
+	 * so those units stay suspended (they are still the player's, sitting in the collection
+	 * box) and collecting them restores the original lots instead of opening fresh ones.
+	 * Runs after the login prime clears the pending maps, so re-priming stays idempotent.
+	 */
+	private void seedCancelledSellReturns(GrandExchangeOffer[] offers)
+	{
+		if (offers == null)
+			return;
+
+		for (GrandExchangeOffer offer : offers)
+		{
+			if (offer == null || offer.getState() != GrandExchangeOfferState.CANCELLED_SELL)
+				continue;
+
+			int returned = offer.getTotalQuantity() - offer.getQuantitySold();
+			if (returned > 0)
+				pendingSellUnsuspend.merge(offer.getItemId(), returned, Integer::sum);
+		}
+	}
+
+	/**
+	 * Rewrites {@code suspendedQuantity} from the live open sell offers plus the pending
+	 * cancelled-sell returns (units cancelled but not yet collected, which are still the
+	 * player's), so offline fills or cancels self-heal at login; released units are then
+	 * re-priced by {@link #reconcileAllQuantities}.
 	 */
 	private void reconcileSuspendedFromOffers()
 	{
@@ -3502,7 +3527,8 @@ public class StockpilePlugin extends Plugin
 		}
 
 		for (TrackedItem tracked : trackedItems.values())
-			tracked.setSuspendedQuantity(openSell.getOrDefault(tracked.getItemId(), 0));
+			tracked.setSuspendedQuantity(openSell.getOrDefault(tracked.getItemId(), 0)
+					+ pendingSellUnsuspend.getOrDefault(tracked.getItemId(), 0));
 	}
 
 	/** Sets the item's transient buy-limit fields from its window, clearing them when the window has expired. */
