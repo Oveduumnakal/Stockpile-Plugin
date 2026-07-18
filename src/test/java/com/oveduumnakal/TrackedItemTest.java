@@ -46,4 +46,18 @@ public class TrackedItemTest
 		assertEquals("value minus invested cost equals total P/L",
 				t.getProfitAt(125), value - t.getInvestedCostBasis());
 	}
+
+	@Test
+	public void totalSuspendedSumsEverySource()
+	{
+		TrackedItem t = itemWith(40, 125, new AcquisitionRecord(100, 100, null));
+		t.setSuspendedQuantity(25);
+		t.setTradeSuspendedQuantity(15);
+		t.setGroundSuspendedQuantity(12);
+		t.setDeathSuspendedQuantity(8);
+
+		assertEquals(60, t.getTotalSuspendedQuantity());
+		assertEquals("open lots cover held plus suspended units",
+				t.getRecordQuantitySum(), t.getQuantity() + t.getTotalSuspendedQuantity());
+	}
 }

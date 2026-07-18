@@ -228,6 +228,16 @@ public class TrackedItem
 	}
 
 	/**
+	 * @return units suspended across every source (GE sell, trade, ground, death):
+	 *         owned and still covered by open lots, but held outside the containers
+	 *         that {@code quantity} counts
+	 */
+	public int getTotalSuspendedQuantity()
+	{
+		return suspendedQuantity + tradeSuspendedQuantity + groundSuspendedQuantity + deathSuspendedQuantity;
+	}
+
+	/**
 	 * Total profit if the held lots were valued at {@code markPrice}: realized
 	 * profit from sold lots plus the unrealized gain/loss on still-held lots.
 	 *
