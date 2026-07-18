@@ -74,4 +74,20 @@ public class TrackedItemTest
 		assertEquals(7_500, t.getSuspendedValue());
 		assertEquals("moving units into an offer must not dent the running value", before, during);
 	}
+
+	@Test
+	public void hydratedPricesAreNotLiveSessionPrices()
+	{
+		TrackedItem t = itemWith(100, 125, new AcquisitionRecord(100, 100, null));
+		t.setLowPrice(120);
+		t.setHighPrice(130);
+		t.setPriceCacheHydrated(true);
+
+		assertEquals(true, t.hasPrices());
+		assertEquals(false, t.hasLivePrices());
+
+		t.setPriceCacheHydrated(false);
+
+		assertEquals(true, t.hasLivePrices());
+	}
 }

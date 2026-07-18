@@ -1298,8 +1298,14 @@ public class StockpilePanel extends PluginPanel
 
 		Map<Integer, long[]> snapshot = new HashMap<>();
 		for (TrackedItem item : items)
-			if (item.hasPrices())
+			if (item.hasLivePrices())
 				snapshot.put(item.getItemId(), new long[]{item.getQuantity(), item.getAvgPrice()});
+
+		if (snapshot.isEmpty())
+		{
+			sessionRow.setVisible(false);
+			return;
+		}
 
 		if (!sessionStats.hasBaseline())
 			sessionStats.reset(snapshot);

@@ -1903,6 +1903,7 @@ public class StockpilePlugin extends Plugin
 			item.setAvgPrice(p.avg);
 			item.setLatestHighTime(p.highTime);
 			item.setLatestLowTime(p.lowTime);
+			item.setPriceCacheHydrated(true);
 			hydrated = true;
 		}
 
@@ -1932,6 +1933,7 @@ public class StockpilePlugin extends Plugin
 		item.setAvgPrice(prices.avg());
 		item.setLatestHighTime(prices.getHighTime());
 		item.setLatestLowTime(prices.getLowTime());
+		item.setPriceCacheHydrated(false);
 		item.setPriceLoadFailed(false);
 		item.getWindowStats().put(TimeWindow.LIVE,
 				new PriceStats(prices.getHigh(), prices.getLow(), prices.avg(), 0));
