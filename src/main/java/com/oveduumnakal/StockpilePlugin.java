@@ -827,7 +827,7 @@ public class StockpilePlugin extends Plugin
 					for (PersistedItem p : list)
 					{
 						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
-							p.notificationsInitialized, p.costBasisInitialized, false, TrackItemMode.TRACK);
+							p.notificationsInitialized, p.costBasisInitialized, false, false, TrackItemMode.TRACK);
 						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
 						applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
 					}
@@ -971,7 +971,7 @@ public class StockpilePlugin extends Plugin
 			return;
 		}
 
-		addTrackedItem(itemId, 0, null, null, false, false, true, mode);
+		addTrackedItem(itemId, 0, null, null, false, false, true, true, mode);
 	}
 
 	/**
@@ -1019,7 +1019,8 @@ public class StockpilePlugin extends Plugin
 	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records,
 			boolean costBasisInitialized)
 	{
-		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, TrackItemMode.TRACK);
+		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, true,
+				TrackItemMode.TRACK);
 	}
 
 	/**
@@ -1034,11 +1035,16 @@ public class StockpilePlugin extends Plugin
 	 * @param notificationsInitialized whether default rules have already been seeded
 	 * @param costBasisInitialized   whether a cost basis has already been established
 	 * @param syncOnAdd              recount from containers immediately when in TRACK mode
+	 * @param persistOnAdd           persist the tracked list after adding; the persisted-load
+	 *                               replay passes {@code false}, both because the data came from
+	 *                               config unchanged and because persisting mid-replay would write
+	 *                               the item before its deferred grouping/death-suspension
+	 *                               callbacks have applied, stripping those fields
 	 * @param mode                   tracking vs. view-only
 	 */
 	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records,
 			List<NotificationRule> notifications, boolean notificationsInitialized,
-			boolean costBasisInitialized, boolean syncOnAdd, TrackItemMode mode)
+			boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)
 	{
 		clientThread.invokeLater(() ->
 		{
@@ -1064,7 +1070,9 @@ public class StockpilePlugin extends Plugin
 			if (syncOnAdd && tracked.getMode() == TrackItemMode.TRACK)
 				syncQuantitiesForItem(tracked);
 
-			persistTrackedItems();
+			if (persistOnAdd)
+				persistTrackedItems();
+
 			refreshPanel();
 			refreshGePrices();
 		});
