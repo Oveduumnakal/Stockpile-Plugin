@@ -3888,8 +3888,7 @@ public class StockpilePlugin extends Plugin
 					+ containerCounts.values().stream()
 					.mapToInt(c -> c.getOrDefault(tracked.getItemId(), 0))
 					.sum();
-			int owned = total + tracked.getSuspendedQuantity() + tracked.getGroundSuspendedQuantity()
-					+ tracked.getDeathSuspendedQuantity() + tracked.getTradeSuspendedQuantity();
+			int owned = total + tracked.getTotalSuspendedQuantity();
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
@@ -3959,7 +3958,12 @@ public class StockpilePlugin extends Plugin
 		return itemManager.getItemComposition(itemId).getPlaceholderTemplateId() != -1;
 	}
 
-	/** Callback after the user edits an item's acquisitions: re-derives its quantity from the lots and persists. */
+	/**
+	 * Callback after the user edits an item's acquisitions: re-derives its held quantity
+	 * from the lots and persists. Open lots also cover suspended units (in-flight GE
+	 * sells, trades, drops, deaths), which {@code quantity} must exclude — otherwise an
+	 * edit made mid-suspension would double-count the suspended units as held.
+	 */
 	void onAcquisitionsEdited(int itemId)
 	{
 		clientThread.invokeLater(() ->
@@ -3969,7 +3973,7 @@ public class StockpilePlugin extends Plugin
 				return;
 
 			tracked.setCostBasisInitialized(true);
-			tracked.setQuantity(tracked.getRecordQuantitySum());
+			tracked.setQuantity(Math.max(0, tracked.getRecordQuantitySum() - tracked.getTotalSuspendedQuantity()));
 			persistTrackedItems();
 			refreshPanel();
 		});
