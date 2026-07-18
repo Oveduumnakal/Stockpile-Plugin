@@ -286,8 +286,20 @@ public class StockpilePlugin extends Plugin
 	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
 	private int deathTick = -1;
 
+	/**
+	 * The tick this death's losses were first consumed, or -1 before any were. The death
+	 * wipes the containers in one batch, so consumption is bounded to that batch (plus
+	 * {@link #DEATH_LOSS_BATCH_GRACE_TICKS}) — without the bound, every unmatched removal
+	 * in the 15-tick window (eating after respawning, dropping an item) was misbooked as
+	 * a death loss and later closed at 0. Reset when the next death opens a new window.
+	 */
+	private int deathLossTick = -1;
+
 	/** How many ticks after a death removals still count as death losses (respawn wipe + lag). */
 	private static final int DEATH_LOSS_WINDOW_TICKS = 15;
+
+	/** How many ticks past the first consumed death loss the same death may keep consuming. */
+	private static final int DEATH_LOSS_BATCH_GRACE_TICKS = 1;
 
 	/** How long a death suspension may await recovery before its units close as lost at 0. */
 	private static final Duration DEATH_SUSPEND_EXPIRY = Duration.ofMinutes(65);
@@ -2469,6 +2481,7 @@ public class StockpilePlugin extends Plugin
 		if (event.getActor() == client.getLocalPlayer())
 		{
 			deathTick = client.getTickCount();
+			deathLossTick = -1;
 			graveGoneTick = -1;
 		}
 	}
@@ -3163,16 +3176,34 @@ public class StockpilePlugin extends Plugin
 	/**
 	 * Suspends removals in the post-death window (#70): the units were lost to the
 	 * death, so quantities drop but the lots stay open pending gravestone/Death's
-	 * Office recovery. Returns the unconsumed remainder (0 inside the window).
+	 * Office recovery. Consumption is bounded to the death's own container batch —
+	 * the first tick that consumes, plus a one-tick grace for a split
+	 * inventory/equipment sync — so ordinary removals later in the window (eating
+	 * after respawning, dropping an item) close normally instead of being misbooked
+	 * as 0-gp death losses. The suspension timestamp is only set when none exists,
+	 * so a second death can't reset the first's recovery-expiry clock. Returns the
+	 * unconsumed remainder (0 when consumed).
 	 */
 	private int consumeDeathLoss(TrackedItem tracked, int qty)
 	{
+		int tick = client.getTickCount();
 		if (qty <= 0 || !config.sourcePricing() || deathTick < 0
-				|| client.getTickCount() - deathTick > DEATH_LOSS_WINDOW_TICKS)
+				|| tick - deathTick > DEATH_LOSS_WINDOW_TICKS)
 			return qty;
 
+		if (deathLossTick >= 0 && tick - deathLossTick > DEATH_LOSS_BATCH_GRACE_TICKS)
+		{
+			deathTick = -1;
+			return qty;
+		}
+
+		if (deathLossTick < 0)
+			deathLossTick = tick;
+
 		tracked.setDeathSuspendedQuantity(tracked.getDeathSuspendedQuantity() + qty);
-		tracked.setDeathSuspendedAt(Instant.now());
+		if (tracked.getDeathSuspendedAt() == null)
+			tracked.setDeathSuspendedAt(Instant.now());
+
 		return 0;
 	}
 
