@@ -13,15 +13,21 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** Parsing coverage for {@link Changelog}: headings, highlights, ordering, and edge cases. */
+/** Parsing coverage for {@link Changelog}: release headings, per-release bodies, ordering, and edge cases. */
 public class ChangelogTest
 {
-	private static final String SAMPLE = "# Title\n\n"
-			+ "## 1.4 — 2026-07-25\n"
-			+ "- First highlight\n"
-			+ "- Second highlight\n\n"
-			+ "## 1.3 - 2026-05-30\n"
-			+ "* Older highlight\n";
+	private static final String SAMPLE = "<!-- maintainer note -->\n\n"
+			+ "# 1.4 - July 25 2026\n\n"
+			+ "## Quick Overview\n"
+			+ "A friendly summary.\n\n"
+			+ "## Detailed Breakdown\n"
+			+ "### Tracked Item View\n"
+			+ "#### Session stats\n"
+			+ "Shows value since login.\n"
+			+ "[#62](https://example.test/62)\n\n"
+			+ "# 1.3 - July 3 2026\n\n"
+			+ "## Quick Overview\n"
+			+ "An older release.\n";
 
 	@Test
 	public void parsesReleasesNewestFirst()
@@ -32,9 +38,29 @@ public class ChangelogTest
 
 		Changelog.Release latest = releases.get(0);
 		assertEquals("1.4", latest.getVersion());
-		assertEquals("2026-07-25", latest.getDate());
-		assertEquals(2, latest.getHighlights().size());
-		assertEquals("First highlight", latest.getHighlights().get(0));
+		assertEquals("July 25 2026", latest.getDate());
+		assertTrue(latest.getBody().contains("Session stats"));
+	}
+
+	@Test
+	public void bodyIsScopedToItsRelease()
+	{
+		Changelog log = Changelog.parse(SAMPLE);
+		Changelog.Release latest = log.releases().get(0);
+		Changelog.Release older = log.releases().get(1);
+
+		assertFalse("body must stop at the next release heading", latest.getBody().contains("An older release"));
+		assertEquals("1.3", older.getVersion());
+		assertEquals("July 3 2026", older.getDate());
+		assertTrue(older.getBody().contains("An older release"));
+	}
+
+	/** The {@code ##}/{@code ###}/{@code ####} headings inside a body must not split it into extra releases. */
+	@Test
+	public void bodyHeadingsAreNotReleaseBoundaries()
+	{
+		Changelog log = Changelog.parse(SAMPLE);
+		assertEquals(2, log.releases().size());
 	}
 
 	@Test
@@ -47,18 +73,9 @@ public class ChangelogTest
 	}
 
 	@Test
-	public void hyphenDateSeparatorParses()
-	{
-		Changelog log = Changelog.parse(SAMPLE);
-		Changelog.Release old = log.releases().get(1);
-		assertEquals("1.3", old.getVersion());
-		assertEquals("2026-05-30", old.getDate());
-	}
-
-	@Test
 	public void emptyChangelogHasNoCurrentVersion()
 	{
-		Changelog log = Changelog.parse("# Just a title, no releases\n");
+		Changelog log = Changelog.parse("<!-- just a comment, no releases -->\n");
 		assertTrue(log.releases().isEmpty());
 		assertNull(log.currentVersion());
 	}

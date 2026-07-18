@@ -7,7 +7,6 @@ package com.oveduumnakal;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -28,7 +27,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class ChangelogGuardTest
 {
-	private static final Pattern DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
+	private static final Pattern DATE = Pattern.compile("[A-Z][a-z]+ \\d{1,2} \\d{4}");
 
 	private String pluginVersion() throws IOException
 	{
@@ -68,8 +67,7 @@ public class ChangelogGuardTest
 			assertTrue("release " + release.getVersion() + " has a malformed date: " + release.getDate(),
 					DATE.matcher(release.getDate()).matches());
 
-			List<String> highlights = release.getHighlights();
-			assertFalse("release " + release.getVersion() + " has no highlights", highlights.isEmpty());
+			assertFalse("release " + release.getVersion() + " has an empty body", release.getBody().isEmpty());
 		}
 	}
 }

@@ -83,6 +83,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -124,6 +126,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
@@ -1457,6 +1460,11 @@ public class StockpilePanel extends PluginPanel
 		body.setContentType("text/html");
 		body.setEditable(false);
 		body.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		body.addHyperlinkListener(e ->
+		{
+			if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED && e.getURL() != null)
+				LinkBrowser.browse(e.getURL().toString());
+		});
 
 		toc.addListSelectionListener(e -> renderSelectedRelease(toc, releases, body));
 		if (!releases.isEmpty())
@@ -1493,32 +1501,83 @@ public class StockpilePanel extends PluginPanel
 				.replace(">", "&gt;");
 	}
 
-	/**
-	 * @return an HTML rendering of one release: version, date, and highlight bullets. A two-column
-	 *         table (bullet, text) gives a clean hanging indent; Swing's HTML renderer detaches the
-	 *         markers of a plain {@code <ul>}.
-	 */
+	/** A markdown link {@code [label](url)} used for the changelog's issue references. */
+	private static final Pattern MD_LINK = Pattern.compile("\\[([^\\]]+)\\]\\(([^)]+)\\)");
+
+	/** @return an HTML rendering of one release: its version and date heading, then its markdown body. */
 	private String renderReleaseHtml(Changelog.Release release)
 	{
 		StringBuilder sb = new StringBuilder("<html><body style='font-family:sans-serif; margin:4px 8px;'>");
-		sb.append("<div style='font-size:14px; font-weight:bold;'>");
+		sb.append("<div style='font-size:15px; font-weight:bold;'>");
 		sb.append(escapeHtml(release.getVersion()));
 		if (release.getDate() != null)
 		{
-			sb.append(" <span style='color:gray; font-weight:normal; font-size:9px;'>");
+			sb.append(" <span style='color:gray; font-weight:normal; font-size:10px;'>");
 			sb.append(escapeHtml(release.getDate()));
 			sb.append("</span>");
 		}
 
-		sb.append("</div><table cellspacing='0' cellpadding='2' style='margin-top:4px;'>");
-		for (String highlight : release.getHighlights())
+		sb.append("</div>");
+		sb.append(renderChangelogBody(release.getBody()));
+		sb.append("</body></html>");
+		return sb.toString();
+	}
+
+	private static final String CHANGELOG_FEATURE_STYLE = "font-weight:bold; margin-top:8px;";
+	private static final String CHANGELOG_AREA_STYLE = "font-size:13px;font-weight:bold;color:#e0a54a;margin-top:12px;";
+	private static final String CHANGELOG_SECTION_STYLE = "font-size:14px; font-weight:bold; margin-top:14px;";
+	private static final String CHANGELOG_TEXT_STYLE = "margin-top:2px;";
+
+	/**
+	 * Renders a release's markdown body to HTML for the changelog window: {@code ##}/{@code ###}/{@code ####}
+	 * headings become sized/weighted headers, {@code [#12](url)} issue links become clickable anchors, and
+	 * every other non-blank line is a paragraph. Deliberately minimal — it only covers the constructs the
+	 * bundled changelog uses, since Swing's HTML renderer is HTML-3.2-era.
+	 */
+	private String renderChangelogBody(String body)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (String raw : body.split("\n", -1))
 		{
-			sb.append("<tr><td valign='top'>&#8226;</td><td valign='top'>");
-			sb.append(escapeHtml(highlight));
-			sb.append("</td></tr>");
+			String line = raw.trim();
+			if (line.isEmpty())
+				continue;
+
+			if (line.startsWith("#### "))
+				appendChangelogDiv(sb, CHANGELOG_FEATURE_STYLE, inlineLinks(line.substring(5)));
+			else if (line.startsWith("### "))
+				appendChangelogDiv(sb, CHANGELOG_AREA_STYLE, inlineLinks(line.substring(4)));
+			else if (line.startsWith("## "))
+				appendChangelogDiv(sb, CHANGELOG_SECTION_STYLE, inlineLinks(line.substring(3)));
+			else
+				appendChangelogDiv(sb, CHANGELOG_TEXT_STYLE, inlineLinks(line));
 		}
 
-		sb.append("</table></body></html>");
+		return sb.toString();
+	}
+
+	/** Appends a {@code <div>} with the given inline CSS {@code style} wrapping already-rendered {@code html}. */
+	private static void appendChangelogDiv(StringBuilder sb, String style, String html)
+	{
+		sb.append("<div style='");
+		sb.append(style);
+		sb.append("'>");
+		sb.append(html);
+		sb.append("</div>");
+	}
+
+	/** Escapes {@code text}, then turns markdown {@code [label](url)} links into clickable HTML anchors. */
+	private static String inlineLinks(String text)
+	{
+		Matcher matcher = MD_LINK.matcher(escapeHtml(text));
+		StringBuffer sb = new StringBuffer();
+		while (matcher.find())
+		{
+			String anchor = "<a href='" + matcher.group(2) + "'>" + matcher.group(1) + "</a>";
+			matcher.appendReplacement(sb, Matcher.quoteReplacement(anchor));
+		}
+
+		matcher.appendTail(sb);
 		return sb.toString();
 	}
 

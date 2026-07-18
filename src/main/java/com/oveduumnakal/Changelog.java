@@ -19,19 +19,23 @@ import lombok.Value;
 
 /**
  * Parses the bundled {@code changelog.md} resource into an ordered list of
- * releases (newest first). Each release is a {@code ## <version> — <date>} heading
- * followed by its highlight bullet lines. The parser is offline and deterministic;
- * the newest entry's version is treated as the plugin's current version at runtime,
- * and {@code ChangelogGuardTest} enforces that it matches
- * {@code runelite-plugin.properties}.
+ * releases (newest first). Each release starts with a top-level {@code # <version> - <date>}
+ * heading; everything up to the next such heading is that release's markdown body (a
+ * Quick Overview, a Detailed Breakdown of features grouped by area, and Bug Fixes).
+ * The parser is offline and deterministic; the newest entry's version is treated as the
+ * plugin's current version at runtime, and {@code ChangelogGuardTest} enforces that it
+ * matches {@code runelite-plugin.properties}.
  */
 public final class Changelog
 {
 	/** Resource path of the bundled changelog, relative to the classpath root. */
 	static final String RESOURCE = "/changelog.md";
 
-	/** A release heading: {@code ## 1.4 — 2026-07-25} (em dash or hyphen; date optional). */
-	private static final Pattern HEADING = Pattern.compile("^##\\s+(\\S+)\\s*(?:[—-]\\s*(\\S+))?\\s*$");
+	/**
+	 * A release heading: {@code # 1.4 - July 25 2026}. The {@code (?!#)} keeps it to a single
+	 * {@code #} so the body's {@code ##}/{@code ###}/{@code ####} headings aren't release boundaries.
+	 */
+	private static final Pattern HEADING = Pattern.compile("^#(?!#)\\s+(\\S+)\\s*-\\s*(.*)$");
 
 	private final List<Release> releases;
 
@@ -61,33 +65,36 @@ public final class Changelog
 	{
 		List<Release> releases = new ArrayList<>();
 		Release.ReleaseBuilder current = null;
-		List<String> highlights = null;
+		StringBuilder body = null;
 
 		for (String line : markdown.split("\n", -1))
 		{
-			Matcher heading = HEADING.matcher(line.trim());
-			if (line.startsWith("## ") && heading.matches())
+			Matcher heading = HEADING.matcher(line);
+			if (heading.matches())
 			{
 				if (current != null)
-					releases.add(current.highlights(highlights).build());
+				{
+					String text = body.toString().trim();
+					releases.add(current.body(text).build());
+				}
 
 				current = Release.builder();
 				current.version(heading.group(1));
-				current.date(heading.group(2));
-				highlights = new ArrayList<>();
+				String date = heading.group(2).trim();
+				current.date(date.isEmpty() ? null : date);
+				body = new StringBuilder();
 				continue;
 			}
 
-			if (current == null)
-				continue;
-
-			String trimmed = line.trim();
-			if (trimmed.startsWith("- ") || trimmed.startsWith("* "))
-				highlights.add(trimmed.substring(2).trim());
+			if (body != null)
+				body.append(line).append('\n');
 		}
 
 		if (current != null)
-			releases.add(current.highlights(highlights).build());
+		{
+			String text = body.toString().trim();
+			releases.add(current.body(text).build());
+		}
 
 		return new Changelog(releases);
 	}
@@ -123,7 +130,7 @@ public final class Changelog
 		return sb.toString();
 	}
 
-	/** One release: its version, optional date, and highlight lines (bullet text without the marker). */
+	/** One release: its version, written-out date, and the raw markdown body beneath its heading. */
 	@Value
 	@lombok.Builder
 	public static class Release
@@ -133,6 +140,6 @@ public final class Changelog
 		String date;
 
 		@lombok.Builder.Default
-		List<String> highlights = Collections.emptyList();
+		String body = "";
 	}
 }
