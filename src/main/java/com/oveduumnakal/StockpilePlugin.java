@@ -2409,9 +2409,17 @@ public class StockpilePlugin extends Plugin
 		tickGroundQuantityChanges.clear();
 	}
 
-	/** Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. */
+	/**
+	 * Handles a ground pile gaining units: on our tile against a pending removal, it's our
+	 * drop. Gated by the Source-Based Pricing toggle — when off, no new ground suspensions
+	 * are taken, so a drop closes classically at the average price; drops suspended while
+	 * the toggle was on still resolve through the un-suspend/lost paths.
+	 */
 	private void correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)
 	{
+		if (!config.sourcePricing())
+			return;
+
 		if (myLocation == null || !myLocation.equals(tile.getWorldLocation()))
 			return;
 
@@ -2502,7 +2510,7 @@ public class StockpilePlugin extends Plugin
 	{
 		pendingProcessingOutput.clear();
 		pendingDestroyedOutput = 0;
-		if (pendingItemDeltas.isEmpty())
+		if (!config.sourcePricing() || pendingItemDeltas.isEmpty())
 			return;
 
 		List<int[]> inputs = new ArrayList<>();
@@ -2626,6 +2634,9 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void queueTradeSuspension(Map<Integer, Integer> before, Map<Integer, Integer> after)
 	{
+		if (!config.sourcePricing())
+			return;
+
 		Set<Integer> ids = new HashSet<>(before.keySet());
 		ids.addAll(after.keySet());
 		for (int id : ids)
@@ -3014,17 +3025,27 @@ public class StockpilePlugin extends Plugin
 			handleGeEvent(e);
 	}
 
-	/** Applies one derived GE event: ledger a buy, suspend/realize/restore a sell, and record the buy limit. */
+	/**
+	 * Applies one derived GE event: ledger a buy, suspend/realize/restore a sell, and record
+	 * the buy limit. With Source-Based Pricing off, no new pricing state is created — buys
+	 * aren't ledgered (their additions price classically) and placements don't suspend (their
+	 * removals close classically at the average price) — while fills and cancels still drain
+	 * suspensions taken while the toggle was on, so nothing is stranded. Buy-limit tracking
+	 * is informational, not pricing, and stays on either way.
+	 */
 	private void handleGeEvent(GeOfferTracker.Event e)
 	{
 		if (e.kind == GeOfferTracker.Kind.BUY)
 		{
 			if (e.type == GeOfferTracker.Type.FILL)
 			{
-				pendingGeBuys.computeIfAbsent(e.itemId, k -> new ArrayDeque<>())
-						.addLast(new long[]{e.quantity, e.unitPrice});
 				recordBuyLimit(e.itemId, e.quantity);
-				scheduleGeStateSave();
+				if (config.sourcePricing())
+				{
+					pendingGeBuys.computeIfAbsent(e.itemId, k -> new ArrayDeque<>())
+							.addLast(new long[]{e.quantity, e.unitPrice});
+					scheduleGeStateSave();
+				}
 			}
 
 			return;
@@ -3033,7 +3054,9 @@ public class StockpilePlugin extends Plugin
 		switch (e.type)
 		{
 			case PLACED:
-				pendingSellSuspend.merge(e.itemId, e.quantity, Integer::sum);
+				if (config.sourcePricing())
+					pendingSellSuspend.merge(e.itemId, e.quantity, Integer::sum);
+
 				break;
 			case FILL:
 				realizeSell(e.itemId, e.quantity, e.unitPrice);
@@ -3063,7 +3086,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		int shortfall = qty - realized;
-		if (shortfall > 0)
+		if (shortfall > 0 && config.sourcePricing())
 			pendingSellRealize.computeIfAbsent(itemId, k -> new ArrayDeque<>())
 					.addLast(new long[]{shortfall, unitPrice});
 
@@ -3172,7 +3195,8 @@ public class StockpilePlugin extends Plugin
 	 */
 	private int consumeDeathLoss(TrackedItem tracked, int qty)
 	{
-		if (qty <= 0 || deathTick < 0 || client.getTickCount() - deathTick > DEATH_LOSS_WINDOW_TICKS)
+		if (qty <= 0 || !config.sourcePricing() || deathTick < 0
+				|| client.getTickCount() - deathTick > DEATH_LOSS_WINDOW_TICKS)
 			return qty;
 
 		tracked.setDeathSuspendedQuantity(tracked.getDeathSuspendedQuantity() + qty);
@@ -3519,9 +3543,22 @@ public class StockpilePlugin extends Plugin
 	 * cancelled-sell returns (units cancelled but not yet collected, which are still the
 	 * player's), so offline fills or cancels self-heal at login; released units are then
 	 * re-priced by {@link #reconcileAllQuantities}.
+	 *
+	 * <p>With Source-Based Pricing off no offer suspends: placements made while off were
+	 * already closed classically (re-suspending them would double-count), and any leftover
+	 * suspension from while the toggle was on zeroes here, letting the reconcile close those
+	 * lots at the average price — the classic removal semantics the toggle promises.
 	 */
 	private void reconcileSuspendedFromOffers()
 	{
+		if (!config.sourcePricing())
+		{
+			for (TrackedItem tracked : trackedItems.values())
+				tracked.setSuspendedQuantity(0);
+
+			return;
+		}
+
 		Map<Integer, Integer> openSell = new HashMap<>();
 		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
 		if (offers != null)
