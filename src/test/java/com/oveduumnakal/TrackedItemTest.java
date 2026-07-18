@@ -60,4 +60,18 @@ public class TrackedItemTest
 		assertEquals("open lots cover held plus suspended units",
 				t.getRecordQuantitySum(), t.getQuantity() + t.getTotalSuspendedQuantity());
 	}
+
+	@Test
+	public void suspendingUnitsIsValueNeutral()
+	{
+		TrackedItem t = itemWith(100, 125, new AcquisitionRecord(100, 100, null));
+		long before = t.getAvgValue() + t.getSuspendedValue() + t.getRealizedProceeds();
+
+		t.setQuantity(40);
+		t.setSuspendedQuantity(60);
+		long during = t.getAvgValue() + t.getSuspendedValue() + t.getRealizedProceeds();
+
+		assertEquals(7_500, t.getSuspendedValue());
+		assertEquals("moving units into an offer must not dent the running value", before, during);
+	}
 }
