@@ -659,7 +659,8 @@ public interface StockpileConfig extends Config
 			name = "Source-Based Pricing",
 			description = "Price quantity changes by how they occurred (GE offers, pickups, shops, alchemy...) "
 					+ "as those detectors arrive. Off restores classic pricing: the Auto Add price for "
-					+ "additions and the average price for removals.",
+					+ "additions and the average price for removals. Activity already in flight when "
+					+ "switched off (an open GE offer, an unrecovered death) still settles as detected.",
 			section = trackingSection,
 			position = 6
 	)
