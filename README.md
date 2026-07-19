@@ -9,10 +9,6 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
 ### Live Grand Exchange prices
 
-<p align="center">
-  <img src="docs/img/01-tracked-list.gif" alt="The Stockpile panel showing a tracked list with live prices, values, and daily changes">
-</p>
-
 - **Prices the moment you look**
 
   Every tracked item shows its current Grand Exchange and wiki prices, refreshed automatically. The plugin also remembers the last prices it saw, so you see real numbers the moment you log in instead of blank dashes.
@@ -21,7 +17,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   View-only mode lets you look up any item's prices and charts without adding it to your list.
 
-  <img src="docs/img/02-view-only.gif" alt="Looking up an item's prices and charts in view-only mode without tracking it">
+  <img src="docs/img/01-tracked-list.gif" alt="The Stockpile panel showing a tracked list with live prices, values, and daily changes" width="270"> <img src="docs/img/02-view-only.gif" alt="Looking up an item's prices and charts in view-only mode without tracking it" width="270">
 
 ### Track your items and your profit
 
