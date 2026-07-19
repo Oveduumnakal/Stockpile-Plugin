@@ -53,7 +53,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Every item has graphs of its price and how much of it is being traded, from one day back to a full year. Hover to read exact values, or pop a graph out into its own window for a bigger look.
 
-  <img src="docs/img/07-price-volume-charts.png" alt="Price and volume graphs in an item's detail view"> <img src="docs/img/08-chart-popout.gif" alt="A price chart popped out into its own resizable window next to the client" width="500">
+  <img src="docs/img/07-price-volume-charts.png" alt="Price and volume graphs in an item's detail view" width="30%"> <img src="docs/img/08-chart-popout.gif" alt="A price chart popped out into its own resizable window next to the client" width="68%">
 
 - **Watch your collection grow**
 
@@ -85,7 +85,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Pin your favourites to the top, group items into your own collapsible categories, or let the plugin sort everything into sensible groups with one click. You can also sort by name, value, profit, or how much the price moved today, or simply drag items into any order you like.
 
-  <img src="docs/img/13-categories-favourites.png" alt="The tracked list grouped into collapsible categories with favourites pinned on top"> <img src="docs/img/14-auto-categorize.gif" alt="One click on auto-categorize reorganizing the list into sensible groups" width="500">
+  <img src="docs/img/13-categories-favourites.png" alt="The tracked list grouped into collapsible categories with favourites pinned on top" width="30%"> <img src="docs/img/14-auto-categorize.gif" alt="One click on auto-categorize reorganizing the list into sensible groups" width="68%">
 
 - **Handle long lists**
 
@@ -125,7 +125,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Set alerts per item — for example "tell me when the price goes above 1,000" — on price, percent change, trade volume, or market ratings. Alerts arrive through RuneLite's normal notifications, and they can re-arm so you're told again the next time it happens.
 
-  <img src="docs/img/21-alert-editor.png" alt="The alert rule editor with a price threshold rule being set up"> <img src="docs/img/22-alert-firing.gif" alt="A RuneLite notification for a triggered price alert" width="500">
+  <img src="docs/img/21-alert-editor.png" alt="The alert rule editor with a price threshold rule being set up" width="30%"> <img src="docs/img/22-alert-firing.gif" alt="A RuneLite notification for a triggered price alert" width="68%">
 
 ## Links
 
