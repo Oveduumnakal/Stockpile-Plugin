@@ -9,7 +9,7 @@ Bug Fixes lists only bugs that shipped in a previous release; bugs introduced an
 fixed within the same release cycle are omitted, since users never saw them.
 -->
 
-# 1.4 - July 25 2026
+# 1.4 - July 18 2026
 
 ## Quick Overview
 
