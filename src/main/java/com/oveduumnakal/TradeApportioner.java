@@ -43,6 +43,10 @@ final class TradeApportioner
 	 * prices every leg at 0; legs whose combined market value is 0 split the gp
 	 * evenly per unit instead. Integer division truncates — the dust is ignored.
 	 *
+	 * <p>The proportional multiply is done in {@code double} so a max-cash {@code gp}
+	 * against a multi-billion leg value can't overflow {@code long} and wrap to a
+	 * negative per-unit price; a double's 53-bit mantissa covers gp magnitudes exactly.
+	 *
 	 * @return item id → per-unit price in gp
 	 */
 	static Map<Integer, Long> apportion(List<Leg> legs, long gp)
@@ -69,9 +73,10 @@ final class TradeApportioner
 
 		for (Leg leg : legs)
 		{
+			double legValue = (double) leg.unitValue * leg.quantity;
 			long share = totalValue > 0
-					? gp * (leg.unitValue * leg.quantity) / totalValue
-					: gp * leg.quantity / totalQuantity;
+					? (long) ((double) gp * legValue / totalValue)
+					: (long) ((double) gp * leg.quantity / totalQuantity);
 			prices.put(leg.itemId, share / leg.quantity);
 		}
 
