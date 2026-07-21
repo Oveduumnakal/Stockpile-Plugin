@@ -67,6 +67,36 @@ public class TradeApportionerTest
 		assertEquals(Long.valueOf(1_000), prices.get(2));
 	}
 
+	/**
+	 * Max-cash gp (~2.147e9) against a ~4.8e9 leg value (three 1.6b items) overflows a
+	 * {@code long} and wraps to a negative per-unit price in raw math; the double multiply
+	 * keeps it positive. One leg takes all the gp, so per-unit is {@code gp / 3}.
+	 */
+	@Test
+	public void maxCashAgainstMultiBillionLegDoesNotOverflow()
+	{
+		long gp = 2_147_000_000L;
+		Map<Integer, Long> prices = TradeApportioner.apportion(
+				List.of(new TradeApportioner.Leg(1, 3, 1_600_000_000L)), gp);
+		assertEquals(Long.valueOf(gp / 3), prices.get(1));
+		assertTrue(prices.get(1) > 0);
+	}
+
+	/** Splitting max-cash gp across two multi-billion legs stays positive and, being equal-valued, even. */
+	@Test
+	public void maxCashSplitsAcrossMultiBillionLegsStayPositive()
+	{
+		long gp = 2_147_000_000L;
+		Map<Integer, Long> prices = TradeApportioner.apportion(
+				List.of(
+						new TradeApportioner.Leg(1, 1, 2_000_000_000L),
+						new TradeApportioner.Leg(2, 1, 2_000_000_000L)),
+				gp);
+		assertTrue(prices.get(1) > 0);
+		assertTrue(prices.get(2) > 0);
+		assertEquals(prices.get(1), prices.get(2));
+	}
+
 	@Test
 	public void emptyLegsYieldNothing()
 	{
