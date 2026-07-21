@@ -94,6 +94,7 @@ public interface StockpileConfig extends Config
 	String KEY_PRESSURE_WINDOW = "buySellPressureWindow";
 	String KEY_PRICE_OVERVIEW_ROWS = "priceOverviewPreset";
 	String KEY_AUTO_ADD_ITEMS = "autoAddItems";
+	String KEY_FALLBACK_PRICING = "fallbackPricing";
 	String KEY_NOTIFICATION_STYLE = "notificationStyle";
 
 	String KEY_SHOW_GE_ESTIMATES = "showGeEstimates";
@@ -504,16 +505,29 @@ public interface StockpileConfig extends Config
 	@ConfigItem(
 			keyName = KEY_AUTO_ADD_ITEMS,
 			name = "Auto Add Items",
-			description = "Automatically add collection-log entries from inventory/bank changes, and the price "
-					+ "unknown-source changes buy in at (mobile/offline sessions and anything no detector "
-					+ "observed — observed sources like GE offers price themselves). High/Low/Avg use the "
-					+ "latest matching price, Zero buys in at 0, Off disables auto-adds (manual edits still work).",
+			description = "Automatically add collection-log entries from inventory/bank changes. When off, items "
+					+ "are only tracked once you add them yourself (manual edits still work). The price a change "
+					+ "with no observed source buys in at is set separately by \"Fallback Pricing\".",
 			section = detailViewSection,
 			position = 11
 	)
-	default AutoAddMode autoAddItems()
+	default boolean autoAddItems()
 	{
-		return AutoAddMode.AVG;
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_FALLBACK_PRICING,
+			name = "Fallback Pricing",
+			description = "The price an unknown-source change buys in at — mobile/offline sessions and anything no "
+					+ "detector observed (observed sources like GE offers price themselves). High/Low/Avg use the "
+					+ "latest matching price, Zero buys in at 0.",
+			section = detailViewSection,
+			position = 12
+	)
+	default FallbackPricing fallbackPricing()
+	{
+		return FallbackPricing.AVG;
 	}
 
 	@ConfigItem(
@@ -523,7 +537,7 @@ public interface StockpileConfig extends Config
 					+ "all item notifications; otherwise use the gear to choose how they are delivered. "
 					+ "Independent of \"Show Notifications\", which only controls where the rule editor appears.",
 			section = detailViewSection,
-			position = 12
+			position = 13
 	)
 	default Notification notificationStyle()
 	{
