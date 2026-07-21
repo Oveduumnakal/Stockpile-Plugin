@@ -512,6 +512,28 @@ public class StockpilePlugin extends Plugin
 		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_WHATS_NEW_DISMISSED, false);
 	}
 
+	/**
+	 * One-time migration for #219: the old combined {@code autoAddItems} enum
+	 * (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate
+	 * {@link FallbackPricing}. Rewrites a legacy enum name still stored under
+	 * {@link StockpileConfig#KEY_AUTO_ADD_ITEMS} as the boolean gate — Off becomes off,
+	 * every pricing value becomes on — and seeds {@link StockpileConfig#KEY_FALLBACK_PRICING}
+	 * from its pricing half (Off, which conflated the two and couldn't carry a pricing
+	 * choice, defaults to Avg). Idempotent: a value already migrated to a boolean, or a
+	 * fresh install with no value, is left untouched.
+	 */
+	private void migrateAutoAddSetting()
+	{
+		String legacy = configManager.getConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_AUTO_ADD_ITEMS);
+		FallbackPricing pricing = FallbackPricing.fromLegacyMode(legacy);
+		if (pricing == null)
+			return;
+
+		boolean autoAdd = !legacy.equals("OFF");
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_AUTO_ADD_ITEMS, autoAdd);
+		configManager.setConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_FALLBACK_PRICING, pricing);
+	}
+
 	/** @return whether the indicator should read "What's New" — within a week of first launch and not dismissed. */
 	private boolean isWhatsNew()
 	{
@@ -547,6 +569,7 @@ public class StockpilePlugin extends Plugin
 	{
 		changelog = Changelog.load();
 		detectVersionChange();
+		migrateAutoAddSetting();
 
 		panel = new StockpilePanel(
 				itemManager,
@@ -1778,7 +1801,7 @@ public class StockpilePlugin extends Plugin
 				if (!item.isCostBasisInitialized())
 				{
 					if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
-						addOpenAcquisition(item, item.getQuantity(), autoAddPrice(item),
+						addOpenAcquisition(item, item.getQuantity(), fallbackPrice(item),
 								AcquisitionSource.UNKNOWN);
 
 					item.setCostBasisInitialized(true);
@@ -2176,7 +2199,7 @@ public class StockpilePlugin extends Plugin
 
 		containerCounts.put(containerId, newCounts);
 
-		if (firstSync && containerId == InventoryID.BANK && config.autoAddItems() != AutoAddMode.OFF)
+		if (firstSync && containerId == InventoryID.BANK && config.autoAddItems())
 			reconcileAllQuantities();
 
 		refreshPanel();
@@ -2651,13 +2674,12 @@ public class StockpilePlugin extends Plugin
 				&& itemManager.getItemPrice(itemId) <= 0;
 	}
 
-	/** @return an untracked processing input's per-unit value under the fallback (Auto Add) policy. */
+	/** @return an untracked processing input's per-unit value under the configured fallback pricing. */
 	private long untrackedInputValue(int itemId)
 	{
-		switch (config.autoAddItems())
+		switch (config.fallbackPricing())
 		{
 			case ZERO:
-			case OFF:
 				return 0;
 			default:
 				return itemManager.getItemPrice(itemId);
@@ -3234,7 +3256,7 @@ public class StockpilePlugin extends Plugin
 			if (remaining > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
-				addOpenAcquisition(tracked, remaining, a.unitPriceOr(autoAddPrice(tracked)), a.source());
+				addOpenAcquisition(tracked, remaining, a.unitPriceOr(fallbackPrice(tracked)), a.source());
 			}
 		}
 		else
@@ -3748,10 +3770,13 @@ public class StockpilePlugin extends Plugin
 		return sourceAttribution.attribute(itemId, quantity, client.getTickCount());
 	}
 
-	/** @return the cost-basis price to seed an auto-added lot with, per the configured {@link AutoAddMode}. */
-	private long autoAddPrice(TrackedItem tracked)
+	/**
+	 * @return the cost-basis price to seed an unknown-source change with (an auto-add or any
+	 * delta no detector observed), per the configured {@link FallbackPricing}.
+	 */
+	private long fallbackPrice(TrackedItem tracked)
 	{
-		switch (config.autoAddItems())
+		switch (config.fallbackPricing())
 		{
 			case HIGH:
 				return tracked.getHighPrice();
@@ -3760,7 +3785,6 @@ public class StockpilePlugin extends Plugin
 			case ZERO:
 				return 0;
 			case AVG:
-			case OFF:
 			default:
 				return tracked.getAvgPrice();
 		}
@@ -3936,7 +3960,7 @@ public class StockpilePlugin extends Plugin
 
 		Map<Integer, Integer> deltas = new HashMap<>(pendingItemDeltas);
 		pendingItemDeltas.clear();
-		if (config.autoAddItems() == AutoAddMode.OFF || trackedItems.isEmpty())
+		if (!config.autoAddItems() || trackedItems.isEmpty())
 			return;
 
 		boolean changed = false;
@@ -4009,7 +4033,7 @@ public class StockpilePlugin extends Plugin
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
-				addOpenAcquisition(tracked, logDelta, autoAddPrice(tracked), AcquisitionSource.UNKNOWN);
+				addOpenAcquisition(tracked, logDelta, fallbackPrice(tracked), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
 			else if (logDelta < 0)
