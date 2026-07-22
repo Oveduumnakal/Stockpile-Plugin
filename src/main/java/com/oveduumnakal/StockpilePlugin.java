@@ -215,6 +215,26 @@ public class StockpilePlugin extends Plugin
 			InventoryID.BARBARIAN_KNAPSACK
 	);
 
+	/**
+	 * Reward/loot containers that hand out free loot into the inventory (#215). These are not
+	 * tracked as holdings — they are transient interfaces — but an inventory gain while one is
+	 * open marks that gain as a zero-cost {@link AcquisitionSource#REWARD} rather than Unknown.
+	 * Point-spending reward shops are deliberately excluded (their withdrawals are purchases,
+	 * not free loot). The object-search rewards that loot straight to the inventory with no
+	 * reward container — the Huntsman's loot sack, Tempoross reward pool and GOTR reward
+	 * guardian — are not covered here; they need a menu/chat hook confirmed against a live client.
+	 */
+	private static final ImmutableSet<Integer> REWARD_CONTAINERS = ImmutableSet.of(
+			InventoryID.TRAWLER_REWARDINV,
+			InventoryID.TRAIL_REWARDINV,
+			InventoryID.RAIDS_REWARDS,
+			InventoryID.TOB_CHESTS,
+			InventoryID.TOA_CHESTS,
+			InventoryID.COLOSSEUM_REWARDS,
+			InventoryID.PMOON_REWARDINV,
+			InventoryID.DOM_LOOTPILE
+	);
+
 	private final Map<Integer, TrackedItem> trackedItems = new LinkedHashMap<>();
 
 	/** Ordered user-defined categories (names + collapsed state); the source of truth for category order. */
@@ -299,6 +319,9 @@ public class StockpilePlugin extends Plugin
 
 	/** The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). */
 	private int gatherXpTick = -1;
+
+	/** The tick a reward/loot container last changed, marking a matching inventory gain as a free reward (#215). */
+	private int rewardContainerTick = -1;
 
 	/**
 	 * The tick a fur/meat hunting pouch was "Fill"ed from the inventory, so the matching
@@ -2231,6 +2254,9 @@ public class StockpilePlugin extends Plugin
 			return;
 		}
 
+		if (REWARD_CONTAINERS.contains(containerId))
+			rewardContainerTick = client.getTickCount();
+
 		if (!TRACKED_CONTAINERS.contains(containerId))
 			return;
 
@@ -2288,6 +2314,7 @@ public class StockpilePlugin extends Plugin
 			pendingQuantitySync = false;
 			correlateProcessing();
 			correlateGathering();
+			correlateReward();
 			syncQuantitiesFromContainers();
 		}
 
@@ -2761,6 +2788,33 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
+	 * Claims this tick's tracked inventory gains as a free {@link AcquisitionSource#REWARD} at 0
+	 * when a reward/loot container ({@link #REWARD_CONTAINERS}) changed on the same tick — i.e.
+	 * loot taken from a raids chest, clue casket, reward pool or similar (#215). Runs after
+	 * {@link #correlateGathering} (a paired recipe output already queued in
+	 * {@code pendingProcessingOutput} is skipped and keeps its transferred basis) and before the
+	 * quantity sync consumes the deltas. A gain with no reward-container change this tick stays
+	 * unclaimed and takes the unknown-source path. Coins never participate. Gated by the
+	 * Source-Based Pricing toggle.
+	 */
+	private void correlateReward()
+	{
+		if (!config.sourcePricing() || client.getTickCount() - rewardContainerTick > 1 || pendingItemDeltas.isEmpty())
+			return;
+
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+				continue;
+
+			if (isTracked(itemId))
+				sourceAttribution.claim(AcquisitionSource.REWARD, itemId, delta, 0, client.getTickCount());
+		}
+	}
+
+	/**
 	 * @return whether {@code itemId} is a worthless destroyed processing product — a
 	 * non-tradeable item (absent from the GE mapping) with no market value, such as burnt
 	 * food or a crushed gem. Requires the mapping to have loaded so a genuine tradeable
@@ -3120,6 +3174,7 @@ public class StockpilePlugin extends Plugin
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					gatherXpTick = -1;
+					rewardContainerTick = -1;
 					pouchFillTick = -1;
 					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();

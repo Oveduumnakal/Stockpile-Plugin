@@ -47,6 +47,7 @@ class SourceGlyphRenderer extends DefaultTableCellRenderer
 		icons.put(AcquisitionSource.GE_TRADE, icon("source_ge.png"));
 		icons.put(AcquisitionSource.GROUND, icon("source_ground.png"));
 		icons.put(AcquisitionSource.GATHER, icon("source_gather.png"));
+		icons.put(AcquisitionSource.REWARD, icon("source_reward.png"));
 		icons.put(AcquisitionSource.PLAYER_TRADE, icon("source_trade.png"));
 		icons.put(AcquisitionSource.SHOP, icon("source_shop.png"));
 		icons.put(AcquisitionSource.ALCHEMY, icon("source_alchemy.png"));
