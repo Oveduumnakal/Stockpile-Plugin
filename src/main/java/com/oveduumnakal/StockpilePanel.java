@@ -1296,10 +1296,7 @@ public class StockpilePanel extends PluginPanel
 			return;
 		}
 
-		Map<Integer, long[]> snapshot = new HashMap<>();
-		for (TrackedItem item : items)
-			if (item.hasLivePrices())
-				snapshot.put(item.getItemId(), new long[]{item.getQuantity(), item.getAvgPrice()});
+		Map<Integer, long[]> snapshot = liveSessionSnapshot(items);
 
 		if (snapshot.isEmpty())
 		{
@@ -1325,6 +1322,23 @@ public class StockpilePanel extends PluginPanel
 				+ "<i>click to reset</i></html>";
 		Stream.of(sessionRow, sessionLabel, sessionValueLabel).forEach(component -> component.setToolTipText(tooltip));
 		sessionRow.setVisible(true);
+	}
+
+	/**
+	 * Builds the session baseline snapshot (item id → [quantity, avg price]) from only the
+	 * items whose prices came from a live fetch. Cache-hydrated prices are excluded so
+	 * overnight market movement, restored from the persisted cache on login, never seeds
+	 * the baseline and reads as session profit. An empty result means the session row stays
+	 * hidden until real live prices arrive.
+	 */
+	static Map<Integer, long[]> liveSessionSnapshot(List<TrackedItem> items)
+	{
+		Map<Integer, long[]> snapshot = new HashMap<>();
+		for (TrackedItem item : items)
+			if (item.hasLivePrices())
+				snapshot.put(item.getItemId(), new long[]{item.getQuantity(), item.getAvgPrice()});
+
+		return snapshot;
 	}
 
 	/** Re-baselines the session to the current holdings, so "Session:" restarts from zero. */
