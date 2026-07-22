@@ -5,7 +5,7 @@ class AcquisitionRecord {
   soldAt: Long
   source: AcquisitionSource
 }
-enum AcquisitionSource { UNKNOWN, MANUAL, GE_TRADE, GROUND, PLAYER_TRADE, SHOP, ALCHEMY, PROCESSING, BURNED, CRUSHED, DEATH }
+enum AcquisitionSource { UNKNOWN, MANUAL, GE_TRADE, GROUND, GATHER, PLAYER_TRADE, SHOP, ALCHEMY, PROCESSING, BURNED, CRUSHED, DEATH }
 class CachedPrice {
   avg: long
   high: long

@@ -24,6 +24,9 @@ enum AcquisitionSource
 	/** Picked up from or dropped on the ground, priced at 0. */
 	GROUND("Ground"),
 
+	/** Gathered from the world via a skill (Hunter, Mining, Fishing, …), priced at 0. */
+	GATHER("Gather"),
+
 	/** Exchanged in a player trade, priced by apportioning the trade's gp. */
 	PLAYER_TRADE("Trade"),
 

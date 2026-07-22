@@ -272,11 +272,18 @@ public class StockpilePlugin extends Plugin
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
 			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC);
 
+	/** Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213). */
+	private static final Set<Skill> GATHERING_SKILLS = ImmutableSet.of(
+			Skill.HUNTER, Skill.MINING, Skill.FISHING, Skill.WOODCUTTING, Skill.FARMING);
+
 	/** Per-skill XP as last seen, so a StatChanged can be classified as a real XP gain. */
 	private final Map<Skill, Integer> lastSkillXp = new EnumMap<>(Skill.class);
 
 	/** The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. */
 	private int processingXpTick = -1;
+
+	/** The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). */
+	private int gatherXpTick = -1;
 
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
@@ -2219,6 +2226,7 @@ public class StockpilePlugin extends Plugin
 		{
 			pendingQuantitySync = false;
 			correlateProcessing();
+			correlateGathering();
 			syncQuantitiesFromContainers();
 		}
 
@@ -2566,7 +2574,7 @@ public class StockpilePlugin extends Plugin
 		}
 	}
 
-	/** Marks the tick of processing-skill XP gains, identifying recipe actions for #69. */
+	/** Marks the tick of processing-skill XP gains (recipe actions, #69) and gathering-skill XP gains (#213). */
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
@@ -2576,6 +2584,9 @@ public class StockpilePlugin extends Plugin
 
 		if (PROCESSING_SKILLS.contains(event.getSkill()))
 			processingXpTick = client.getTickCount();
+
+		if (GATHERING_SKILLS.contains(event.getSkill()))
+			gatherXpTick = client.getTickCount();
 	}
 
 	/**
@@ -2659,6 +2670,33 @@ public class StockpilePlugin extends Plugin
 
 		if (trackedOutput && outputQty > 0)
 			pendingProcessingOutput.put(outputId, totalCost);
+	}
+
+	/**
+	 * Attributes this tick's unclaimed inventory gains to {@link AcquisitionSource#GATHER} at
+	 * 0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks
+	 * them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores,
+	 * fish, logs, harvested herbs. Runs after {@link #correlateProcessing} (so a paired recipe
+	 * output, already queued in {@code pendingProcessingOutput}, is skipped and keeps its
+	 * transferred basis) and before the quantity sync consumes the deltas. A gain with no
+	 * gathering XP this tick stays unclaimed and takes the unknown-source path. Coins never
+	 * participate. Gated by the Source-Based Pricing toggle.
+	 */
+	private void correlateGathering()
+	{
+		if (!config.sourcePricing() || client.getTickCount() - gatherXpTick > 1 || pendingItemDeltas.isEmpty())
+			return;
+
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+				continue;
+
+			if (isTracked(itemId))
+				sourceAttribution.claim(AcquisitionSource.GATHER, itemId, delta, 0, client.getTickCount());
+		}
 	}
 
 	/**
@@ -2995,6 +3033,7 @@ public class StockpilePlugin extends Plugin
 					pendingTradeUnsuspend.clear();
 					lastSkillXp.clear();
 					processingXpTick = -1;
+					gatherXpTick = -1;
 					pendingProcessingOutput.clear();
 					pendingDestroyedOutput = 0;
 					deathTick = -1;
