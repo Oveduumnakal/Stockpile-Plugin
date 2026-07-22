@@ -19,6 +19,12 @@ every Java source file:
  11. Every class/interface/enum declaration (including nested) carries Javadoc.
  12. No plain `/* ... */` block comments — the only permitted block comments
      are `/**` Javadoc and the license header opening on line 1.
+ 13. No access-bypass reflection (RuneLite plugin guideline): `setAccessible`,
+     `sun.misc.Unsafe`/`jdk.internal.*`, reflective `getDeclaredMethod`/
+     `getDeclaredConstructor` lookups, or `Class.forName`. Gson `TypeToken`
+     generics (`java.lang.reflect.Type`/`ParameterizedType`) and the schema
+     snapshot test's structural `getDeclaredFields()` inspection are deliberately
+     exempt — they read type/field shape, they don't defeat access modifiers.
 
 Exits non-zero listing every violation, or prints a summary and exits zero.
 """
@@ -30,6 +36,19 @@ import glob
 TAB = 4
 MAX_WIDTH = 120
 CONTROL = r'(?:if|for|while|switch|synchronized)'
+
+# Reflection primitives that bypass access control or the constructor contract.
+# Structural inspection (getDeclaredFields/Modifier) and TypeToken generics are
+# intentionally absent — see rule 13 in the module docstring.
+REFLECTION_BANS = [
+    (r'\bimport\s+sun\.misc\.', 'sun.misc'),
+    (r'\bsun\.misc\.Unsafe\b', 'sun.misc.Unsafe'),
+    (r'\bimport\s+jdk\.internal\.', 'jdk.internal'),
+    (r'\.setAccessible\s*\(', 'setAccessible'),
+    (r'\bClass\.forName\s*\(', 'Class.forName'),
+    (r'\.getDeclaredMethod\s*\(', 'getDeclaredMethod'),
+    (r'\.getDeclaredConstructor\s*\(', 'getDeclaredConstructor'),
+]
 
 violations = []
 
@@ -193,6 +212,11 @@ def check_file(path):
 
         if re.match(r'^import .*\*;$', code.strip()):
             report(path, i, 'wildcard-import', raw)
+
+        for pattern, name in REFLECTION_BANS:
+            if re.search(pattern, code):
+                report(path, i, 'reflection', f"{name}: {raw}")
+                break
 
         if '//' in line and not allowed_empty_catch_note(lines, i - 1):
             report(path, i, 'inline-comment', raw)
