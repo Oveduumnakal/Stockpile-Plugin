@@ -41,6 +41,7 @@ public class TrackedItem
 	private long highPrice;
 	private long lowPrice;
 	private long avgPrice;
+	private transient boolean priceCacheHydrated;
 
 	private long latestHighTime;
 	private long latestLowTime;
@@ -189,6 +190,12 @@ public class TrackedItem
 	public boolean hasPrices()
 	{
 		return highPrice > 0 || lowPrice > 0;
+	}
+
+	/** @return whether this item has prices from a live fetch rather than persisted cache hydration. */
+	public boolean hasLivePrices()
+	{
+		return hasPrices() && !priceCacheHydrated;
 	}
 
 	/** @return total gp paid for the lots still held (unsold acquisitions). */
