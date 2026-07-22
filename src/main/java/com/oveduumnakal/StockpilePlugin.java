@@ -276,6 +276,21 @@ public class StockpilePlugin extends Plugin
 	private static final Set<Skill> GATHERING_SKILLS = ImmutableSet.of(
 			Skill.HUNTER, Skill.MINING, Skill.FISHING, Skill.WOODCUTTING, Skill.FARMING);
 
+	/** Menu option that stores held furs/meats into an open hunting pouch (#214). */
+	private static final String POUCH_FILL_OPTION = "Fill";
+
+	/** Substrings identifying a fur/meat hunting pouch as the "Fill" menu target, across sizes (#214). */
+	private static final Set<String> POUCH_TARGETS = ImmutableSet.of("fur pouch", "meat pouch");
+
+	/**
+	 * Chat lines emitted when a hunting pouch is emptied to the bank — the per-pouch
+	 * "Empty" deposit (SPAM) and the bank's "Empty containers" button (GAMEMESSAGE).
+	 * Neither the pouch container nor a varbit changes, so these are the only signal (#214).
+	 */
+	private static final String POUCH_DEPOSIT_PREFIX = "You deposit some ";
+	private static final String POUCH_DEPOSIT_SUFFIX = " into your bank.";
+	private static final String EMPTY_CONTAINERS_MESSAGE = "You empty all of your containers into the bank.";
+
 	/** Per-skill XP as last seen, so a StatChanged can be classified as a real XP gain. */
 	private final Map<Skill, Integer> lastSkillXp = new EnumMap<>(Skill.class);
 
@@ -284,6 +299,20 @@ public class StockpilePlugin extends Plugin
 
 	/** The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). */
 	private int gatherXpTick = -1;
+
+	/**
+	 * The tick a fur/meat hunting pouch was "Fill"ed from the inventory, so the matching
+	 * container removal suspends the moved lots (keeping source + basis) rather than
+	 * closing them as a loss (#214).
+	 */
+	private int pouchFillTick = -1;
+
+	/**
+	 * The tick a fur/meat hunting pouch was emptied to the bank, so the matching bank
+	 * gain first un-suspends previously-filled lots and books only the surplus as a free
+	 * {@code GATHER} (directly-caught furs) rather than an unknown-source purchase (#214).
+	 */
+	private int pouchDepositTick = -1;
 
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
@@ -846,6 +875,7 @@ public class StockpilePlugin extends Plugin
 		boolean onOverlay;
 		int deathSuspendedQuantity;
 		Long deathSuspendedAt;
+		int pouchSuspendedQuantity;
 	}
 
 	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
@@ -885,6 +915,7 @@ public class StockpilePlugin extends Plugin
 							p.notificationsInitialized, p.costBasisInitialized, false, false, TrackItemMode.TRACK);
 						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
 						applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
+						applyPersistedPouchSuspension(p.itemId, p.pouchSuspendedQuantity);
 					}
 				}
 
@@ -937,6 +968,27 @@ public class StockpilePlugin extends Plugin
 			tracked.setDeathSuspendedAt(suspendedAtEpoch == null
 					? Instant.now()
 					: Instant.ofEpochSecond(suspendedAtEpoch));
+		});
+	}
+
+	/**
+	 * Restores a persisted fur/meat-pouch suspension after its item has been added, so
+	 * furs "Fill"ed in before a logout still un-suspend (keeping their original source
+	 * and basis) when the pouch is emptied in a later session (#214).
+	 * Client-thread-deferred like {@link #applyPersistedGrouping}.
+	 */
+	private void applyPersistedPouchSuspension(int itemId, int quantity)
+	{
+		if (quantity <= 0)
+			return;
+
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+				return;
+
+			tracked.setPouchSuspendedQuantity(quantity);
 		});
 	}
 
@@ -1004,6 +1056,7 @@ public class StockpilePlugin extends Plugin
 			p.deathSuspendedAt = item.getDeathSuspendedAt() == null
 					? null
 					: item.getDeathSuspendedAt().getEpochSecond();
+			p.pouchSuspendedQuantity = item.getPouchSuspendedQuantity();
 			list.add(p);
 		}
 
@@ -2069,6 +2122,12 @@ public class StockpilePlugin extends Plugin
 		if (target == null || event.getItemId() <= 0)
 			return;
 
+		if (POUCH_FILL_OPTION.equals(event.getMenuOption()) && isPouchTarget(target))
+		{
+			pouchFillTick = client.getTickCount();
+			return;
+		}
+
 		boolean high = target.contains("High Level Alchemy");
 		if (!high && !target.contains("Low Level Alchemy"))
 			return;
@@ -2780,6 +2839,31 @@ public class StockpilePlugin extends Plugin
 	{
 		if (event.getType() == ChatMessageType.TRADE && "Accepted trade.".equals(event.getMessage()))
 			registerTradeClaims();
+
+		if (isPouchDepositMessage(event.getMessage()))
+			pouchDepositTick = client.getTickCount();
+	}
+
+	/**
+	 * @return whether a chat line signals a hunting pouch emptying into the bank — either the
+	 *         per-pouch "Empty" deposit ("You deposit some &lt;fur/meat&gt; into your bank.") or
+	 *         the bank's "Empty containers" button. Only pouch emptying produces these lines; a
+	 *         normal manual bank deposit is silent, so there is no false positive (#214).
+	 */
+	private static boolean isPouchDepositMessage(String message)
+	{
+		if (message == null)
+			return false;
+
+		return EMPTY_CONTAINERS_MESSAGE.equals(message)
+				|| (message.startsWith(POUCH_DEPOSIT_PREFIX) && message.endsWith(POUCH_DEPOSIT_SUFFIX));
+	}
+
+	/** @return whether a "Fill" menu target names a fur/meat hunting pouch (any size) (#214). */
+	private static boolean isPouchTarget(String target)
+	{
+		String lower = target.toLowerCase();
+		return POUCH_TARGETS.stream().anyMatch(lower::contains);
 	}
 
 	/**
@@ -3034,6 +3118,8 @@ public class StockpilePlugin extends Plugin
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					gatherXpTick = -1;
+					pouchFillTick = -1;
+					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();
 					pendingDestroyedOutput = 0;
 					deathTick = -1;
@@ -3291,7 +3377,14 @@ public class StockpilePlugin extends Plugin
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeDeathUnsuspend(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
+			remaining = consumePouchUnsuspend(tracked, remaining);
 			remaining = consumeProcessingOutput(tracked, remaining);
+			if (remaining > 0 && isPouchDepositTick())
+			{
+				addOpenAcquisition(tracked, remaining, 0, AcquisitionSource.GATHER);
+				remaining = 0;
+			}
+
 			if (remaining > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
@@ -3300,7 +3393,8 @@ public class StockpilePlugin extends Plugin
 		}
 		else
 		{
-			int mag = consumeTradeSuspend(tracked, -delta);
+			int mag = consumePouchSuspend(tracked, -delta);
+			mag = consumeTradeSuspend(tracked, mag);
 			mag = consumeSellSuspend(tracked, mag);
 			mag = consumeGroundSuspend(tracked, mag);
 			mag = consumeDeathLoss(tracked, mag);
@@ -3490,6 +3584,47 @@ public class StockpilePlugin extends Plugin
 
 		tracked.setGroundSuspendedQuantity(suspended - restore);
 		return qty - restore;
+	}
+
+	/**
+	 * Moves a removal into fur/meat-pouch suspension when it lands on the tick the pouch was
+	 * "Fill"ed — the units left the inventory into the pouch but stay owned, lots (and their
+	 * original source/basis) intact, until the pouch is emptied. Consumes the whole removal,
+	 * since a Fill click's only container effect is the furs/meats leaving the inventory.
+	 * Returns the unconsumed remainder (0 while the fill tick is live) (#214).
+	 */
+	private int consumePouchSuspend(TrackedItem tracked, int qty)
+	{
+		if (qty <= 0 || !config.sourcePricing() || pouchFillTick < 0
+				|| client.getTickCount() - pouchFillTick > 1)
+			return qty;
+
+		tracked.setPouchSuspendedQuantity(tracked.getPouchSuspendedQuantity() + qty);
+		return 0;
+	}
+
+	/**
+	 * Restores an addition from fur/meat-pouch suspension on an empty-to-bank tick, up to what
+	 * was filled in — those units re-enter tracked containers as the net no-op that reopens no
+	 * lot, keeping their original source and basis. Any surplus beyond the suspended amount is
+	 * left for the caller to book as freshly-gathered {@code GATHER}. Returns the unconsumed
+	 * remainder (#214).
+	 */
+	private int consumePouchUnsuspend(TrackedItem tracked, int qty)
+	{
+		int suspended = tracked.getPouchSuspendedQuantity();
+		if (qty <= 0 || suspended <= 0 || !isPouchDepositTick())
+			return qty;
+
+		int restore = Math.min(qty, suspended);
+		tracked.setPouchSuspendedQuantity(suspended - restore);
+		return qty - restore;
+	}
+
+	/** @return whether a fur/meat pouch was emptied to the bank on (or one tick before) this tick (#214). */
+	private boolean isPouchDepositTick()
+	{
+		return config.sourcePricing() && pouchDepositTick >= 0 && client.getTickCount() - pouchDepositTick <= 1;
 	}
 
 	/**

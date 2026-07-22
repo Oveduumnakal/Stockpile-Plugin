@@ -99,6 +99,18 @@ public class TrackedItem
 	 */
 	private transient int tradeSuspendedQuantity;
 
+	/**
+	 * Units moved into a fur/meat hunting pouch and still considered owned: gone from
+	 * held containers the moment they were "Fill"ed in, but their lots stay open (cost
+	 * basis and original source intact) until the pouch is emptied to the bank, which
+	 * un-suspends them as a net no-op. Any surplus emptied beyond what was filled is
+	 * newly-gathered ({@code GATHER}). Survives relogs — the pouch keeps its contents
+	 * across a logout — so it is persisted explicitly through {@code PersistedItem}
+	 * (transient here so Gson never touches it directly). Legacy records default to 0
+	 * (nothing parked in a pouch), the safe additive default (#214).
+	 */
+	private transient int pouchSuspendedQuantity;
+
 	/** Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). */
 	private transient int limitBought;
 
@@ -228,13 +240,14 @@ public class TrackedItem
 	}
 
 	/**
-	 * @return units suspended across every source (GE sell, trade, ground, death):
-	 *         owned and still covered by open lots, but held outside the containers
-	 *         that {@code quantity} counts
+	 * @return units suspended across every source (GE sell, trade, ground, death,
+	 *         hunting pouch): owned and still covered by open lots, but held outside
+	 *         the containers that {@code quantity} counts
 	 */
 	public int getTotalSuspendedQuantity()
 	{
-		return suspendedQuantity + tradeSuspendedQuantity + groundSuspendedQuantity + deathSuspendedQuantity;
+		return suspendedQuantity + tradeSuspendedQuantity + groundSuspendedQuantity + deathSuspendedQuantity
+				+ pouchSuspendedQuantity;
 	}
 
 	/**

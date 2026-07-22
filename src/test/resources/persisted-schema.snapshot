@@ -42,6 +42,7 @@ class PersistedItem {
   notifications: List<NotificationRule>
   notificationsInitialized: boolean
   onOverlay: boolean
+  pouchSuspendedQuantity: int
   quantity: int
 }
 enum TimeWindow { NONE, LIVE, M5, H1, H3, H6, H12, H24, WEEK, MONTH, MONTH3, MONTH6, YEAR }
