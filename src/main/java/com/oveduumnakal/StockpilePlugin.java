@@ -221,8 +221,9 @@ public class StockpilePlugin extends Plugin
 	 * open marks that gain as a zero-cost {@link AcquisitionSource#REWARD} rather than Unknown.
 	 * Point-spending reward shops are deliberately excluded (their withdrawals are purchases,
 	 * not free loot). The object-search rewards that loot straight to the inventory with no
-	 * reward container — the Huntsman's loot sack, Tempoross reward pool and GOTR reward
-	 * guardian — are not covered here; they need a menu/chat hook confirmed against a live client.
+	 * reward container are handled elsewhere: the Huntsman's loot sack via a menu hook
+	 * ({@link #LOOT_SACK_OPTION}) and the Tempoross reward pool via a chat hook
+	 * ({@link #REWARD_LOOT_PREFIX}).
 	 */
 	private static final ImmutableSet<Integer> REWARD_CONTAINERS = ImmutableSet.of(
 			InventoryID.TRAWLER_REWARDINV,
@@ -234,6 +235,27 @@ public class StockpilePlugin extends Plugin
 			InventoryID.PMOON_REWARDINV,
 			InventoryID.DOM_LOOTPILE
 	);
+
+	/**
+	 * Menu option and target substring for the Huntsman's loot sack, whose contents land in
+	 * the inventory with no reward {@link ItemContainer} to observe. Live capture confirmed the
+	 * loot arrives on the same tick as the "Open" click, so stamping {@link #rewardContainerTick}
+	 * here lets {@link #correlateReward()} claim it within the existing window (#215). The Tempoross
+	 * reward pool and GOTR reward guardian remain deferred pending their own live capture.
+	 */
+	private static final String LOOT_SACK_OPTION = "Open";
+	private static final String LOOT_SACK_TARGET = "loot sack";
+
+	/**
+	 * Chat-line prefix for the generic "loot to inventory" reward message ("You found some loot:
+	 * N x Item"). The Tempoross reward pool (Net/Big-search) drops loot straight into the inventory
+	 * with no reward {@link ItemContainer} and its object-search click lands three ticks before the
+	 * loot; live capture (#215) confirmed this SPAM line fires on the same tick as the inventory
+	 * gains, so stamping {@link #rewardContainerTick} here lets {@link #correlateReward()} claim the
+	 * whole multi-item drop within the existing window. Other activities that surface reward loot
+	 * through the same message (e.g. the GOTR reward guardian) are covered by the same hook.
+	 */
+	private static final String REWARD_LOOT_PREFIX = "You found some loot:";
 
 	private final Map<Integer, TrackedItem> trackedItems = new LinkedHashMap<>();
 
@@ -2153,6 +2175,13 @@ public class StockpilePlugin extends Plugin
 			return;
 		}
 
+		if (LOOT_SACK_OPTION.equals(event.getMenuOption())
+				&& target.toLowerCase().contains(LOOT_SACK_TARGET))
+		{
+			rewardContainerTick = client.getTickCount();
+			return;
+		}
+
 		boolean high = target.contains("High Level Alchemy");
 		if (!high && !target.contains("Low Level Alchemy"))
 			return;
@@ -2769,10 +2798,18 @@ public class StockpilePlugin extends Plugin
 	 * transferred basis) and before the quantity sync consumes the deltas. A gain with no
 	 * gathering XP this tick stays unclaimed and takes the unknown-source path. Coins never
 	 * participate. Gated by the Source-Based Pricing toggle.
+	 *
+	 * <p>Yields to {@link #correlateReward}: when a reward-loot signal ({@link #rewardContainerTick})
+	 * fired this tick, the gains are reward loot, not gathered — some reward interactions (e.g. the
+	 * Tempoross reward pool) also grant gathering XP on the same tick, which would otherwise let a
+	 * GATHER claim win the FIFO over the correct REWARD one (#215).
 	 */
 	private void correlateGathering()
 	{
 		if (!config.sourcePricing() || client.getTickCount() - gatherXpTick > 1 || pendingItemDeltas.isEmpty())
+			return;
+
+		if (client.getTickCount() - rewardContainerTick <= 1)
 			return;
 
 		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
@@ -2789,13 +2826,14 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Claims this tick's tracked inventory gains as a free {@link AcquisitionSource#REWARD} at 0
-	 * when a reward/loot container ({@link #REWARD_CONTAINERS}) changed on the same tick — i.e.
-	 * loot taken from a raids chest, clue casket, reward pool or similar (#215). Runs after
-	 * {@link #correlateGathering} (a paired recipe output already queued in
-	 * {@code pendingProcessingOutput} is skipped and keeps its transferred basis) and before the
-	 * quantity sync consumes the deltas. A gain with no reward-container change this tick stays
-	 * unclaimed and takes the unknown-source path. Coins never participate. Gated by the
-	 * Source-Based Pricing toggle.
+	 * when a reward-loot signal fired on the same tick ({@link #rewardContainerTick}) — a reward/loot
+	 * container change ({@link #REWARD_CONTAINERS}), a Huntsman's loot-sack open, or a "you found some
+	 * loot" chat line — i.e. loot taken from a raids chest, clue casket, reward pool or similar (#215).
+	 * Takes precedence over {@link #correlateGathering}, which yields when this signal is present so a
+	 * coincident gathering-XP tick can't mislabel the loot. Runs before the quantity sync consumes the
+	 * deltas; a paired recipe output already queued in {@code pendingProcessingOutput} is skipped and
+	 * keeps its transferred basis. A gain with no reward signal this tick stays unclaimed and takes the
+	 * unknown-source path. Coins never participate. Gated by the Source-Based Pricing toggle.
 	 */
 	private void correlateReward()
 	{
@@ -2898,6 +2936,9 @@ public class StockpilePlugin extends Plugin
 
 		if (isPouchDepositMessage(event.getMessage()))
 			pouchDepositTick = client.getTickCount();
+
+		if (event.getMessage() != null && event.getMessage().startsWith(REWARD_LOOT_PREFIX))
+			rewardContainerTick = client.getTickCount();
 	}
 
 	/**
