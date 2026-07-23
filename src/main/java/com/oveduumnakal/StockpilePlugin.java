@@ -312,7 +312,8 @@ public class StockpilePlugin extends Plugin
 
 	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
-			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC);
+			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC,
+			Skill.RUNECRAFT);
 
 	/** Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213). */
 	private static final Set<Skill> GATHERING_SKILLS = ImmutableSet.of(
