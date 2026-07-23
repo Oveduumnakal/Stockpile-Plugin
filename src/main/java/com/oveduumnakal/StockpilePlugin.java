@@ -345,6 +345,9 @@ public class StockpilePlugin extends Plugin
 	/** The tick a reward/loot container last changed, marking a matching inventory gain as a free reward (#215). */
 	private int rewardContainerTick = -1;
 
+	/** The tick of the most recent Thieving XP gain, marking a gain as free stolen loot (#217). */
+	private int thievingXpTick = -1;
+
 	/**
 	 * The tick a fur/meat hunting pouch was "Fill"ed from the inventory, so the matching
 	 * container removal suspends the moved lots (keeping source + basis) rather than
@@ -2344,6 +2347,7 @@ public class StockpilePlugin extends Plugin
 			correlateProcessing();
 			correlateGathering();
 			correlateReward();
+			correlateThieving();
 			syncQuantitiesFromContainers();
 		}
 
@@ -2691,7 +2695,10 @@ public class StockpilePlugin extends Plugin
 		}
 	}
 
-	/** Marks the tick of processing-skill XP gains (recipe actions, #69) and gathering-skill XP gains (#213). */
+	/**
+	 * Marks the tick of processing-skill XP gains (recipe actions, #69), gathering-skill XP
+	 * gains (#213), and Thieving XP gains (#217).
+	 */
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
@@ -2704,6 +2711,9 @@ public class StockpilePlugin extends Plugin
 
 		if (GATHERING_SKILLS.contains(event.getSkill()))
 			gatherXpTick = client.getTickCount();
+
+		if (event.getSkill() == Skill.THIEVING)
+			thievingXpTick = client.getTickCount();
 	}
 
 	/**
@@ -2849,6 +2859,40 @@ public class StockpilePlugin extends Plugin
 
 			if (isTracked(itemId))
 				sourceAttribution.claim(AcquisitionSource.REWARD, itemId, delta, 0, client.getTickCount());
+		}
+	}
+
+	/**
+	 * Attributes this tick's unclaimed inventory gains to {@link AcquisitionSource#THIEVING} at
+	 * 0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall
+	 * produce, chest hauls. An exact mirror of {@link #correlateGathering}: it runs after
+	 * {@link #correlateReward} (so reward loot keeps its REWARD claim) and before the quantity sync
+	 * consumes the deltas; a paired recipe output already queued in {@code pendingProcessingOutput}
+	 * is skipped and keeps its transferred basis. A gain with no Thieving XP this tick stays
+	 * unclaimed and takes the unknown-source path. Coins never participate. Gated by the
+	 * Source-Based Pricing toggle.
+	 *
+	 * <p>Yields to {@link #correlateReward}: when a reward-loot signal ({@link #rewardContainerTick})
+	 * fired this tick, the gains are reward loot, not stolen, so a coincident Thieving-XP tick can't
+	 * mislabel them (precedence: Processing &gt; Reward &gt; Gather/Thieving &gt; Unknown).
+	 */
+	private void correlateThieving()
+	{
+		if (!config.sourcePricing() || client.getTickCount() - thievingXpTick > 1 || pendingItemDeltas.isEmpty())
+			return;
+
+		if (client.getTickCount() - rewardContainerTick <= 1)
+			return;
+
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+				continue;
+
+			if (isTracked(itemId))
+				sourceAttribution.claim(AcquisitionSource.THIEVING, itemId, delta, 0, client.getTickCount());
 		}
 	}
 
@@ -3216,6 +3260,7 @@ public class StockpilePlugin extends Plugin
 					processingXpTick = -1;
 					gatherXpTick = -1;
 					rewardContainerTick = -1;
+					thievingXpTick = -1;
 					pouchFillTick = -1;
 					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();
