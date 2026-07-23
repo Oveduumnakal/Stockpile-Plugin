@@ -27,6 +27,9 @@ enum AcquisitionSource
 	/** Gathered from the world via a skill (Hunter, Mining, Fishing, …), priced at 0. */
 	GATHER("Gather"),
 
+	/** Claimed from a reward/loot container (raids chest, clue casket, reward pool, …), priced at 0. */
+	REWARD("Reward"),
+
 	/** Exchanged in a player trade, priced by apportioning the trade's gp. */
 	PLAYER_TRADE("Trade"),
 
