@@ -30,6 +30,9 @@ enum AcquisitionSource
 	/** Claimed from a reward/loot container (raids chest, clue casket, reward pool, …), priced at 0. */
 	REWARD("Reward"),
 
+	/** Stolen via Thieving (pickpockets, stalls, chests), priced at 0. */
+	THIEVING("Thieving"),
+
 	/** Exchanged in a player trade, priced by apportioning the trade's gp. */
 	PLAYER_TRADE("Trade"),
 
