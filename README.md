@@ -27,7 +27,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
 - **Profit based on what really happened**
 
-  The plugin remembers what you paid for your items and compares it with what they are worth now. It watches how items actually arrive and leave — Grand Exchange trades at the real price your offer went through at, shop buying and selling, trades with other players, picking things up off the ground, and High/Low Alchemy — and prices each one the right way. Even cooking, crafting, smithing, and fletching carry an item's cost onto whatever you make from it, and dying doesn't wipe your history.
+  The plugin remembers what you paid for your items and compares it with what they are worth now. It watches how items actually arrive and leave — Grand Exchange trades at the real price your offer went through at, shop buying and selling, trades with other players, picking things up off the ground, gathering from skilling, thieving, boss and minigame rewards, and High/Low Alchemy — and prices each one the right way. Even cooking, crafting, smithing, fletching, herblore, and runecrafting carry an item's cost onto whatever you make from it, and dying doesn't wipe your history.
 
   <img src="docs/img/04-profit-area.png" alt="An item's detail view showing current values, average cost, and estimated profit">
 
