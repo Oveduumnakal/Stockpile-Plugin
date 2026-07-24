@@ -366,6 +366,9 @@ public class StockpilePlugin extends Plugin
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
 
+	/** Tracked-output dose id → combined input basis to carry onto its decant-produced lot(s) this tick (#220). */
+	private final Map<Integer, Long> pendingDecantOutput = new HashMap<>();
+
 	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
 	private int deathTick = -1;
 
@@ -2340,6 +2343,7 @@ public class StockpilePlugin extends Plugin
 		{
 			pendingQuantitySync = false;
 			correlateProcessing();
+			correlateDecant();
 			correlateGathering();
 			correlateReward();
 			correlateThieving();
@@ -2796,6 +2800,99 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
+	 * Pairs a decant's consumed dose lots with the doses it produces (#220): a decant swaps a
+	 * potion between its dose item ids on a single tick with no XP, conserving the total doses,
+	 * so cost basis follows the liquid rather than being realized as a sale. This groups the
+	 * tick's non-coin deltas into dose families ({@link DoseFamily}) and, for each family whose
+	 * consumed doses exactly equal its produced doses, closes the consumed lots at their FIFO
+	 * open-lot cost under {@link AcquisitionSource#DECANT} and hands the summed basis to the
+	 * produced ids dose-weighted ({@link DecantBasis}), queued in {@code pendingDecantOutput}
+	 * so {@link #consumeDecantOutput} opens the output lot(s) carrying it. Decant up and down
+	 * and mixed-basis inputs all merge into one combined-basis output; drinking a dose (doses drop,
+	 * not conserved) is left untouched here. Untracked inputs contribute their fallback value;
+	 * untracked outputs simply drop their share. Runs after {@link #correlateProcessing} — which a
+	 * processing-XP tick handles instead — and before the source detectors, whose gains skip any id
+	 * already queued in {@code pendingProcessingOutput} or {@code pendingDecantOutput}. Gated by the
+	 * Source-Based Pricing toggle.
+	 */
+	private void correlateDecant()
+	{
+		pendingDecantOutput.clear();
+		if (!config.sourcePricing() || pendingItemDeltas.isEmpty()
+				|| client.getTickCount() - processingXpTick <= 1)
+			return;
+
+		Map<String, List<int[]>> families = new HashMap<>();
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (itemId == ItemID.COINS || delta == 0)
+				continue;
+
+			DoseFamily.Parsed parsed = DoseFamily.parse(itemManager.getItemComposition(itemId).getName());
+			if (parsed == null)
+				continue;
+
+			families.computeIfAbsent(parsed.base, k -> new ArrayList<>()).add(new int[]{itemId, delta, parsed.doses});
+		}
+
+		for (List<int[]> members : families.values())
+			correlateDecantFamily(members);
+	}
+
+	/**
+	 * Applies the decant basis transfer to one dose family's members ({@code {id, delta, doses}}):
+	 * only a dose-conserving swap (consumed doses equal produced doses, both non-zero) is a decant;
+	 * anything else is left for the other detectors. The consumed lots close at their FIFO cost under
+	 * {@link AcquisitionSource#DECANT} and the summed basis is distributed dose-weighted onto the
+	 * produced ids for {@link #consumeDecantOutput}.
+	 */
+	private void correlateDecantFamily(List<int[]> members)
+	{
+		long consumedDoses = 0;
+		long producedDoses = 0;
+		for (int[] member : members)
+			if (member[1] < 0)
+				consumedDoses += (long) -member[1] * member[2];
+			else
+				producedDoses += (long) member[1] * member[2];
+
+		if (consumedDoses == 0 || consumedDoses != producedDoses)
+			return;
+
+		long totalBasis = 0;
+		for (int[] member : members)
+		{
+			if (member[1] >= 0)
+				continue;
+
+			int itemId = member[0];
+			int qty = -member[1];
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+			{
+				totalBasis += untrackedInputValue(itemId) * qty;
+				continue;
+			}
+
+			long basis = ProcessingBasis.openLotCost(tracked.getAcquisitions(), qty);
+			totalBasis += basis;
+			sourceAttribution.claim(AcquisitionSource.DECANT, itemId, qty, basis / qty, client.getTickCount());
+		}
+
+		List<int[]> outputs = new ArrayList<>();
+		for (int[] member : members)
+			if (member[1] > 0)
+				outputs.add(new int[]{member[0], member[1] * member[2]});
+
+		Map<Integer, Long> shares = DecantBasis.distribute(totalBasis, outputs);
+		for (Map.Entry<Integer, Long> share : shares.entrySet())
+			if (isTracked(share.getKey()))
+				pendingDecantOutput.put(share.getKey(), share.getValue());
+	}
+
+	/**
 	 * Attributes this tick's unclaimed inventory gains to {@link AcquisitionSource#GATHER} at
 	 * 0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks
 	 * them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores,
@@ -2822,7 +2919,8 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
+					|| pendingDecantOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -2850,7 +2948,8 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
+					|| pendingDecantOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -2884,7 +2983,8 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
+					|| pendingDecantOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -3260,6 +3360,7 @@ public class StockpilePlugin extends Plugin
 					pouchFillTick = -1;
 					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();
+					pendingDecantOutput.clear();
 					deathTick = -1;
 					clientThread.invokeLater(this::hydratePriceCache);
 				}
@@ -3500,9 +3601,11 @@ public class StockpilePlugin extends Plugin
 	}
 
 		/**
-	 * Prices one item's net container delta: GE routing first (restore a cancelled sell,
-	 * drain the buy ledger, or suspend a placed sell), then the source-attribution claim,
-	 * then the classic fallback.
+	 * Prices one item's net container delta. On a gain: restore trade/sell suspensions, then open
+	 * positively-detected same-tick production — processing and decant outputs, which carry transferred
+	 * cost basis — <em>before</em> draining the GE buy ledger, so a lingering buy for that same id can't
+	 * steal a decant/processing output (#220); then the remaining GE and suspension routing, the
+	 * source-attribution claim, and finally the classic fallback.
 	 */
 	private void applyDelta(TrackedItem tracked, int delta)
 	{
@@ -3512,11 +3615,12 @@ public class StockpilePlugin extends Plugin
 			int remaining = delta;
 			remaining = consumeTradeUnsuspend(tracked, remaining);
 			remaining = consumeSellUnsuspend(tracked, remaining);
+			remaining = consumeProcessingOutput(tracked, remaining);
+			remaining = consumeDecantOutput(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeDeathUnsuspend(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
 			remaining = consumePouchUnsuspend(tracked, remaining);
-			remaining = consumeProcessingOutput(tracked, remaining);
 			if (remaining > 0 && isPouchDepositTick())
 			{
 				addOpenAcquisition(tracked, remaining, 0, AcquisitionSource.GATHER);
@@ -3812,23 +3916,41 @@ public class StockpilePlugin extends Plugin
 
 	/**
 	 * Opens the output lot(s) of a processing action (#69), carrying the transferred
-	 * input basis so their cost sums <em>exactly</em> to it. An uneven split gives the
-	 * remainder units one extra gp each — 13 gp across 60 units becomes 13 units at 1 gp
-	 * plus 47 at 0 gp — since a single integer per-unit price can't hold a sub-gp basis.
-	 * Consumes the whole addition (returns 0) so it bypasses the fallback auto-add.
+	 * input basis so their cost sums <em>exactly</em> to it.
 	 */
 	private int consumeProcessingOutput(TrackedItem tracked, int qty)
 	{
-		Long totalCost = pendingProcessingOutput.remove(tracked.getItemId());
+		return consumeCarriedOutput(tracked, qty, pendingProcessingOutput, AcquisitionSource.PROCESSING);
+	}
+
+	/**
+	 * Opens the output lot(s) of a decant (#220), carrying the combined dose-weighted input
+	 * basis so the swapped potion keeps its cost — no profit is realized on the swap.
+	 */
+	private int consumeDecantOutput(TrackedItem tracked, int qty)
+	{
+		return consumeCarriedOutput(tracked, qty, pendingDecantOutput, AcquisitionSource.DECANT);
+	}
+
+	/**
+	 * Opens {@code qty} newly-produced units carrying the basis queued in {@code carried} for this
+	 * item, tagged with {@code source}. An uneven split gives the remainder units one extra gp each
+	 * — 13 gp across 60 units becomes 13 units at 1 gp plus 47 at 0 gp — since a single integer
+	 * per-unit price can't hold a sub-gp basis. Consumes the whole addition (returns 0) so it
+	 * bypasses the fallback auto-add.
+	 */
+	private int consumeCarriedOutput(TrackedItem tracked, int qty, Map<Integer, Long> carried, AcquisitionSource source)
+	{
+		Long totalCost = carried.remove(tracked.getItemId());
 		if (qty <= 0 || totalCost == null)
 			return qty;
 
 		long base = totalCost / qty;
 		int remainder = (int) (totalCost % qty);
 		if (remainder > 0)
-			addOpenAcquisition(tracked, remainder, base + 1, AcquisitionSource.PROCESSING);
+			addOpenAcquisition(tracked, remainder, base + 1, source);
 
-		addOpenAcquisition(tracked, qty - remainder, base, AcquisitionSource.PROCESSING);
+		addOpenAcquisition(tracked, qty - remainder, base, source);
 		return 0;
 	}
 

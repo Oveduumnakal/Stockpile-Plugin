@@ -45,6 +45,9 @@ enum AcquisitionSource
 	/** Consumed or produced by processing, priced by transferred cost basis. */
 	PROCESSING("Processing"),
 
+	/** Swapped between dose ids by decanting a potion; basis follows the liquid, so no profit is realized. */
+	DECANT("Decant"),
+
 	/** Destroyed by processing (burnt food); the input closes as a loss at 0. */
 	BURNED("Burned"),
 
