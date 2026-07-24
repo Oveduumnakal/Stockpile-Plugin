@@ -366,12 +366,6 @@ public class StockpilePlugin extends Plugin
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
 
-	/**
-	 * A worthless destroyed processing output (burnt food, crushed gem) to drop this
-	 * tick rather than record (#144); 0 when none.
-	 */
-	private int pendingDestroyedOutput = 0;
-
 	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
 	private int deathTick = -1;
 
@@ -2726,14 +2720,14 @@ public class StockpilePlugin extends Plugin
 	 * are unattributable and left to the fallback; tracked inputs with no tracked output
 	 * close at 0. A worthless, non-tradeable output is a destroyed product and is handled
 	 * without an XP signal — a burn or crush gives none — closing each tracked input as a
-	 * realized loss at 0 and dropping the output (#144): a crushed gem tags the input
-	 * {@link AcquisitionSource#CRUSHED}, any other destroyed product {@link AcquisitionSource#BURNED}.
+	 * realized loss at 0 (#144): a crushed gem tags the input {@link AcquisitionSource#CRUSHED},
+	 * any other destroyed product {@link AcquisitionSource#BURNED}. When the player tracks the
+	 * destroyed byproduct itself, its gain is booked at 0-cost under that same source (#172).
 	 * Coins never participate.
 	 */
 	private void correlateProcessing()
 	{
 		pendingProcessingOutput.clear();
-		pendingDestroyedOutput = 0;
 		if (!config.sourcePricing() || pendingItemDeltas.isEmpty())
 			return;
 
@@ -2772,7 +2766,8 @@ public class StockpilePlugin extends Plugin
 				if (isTracked(input[0]))
 					sourceAttribution.claim(loss, input[0], input[1], 0, client.getTickCount());
 
-			pendingDestroyedOutput = outputId;
+			if (isTracked(outputId))
+				sourceAttribution.claim(loss, outputId, outputQty, 0, client.getTickCount());
 			return;
 		}
 
@@ -3265,7 +3260,6 @@ public class StockpilePlugin extends Plugin
 					pouchFillTick = -1;
 					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();
-					pendingDestroyedOutput = 0;
 					deathTick = -1;
 					clientThread.invokeLater(this::hydratePriceCache);
 				}
@@ -4285,9 +4279,6 @@ public class StockpilePlugin extends Plugin
 		for (TrackedItem tracked : trackedItems.values())
 		{
 			if (tracked.getMode() != TrackItemMode.TRACK)
-				continue;
-
-			if (tracked.getItemId() == pendingDestroyedOutput)
 				continue;
 
 			Integer delta = deltas.get(tracked.getItemId());
