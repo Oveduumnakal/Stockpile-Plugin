@@ -55,6 +55,13 @@ enum AcquisitionSource
 	 */
 	CONSUMED("Consumed"),
 
+	/**
+	 * Burned to cast a spell. Runes are the fuel of a cast rather than an ingredient of it, so they
+	 * close at 0 (their cost realizes as a loss) even when the spell produces an item — a superheated
+	 * bar carries the ore's basis, not the fire runes'.
+	 */
+	CAST("Cast"),
+
 	/** Destroyed by processing (burnt food); the input closes as a loss at 0. */
 	BURNED("Burned"),
 
