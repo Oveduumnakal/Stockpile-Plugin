@@ -319,6 +319,28 @@ public class StockpilePlugin extends Plugin
 	private static final Set<Skill> GATHERING_SKILLS = ImmutableSet.of(
 			Skill.HUNTER, Skill.MINING, Skill.FISHING, Skill.WOODCUTTING, Skill.FARMING);
 
+	/**
+	 * Item categories whose members are used up in a single action — food eaten, a last potion
+	 * dose drunk — so an unclaimed removal of one closes at 0 under
+	 * {@link AcquisitionSource#CONSUMED} (its cost realizes as a loss) rather than an avg-price
+	 * Unknown "sale" (#218). Keyed by {@link ItemCategoryClassifier} category names.
+	 * <p>
+	 * Two categories are deliberately excluded because they need their own attribution rather than
+	 * this generic branch. Ammo splits into destroyed-on-use (a genuine 0-gp loss) and recoverable
+	 * ammo that lands on the target's tile and belongs on the ground-suspension path (#234). Runes
+	 * are burned by a spellcast and book to a dedicated Cast source; they also never reach here
+	 * today, since a Magic XP tick lets {@code correlateProcessing} claim them first (#235).
+	 */
+	private static final Set<String> CONSUMABLE_CATEGORIES = ImmutableSet.of("Food", "Potions");
+
+	/**
+	 * Empty vessels left behind when a potion or drink/dish is finished — a free byproduct of the
+	 * consumption, booked at 0 rather than an avg-price Unknown purchase (#218). Claimed only on a
+	 * terminal-consumption tick, bounded to the number of vessels emptied.
+	 */
+	private static final Set<Integer> EMPTY_CONTAINERS = ImmutableSet.of(
+			ItemID.VIAL_EMPTY, ItemID.JUG_EMPTY, ItemID.BOWL_EMPTY, ItemID.BUCKET_EMPTY, ItemID.BEER_GLASS);
+
 	/** Menu option that stores held furs/meats into an open hunting pouch (#214). */
 	private static final String POUCH_FILL_OPTION = "Fill";
 
@@ -368,6 +390,14 @@ public class StockpilePlugin extends Plugin
 
 	/** Tracked-output dose id → combined input basis to carry onto its decant-produced lot(s) this tick (#220). */
 	private final Map<Integer, Long> pendingDecantOutput = new HashMap<>();
+
+	/** Tracked lower-dose id → basis carried onto the potion left after a dose is drunk this tick (#218). */
+	private final Map<Integer, Long> pendingConsumedOutput = new HashMap<>();
+
+	/** The tick a potion/drink was finished and how many vessels it freed, so the empty containers book at 0 (#218). */
+	private int potionEmptiedTick = -1;
+
+	private int potionEmptiedCount = 0;
 
 	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
 	private int deathTick = -1;
@@ -2800,24 +2830,30 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
-	 * Pairs a decant's consumed dose lots with the doses it produces (#220): a decant swaps a
-	 * potion between its dose item ids on a single tick with no XP, conserving the total doses,
-	 * so cost basis follows the liquid rather than being realized as a sale. This groups the
-	 * tick's non-coin deltas into dose families ({@link DoseFamily}) and, for each family whose
-	 * consumed doses exactly equal its produced doses, closes the consumed lots at their FIFO
-	 * open-lot cost under {@link AcquisitionSource#DECANT} and hands the summed basis to the
-	 * produced ids dose-weighted ({@link DecantBasis}), queued in {@code pendingDecantOutput}
-	 * so {@link #consumeDecantOutput} opens the output lot(s) carrying it. Decant up and down
-	 * and mixed-basis inputs all merge into one combined-basis output; drinking a dose (doses drop,
-	 * not conserved) is left untouched here. Untracked inputs contribute their fallback value;
-	 * untracked outputs simply drop their share. Runs after {@link #correlateProcessing} — which a
-	 * processing-XP tick handles instead — and before the source detectors, whose gains skip any id
-	 * already queued in {@code pendingProcessingOutput} or {@code pendingDecantOutput}. Gated by the
-	 * Source-Based Pricing toggle.
+	 * Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so
+	 * cost basis follows the liquid across the item-id change rather than being realized as a sale.
+	 * Groups the tick's non-coin deltas into dose families ({@link DoseFamily}) and hands each family
+	 * to {@link #correlateDoseSwapFamily}, which distinguishes two cases:
+	 * <ul>
+	 *   <li><b>Decant</b> (#220) — consumed doses equal produced doses: a pure swap, so the combined
+	 *       input basis is distributed dose-weighted ({@link DecantBasis}) onto the produced ids under
+	 *       {@link AcquisitionSource#DECANT}. Up, down, and mixed-basis inputs all merge.</li>
+	 *   <li><b>Consume-down</b> (#218) — a dose is drunk (consumed doses exceed produced doses, but
+	 *       some remain): the <em>full</em> input basis follows onto the lower-dose id under
+	 *       {@link AcquisitionSource#CONSUMED}, since using a dose realizes no profit or loss.</li>
+	 * </ul>
+	 * Both queue the carried basis in {@code pendingDecantOutput} / {@code pendingConsumedOutput} so the
+	 * matching gain opens the output lot carrying it; both close the consumed lots at their FIFO cost
+	 * (no P/L). Untracked inputs contribute their fallback value; untracked outputs drop their share.
+	 * Runs after {@link #correlateProcessing} — which a processing-XP tick handles instead — and before
+	 * the source detectors, whose gains skip any id already queued in {@code pendingProcessingOutput},
+	 * {@code pendingDecantOutput}, or {@code pendingConsumedOutput}. Gated by the Source-Based Pricing toggle.
 	 */
 	private void correlateDecant()
 	{
 		pendingDecantOutput.clear();
+		pendingConsumedOutput.clear();
+		potionEmptiedCount = 0;
 		if (!config.sourcePricing() || pendingItemDeltas.isEmpty()
 				|| client.getTickCount() - processingXpTick <= 1)
 			return;
@@ -2838,17 +2874,19 @@ public class StockpilePlugin extends Plugin
 		}
 
 		for (List<int[]> members : families.values())
-			correlateDecantFamily(members);
+			correlateDoseSwapFamily(members);
 	}
 
 	/**
-	 * Applies the decant basis transfer to one dose family's members ({@code {id, delta, doses}}):
-	 * only a dose-conserving swap (consumed doses equal produced doses, both non-zero) is a decant;
-	 * anything else is left for the other detectors. The consumed lots close at their FIFO cost under
-	 * {@link AcquisitionSource#DECANT} and the summed basis is distributed dose-weighted onto the
-	 * produced ids for {@link #consumeDecantOutput}.
+	 * Applies the dose-family basis transfer to one family's members ({@code {id, delta, doses}}):
+	 * a dose-conserving swap (consumed doses equal produced doses) is a <b>decant</b> under
+	 * {@link AcquisitionSource#DECANT}; a swap that loses doses while leaving some (a dose drunk) is
+	 * a <b>consume-down</b> under {@link AcquisitionSource#CONSUMED}. Anything else — no consumption,
+	 * or every dose gone (a last dose drunk, left to the {@link #applyDelta} loss path) — is skipped.
+	 * The consumed lots close at their FIFO cost and the summed basis is distributed onto the produced
+	 * ids: dose-weighted for a decant, but in full for a consume-down since a used dose is not a loss.
 	 */
-	private void correlateDecantFamily(List<int[]> members)
+	private void correlateDoseSwapFamily(List<int[]> members)
 	{
 		long consumedDoses = 0;
 		long producedDoses = 0;
@@ -2858,8 +2896,21 @@ public class StockpilePlugin extends Plugin
 			else
 				producedDoses += (long) member[1] * member[2];
 
-		if (consumedDoses == 0 || consumedDoses != producedDoses)
+		if (consumedDoses == 0 || producedDoses == 0 || producedDoses > consumedDoses)
+		{
+			if (consumedDoses > 0 && producedDoses == 0)
+			{
+				int emptied = members.stream().filter(m -> m[1] < 0).mapToInt(m -> -m[1]).sum();
+				potionEmptiedTick = client.getTickCount();
+				potionEmptiedCount += emptied;
+			}
+
 			return;
+		}
+
+		boolean decant = consumedDoses == producedDoses;
+		AcquisitionSource source = decant ? AcquisitionSource.DECANT : AcquisitionSource.CONSUMED;
+		Map<Integer, Long> pending = decant ? pendingDecantOutput : pendingConsumedOutput;
 
 		long totalBasis = 0;
 		for (int[] member : members)
@@ -2878,7 +2929,7 @@ public class StockpilePlugin extends Plugin
 
 			long basis = ProcessingBasis.openLotCost(tracked.getAcquisitions(), qty);
 			totalBasis += basis;
-			sourceAttribution.claim(AcquisitionSource.DECANT, itemId, qty, basis / qty, client.getTickCount());
+			sourceAttribution.claim(source, itemId, qty, basis / qty, client.getTickCount());
 		}
 
 		List<int[]> outputs = new ArrayList<>();
@@ -2889,7 +2940,7 @@ public class StockpilePlugin extends Plugin
 		Map<Integer, Long> shares = DecantBasis.distribute(totalBasis, outputs);
 		for (Map.Entry<Integer, Long> share : shares.entrySet())
 			if (isTracked(share.getKey()))
-				pendingDecantOutput.put(share.getKey(), share.getValue());
+				pending.put(share.getKey(), share.getValue());
 	}
 
 	/**
@@ -2920,7 +2971,7 @@ public class StockpilePlugin extends Plugin
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
 			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId))
+					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -2949,7 +3000,7 @@ public class StockpilePlugin extends Plugin
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
 			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId))
+					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -2984,7 +3035,7 @@ public class StockpilePlugin extends Plugin
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
 			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId))
+					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
 				continue;
 
 			if (isTracked(itemId))
@@ -3361,6 +3412,9 @@ public class StockpilePlugin extends Plugin
 					pouchDepositTick = -1;
 					pendingProcessingOutput.clear();
 					pendingDecantOutput.clear();
+					pendingConsumedOutput.clear();
+					potionEmptiedTick = -1;
+					potionEmptiedCount = 0;
 					deathTick = -1;
 					clientThread.invokeLater(this::hydratePriceCache);
 				}
@@ -3617,6 +3671,8 @@ public class StockpilePlugin extends Plugin
 			remaining = consumeSellUnsuspend(tracked, remaining);
 			remaining = consumeProcessingOutput(tracked, remaining);
 			remaining = consumeDecantOutput(tracked, remaining);
+			remaining = consumeConsumedOutput(tracked, remaining);
+			remaining = consumeEmptyContainerByproduct(tracked, remaining);
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeDeathUnsuspend(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
@@ -3643,7 +3699,14 @@ public class StockpilePlugin extends Plugin
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
+				if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isConsumable(itemId))
+				{
+					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
+				}
+				else
+				{
+					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
+				}
 			}
 		}
 	}
@@ -3930,6 +3993,32 @@ public class StockpilePlugin extends Plugin
 	private int consumeDecantOutput(TrackedItem tracked, int qty)
 	{
 		return consumeCarriedOutput(tracked, qty, pendingDecantOutput, AcquisitionSource.DECANT);
+	}
+
+	/**
+	 * Opens the lower-dose potion left after a dose is drunk (#218), carrying the full basis of the
+	 * higher-dose lot so using a dose realizes no profit or loss — the cost simply follows the liquid.
+	 */
+	private int consumeConsumedOutput(TrackedItem tracked, int qty)
+	{
+		return consumeCarriedOutput(tracked, qty, pendingConsumedOutput, AcquisitionSource.CONSUMED);
+	}
+
+	/**
+	 * Opens the empty vessel(s) freed by finishing a potion or drink this tick (#218) at 0 under
+	 * {@link AcquisitionSource#CONSUMED} — a leftover byproduct, not a purchase. Bounded to the number
+	 * of vessels emptied, so any vials bought separately still price normally. Returns the remainder.
+	 */
+	private int consumeEmptyContainerByproduct(TrackedItem tracked, int qty)
+	{
+		if (qty <= 0 || potionEmptiedCount <= 0 || client.getTickCount() != potionEmptiedTick
+				|| !EMPTY_CONTAINERS.contains(tracked.getItemId()))
+			return qty;
+
+		int free = Math.min(qty, potionEmptiedCount);
+		potionEmptiedCount -= free;
+		addOpenAcquisition(tracked, free, 0, AcquisitionSource.CONSUMED);
+		return qty - free;
 	}
 
 	/**
@@ -4518,6 +4607,18 @@ public class StockpilePlugin extends Plugin
 	boolean isTracked(int itemId)
 	{
 		return trackedItems.containsKey(itemId);
+	}
+
+	/**
+	 * @return whether {@code itemId} is a single-use consumable (food, a potion dose) by
+	 *         {@link ItemCategoryClassifier} category — an unclaimed removal of one is booked as
+	 *         used up at 0 rather than an avg-price Unknown sale (#218). Ammo and runes are
+	 *         excluded; see {@link #CONSUMABLE_CATEGORIES}. Client thread only.
+	 */
+	private boolean isConsumable(int itemId)
+	{
+		String category = ItemCategoryClassifier.classify(itemManager.getItemComposition(itemId).getName());
+		return CONSUMABLE_CATEGORIES.contains(category);
 	}
 
 	/**

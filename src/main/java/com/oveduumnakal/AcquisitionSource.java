@@ -48,6 +48,13 @@ enum AcquisitionSource
 	/** Swapped between dose ids by decanting a potion; basis follows the liquid, so no profit is realized. */
 	DECANT("Decant"),
 
+	/**
+	 * Used up — food eaten, ammo fired, a potion dose drunk. A single-use consumable closes at 0
+	 * (its cost realizes as a loss); a dose change carries the basis onto the lower-dose id so no
+	 * profit is realized just for using a dose.
+	 */
+	CONSUMED("Consumed"),
+
 	/** Destroyed by processing (burnt food); the input closes as a loss at 0. */
 	BURNED("Burned"),
 

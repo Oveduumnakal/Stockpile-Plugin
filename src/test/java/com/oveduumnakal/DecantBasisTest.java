@@ -48,6 +48,17 @@ public class DecantBasisTest
 		assertEquals(Long.valueOf(28), shares.get(2));
 	}
 
+	/**
+	 * Consume-down (#218): drinking one dose of a Potion(4)@100 leaves a Potion(3) — a dose is lost
+	 * but the full 100gp basis follows onto the three-dose lot, since using a dose realizes no P/L.
+	 */
+	@Test
+	public void consumingADoseCarriesTheFullBasisOntoTheLowerDose()
+	{
+		Map<Integer, Long> shares = DecantBasis.distribute(100, List.of(new int[]{3, 3}));
+		assertEquals(Long.valueOf(100), shares.get(3));
+	}
+
 	@Test
 	public void zeroBasisStaysZero()
 	{
