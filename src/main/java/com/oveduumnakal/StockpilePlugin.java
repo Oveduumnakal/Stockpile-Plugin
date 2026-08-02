@@ -32,8 +32,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -73,12 +73,13 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemQuantityChanged;
@@ -89,7 +90,6 @@ import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.ItemID;
@@ -2290,9 +2290,7 @@ public class StockpilePlugin extends Plugin
 				|| interfaceId == InterfaceID.BANKSIDE
 				|| interfaceId == InterfaceID.SHOPMAIN
 				|| interfaceId == InterfaceID.SHOPSIDE)
-		{
 			return w.getItemId();
-		}
 
 		return -1;
 	}
@@ -2395,13 +2393,9 @@ public class StockpilePlugin extends Plugin
 		{
 			if (entry.getType() == MenuAction.GROUND_ITEM_THIRD_OPTION
 					&& isTracked(itemManager.canonicalize(entry.getIdentifier())))
-			{
 				trackedTakes.add(entry);
-			}
 			else
-			{
 				normal.add(entry);
-			}
 		}
 
 		if (trackedTakes.isEmpty())
@@ -2802,6 +2796,7 @@ public class StockpilePlugin extends Plugin
 
 			if (isTracked(outputId))
 				sourceAttribution.claim(loss, outputId, outputQty, 0, client.getTickCount());
+
 			return;
 		}
 
@@ -3700,13 +3695,9 @@ public class StockpilePlugin extends Plugin
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
 				if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isConsumable(itemId))
-				{
 					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
-				}
 				else
-				{
 					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
-				}
 			}
 		}
 	}
