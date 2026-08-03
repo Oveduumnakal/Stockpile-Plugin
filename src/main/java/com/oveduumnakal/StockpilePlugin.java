@@ -347,6 +347,9 @@ public class StockpilePlugin extends Plugin
 	/** Menu option that stores held furs/meats into an open hunting pouch (#214). */
 	private static final String POUCH_FILL_OPTION = "Fill";
 
+	/** Menu option that discards a potion's liquid, leaving an empty vial — booked as a 0-gp drop (#232). */
+	private static final String POTION_EMPTY_OPTION = "Empty";
+
 	/** Substrings identifying a fur/meat hunting pouch as the "Fill" menu target, across sizes (#214). */
 	private static final Set<String> POUCH_TARGETS = ImmutableSet.of("fur pouch", "meat pouch");
 
@@ -395,6 +398,13 @@ public class StockpilePlugin extends Plugin
 	 * {@code GATHER} (directly-caught furs) rather than an unknown-source purchase (#214).
 	 */
 	private int pouchDepositTick = -1;
+
+	/**
+	 * The tick the local player clicked "Empty" on a potion, discarding the liquid for no gp. The
+	 * matching dose removal closes at 0 tagged {@code GROUND} (a drop/discard) rather than realizing
+	 * the cost as an avg-price Unknown sale, and the freed vial books under the same source (#232).
+	 */
+	private int potionDiscardTick = -1;
 
 	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
 	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
@@ -2223,6 +2233,12 @@ public class StockpilePlugin extends Plugin
 			return;
 		}
 
+		if (POTION_EMPTY_OPTION.equals(event.getMenuOption()) && isDosePotion(event.getItemId()))
+		{
+			potionDiscardTick = client.getTickCount();
+			return;
+		}
+
 		if (LOOT_SACK_OPTION.equals(event.getMenuOption())
 				&& target.toLowerCase().contains(LOOT_SACK_TARGET))
 		{
@@ -3535,6 +3551,7 @@ public class StockpilePlugin extends Plugin
 					thievingXpTick = -1;
 					pouchFillTick = -1;
 					pouchDepositTick = -1;
+					potionDiscardTick = -1;
 					pendingProcessingOutput.clear();
 					pendingDecantOutput.clear();
 					pendingConsumedOutput.clear();
@@ -3824,7 +3841,9 @@ public class StockpilePlugin extends Plugin
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isConsumable(itemId))
+				if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isPotionDiscardTick())
+					closeFifo(tracked, mag, 0, AcquisitionSource.GROUND);
+				else if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isConsumable(itemId))
 					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
 				else
 					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
@@ -4053,6 +4072,12 @@ public class StockpilePlugin extends Plugin
 		return config.sourcePricing() && pouchDepositTick >= 0 && client.getTickCount() - pouchDepositTick <= 1;
 	}
 
+	/** @return whether a potion was "Empty"-clicked on (or one tick before) this tick, discarding it (#232). */
+	private boolean isPotionDiscardTick()
+	{
+		return potionDiscardTick >= 0 && client.getTickCount() - potionDiscardTick <= 1;
+	}
+
 	/**
 	 * Moves up to {@code qty} of a removal into trade suspension — the units were placed into a
 	 * player-trade offer, so they left the containers but stay owned with their lots intact until
@@ -4126,9 +4151,11 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
-	 * Opens the empty vessel(s) freed by finishing a potion or drink this tick (#218) at 0 under
-	 * {@link AcquisitionSource#CONSUMED} — a leftover byproduct, not a purchase. Bounded to the number
-	 * of vessels emptied, so any vials bought separately still price normally. Returns the remainder.
+	 * Opens the empty vessel(s) freed by finishing a potion or drink this tick (#218) at 0 — a
+	 * leftover byproduct, not a purchase. Bounded to the number of vessels emptied, so any vials bought
+	 * separately still price normally. The source matches the event: {@link AcquisitionSource#GROUND}
+	 * when the potion was discarded via "Empty" (#232), so the whole drop sits under one glyph, else
+	 * {@link AcquisitionSource#CONSUMED} for a drunk-dry potion. Returns the remainder.
 	 */
 	private int consumeEmptyContainerByproduct(TrackedItem tracked, int qty)
 	{
@@ -4138,7 +4165,8 @@ public class StockpilePlugin extends Plugin
 
 		int free = Math.min(qty, potionEmptiedCount);
 		potionEmptiedCount -= free;
-		addOpenAcquisition(tracked, free, 0, AcquisitionSource.CONSUMED);
+		AcquisitionSource source = isPotionDiscardTick() ? AcquisitionSource.GROUND : AcquisitionSource.CONSUMED;
+		addOpenAcquisition(tracked, free, 0, source);
 		return qty - free;
 	}
 
@@ -4757,6 +4785,18 @@ public class StockpilePlugin extends Plugin
 	{
 		String category = ItemCategoryClassifier.classify(itemManager.getItemComposition(itemId).getName());
 		return CONSUMABLE_CATEGORIES.contains(category);
+	}
+
+	/**
+	 * @return whether {@code itemId} is a dosed potion — its name carries a trailing dose count
+	 *         ({@link DoseFamily}) — so an "Empty" click on it can be distinguished from the same
+	 *         option on a jug, bird nest, or hunting pouch, which do not parse as a dose family (#232).
+	 *         Client thread only.
+	 */
+	private boolean isDosePotion(int itemId)
+	{
+		int canonicalId = itemManager.canonicalize(itemId);
+		return DoseFamily.parse(itemManager.getItemComposition(canonicalId).getName()) != null;
 	}
 
 	/**
