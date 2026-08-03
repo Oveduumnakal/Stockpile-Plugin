@@ -333,6 +333,9 @@ public class StockpilePlugin extends Plugin
 	 */
 	private static final Set<String> CONSUMABLE_CATEGORIES = ImmutableSet.of("Food", "Potions");
 
+	/** {@link ItemCategoryClassifier} category holding the runes a spellcast burns (#235). */
+	private static final String RUNE_CATEGORY = "Runes";
+
 	/**
 	 * Empty vessels left behind when a potion or drink/dish is finished — a free byproduct of the
 	 * consumption, booked at 0 rather than an avg-price Unknown purchase (#218). Claimed only on a
@@ -361,6 +364,14 @@ public class StockpilePlugin extends Plugin
 
 	/** The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. */
 	private int processingXpTick = -1;
+
+	/**
+	 * The tick of the most recent Magic XP gain, marking removed runes as burned by a spellcast (#235).
+	 * Tracked separately from {@link #processingXpTick} because Magic is also a processing skill: runes
+	 * consumed on a Magic tick are the cast's fuel, but runes consumed on a Runecraft tick (earth runes
+	 * into lava runes) are a genuine recipe input whose basis belongs on the product.
+	 */
+	private int magicXpTick = -1;
 
 	/** The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). */
 	private int gatherXpTick = -1;
@@ -2753,6 +2764,9 @@ public class StockpilePlugin extends Plugin
 		if (PROCESSING_SKILLS.contains(event.getSkill()))
 			processingXpTick = client.getTickCount();
 
+		if (event.getSkill() == Skill.MAGIC)
+			magicXpTick = client.getTickCount();
+
 		if (GATHERING_SKILLS.contains(event.getSkill()))
 			gatherXpTick = client.getTickCount();
 
@@ -2773,6 +2787,13 @@ public class StockpilePlugin extends Plugin
 	 * any other destroyed product {@link AcquisitionSource#BURNED}. When the player tracks the
 	 * destroyed byproduct itself, its gain is booked at 0-cost under that same source (#172).
 	 * Coins never participate.
+	 *
+	 * <p>Runes removed on a Magic XP tick are the cast's fuel rather than one of its ingredients,
+	 * so they are claimed as {@link AcquisitionSource#CAST} at 0 and never enter the input set (#235):
+	 * a superheated bar carries the ore's basis alone, and a combat spell leaves no inputs to pair.
+	 * A cast that yields no item at all is not a recipe either, so its remaining inputs are left
+	 * unclaimed rather than booked as processing — an alched item is sold for coins, not processed,
+	 * and belongs to the {@link AcquisitionSource#ALCHEMY} claim or the fallback path.
 	 */
 	private void correlateProcessing()
 	{
@@ -2793,6 +2814,14 @@ public class StockpilePlugin extends Plugin
 
 			if (delta < 0)
 			{
+				if (isSpellcastRune(itemId))
+				{
+					if (isTracked(itemId))
+						sourceAttribution.claim(AcquisitionSource.CAST, itemId, -delta, 0, client.getTickCount());
+
+					continue;
+				}
+
 				inputs.add(new int[]{itemId, -delta});
 			}
 			else
@@ -2804,6 +2833,9 @@ public class StockpilePlugin extends Plugin
 		}
 
 		if (inputs.isEmpty() || outputKinds > 1)
+			return;
+
+		if (outputKinds == 0 && client.getTickCount() - magicXpTick <= 1)
 			return;
 
 		if (outputKinds == 1 && isDestroyedProduct(outputId))
@@ -3421,6 +3453,7 @@ public class StockpilePlugin extends Plugin
 					pendingTradeUnsuspend.clear();
 					lastSkillXp.clear();
 					processingXpTick = -1;
+					magicXpTick = -1;
 					gatherXpTick = -1;
 					rewardContainerTick = -1;
 					thievingXpTick = -1;
@@ -4619,6 +4652,23 @@ public class StockpilePlugin extends Plugin
 	boolean isTracked(int itemId)
 	{
 		return trackedItems.containsKey(itemId);
+	}
+
+	/**
+	 * @return whether {@code itemId} is a rune being burned by a spellcast this tick (#235) — a rune
+	 *         by {@link ItemCategoryClassifier} category, removed within a tick of a Magic XP gain.
+	 *         Such runes are the cast's fuel, never a recipe input: they close at 0 under
+	 *         {@link AcquisitionSource#CAST} and their cost never transfers onto the spell's product.
+	 *         Runes removed on a Runecraft tick (earth runes crafted into lava runes) fail the Magic
+	 *         test and stay ordinary processing inputs. Client thread only.
+	 */
+	private boolean isSpellcastRune(int itemId)
+	{
+		if (client.getTickCount() - magicXpTick > 1)
+			return false;
+
+		return RUNE_CATEGORY.equals(ItemCategoryClassifier.classify(
+				itemManager.getItemComposition(itemId).getName()));
 	}
 
 	/**
