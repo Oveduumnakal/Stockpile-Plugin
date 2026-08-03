@@ -813,17 +813,20 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
-	 * Re-evaluates GE-tradeability for every tracked item and the preview item now
-	 * that the wiki mapping is available, then refreshes the panel. Items absent from
-	 * the mapping are not on the Grand Exchange, so they are marked non-tradeable and
-	 * any stale price-load failure is cleared.
+	 * Applies wiki metadata (tradeability, buy limit, GE value, high/low alch) to every
+	 * tracked item and the preview item now that the wiki mapping is available, then
+	 * refreshes the panel. Folding {@link #applyItemMetadata(TrackedItem)} into this sweep
+	 * (rather than waiting for each item's price-series fetch) means alch values are cached
+	 * for all items as soon as the mapping loads (#238). Items absent from the mapping are
+	 * not on the Grand Exchange, so they are marked non-tradeable and any stale price-load
+	 * failure is cleared.
 	 */
 	private void resolveTradeabilityForAll()
 	{
-		trackedItems.values().forEach(this::resolveTradeable);
+		trackedItems.values().forEach(this::applyItemMetadata);
 
 		if (previewItem != null)
-			resolveTradeable(previewItem);
+			applyItemMetadata(previewItem);
 
 		refreshPanel();
 	}
@@ -2222,11 +2225,29 @@ public class StockpilePlugin extends Plugin
 		if (tracked == null)
 			return;
 
-		long alchValue = high ? tracked.getHighAlch() : tracked.getLowAlch();
+		long alchValue = resolveAlchValue(tracked, canonicalId, high);
 		if (alchValue <= 0)
 			return;
 
 		sourceAttribution.claim(AcquisitionSource.ALCHEMY, canonicalId, 1, alchValue, client.getTickCount());
+	}
+
+	/**
+	 * Resolves an item's alch value with a client-cache fallback (#238): prefers the
+	 * cached wiki value on the tracked item, and when that has not loaded yet reads the
+	 * item composition — {@link net.runelite.api.ItemComposition#getHaPrice()} for high
+	 * alch, and the store value's 40% for low alch — so the
+	 * {@link AcquisitionSource#ALCHEMY} claim is always registered regardless of whether
+	 * the wiki mapping or the item's price series has been fetched this session.
+	 */
+	private long resolveAlchValue(TrackedItem tracked, int canonicalId, boolean high)
+	{
+		long cached = high ? tracked.getHighAlch() : tracked.getLowAlch();
+		if (cached > 0)
+			return cached;
+
+		var composition = itemManager.getItemComposition(canonicalId);
+		return high ? composition.getHaPrice() : Math.round(composition.getPrice() * 0.4);
 	}
 
 	/** Adds a "Track Item" / "Stop Tracking" right-click option to item menu entries, when enabled. */
