@@ -405,6 +405,9 @@ public class StockpilePlugin extends Plugin
 	/** Tracked lower-dose id → basis carried onto the potion left after a dose is drunk this tick (#218). */
 	private final Map<Integer, Long> pendingConsumedOutput = new HashMap<>();
 
+	/** Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). */
+	private final Set<Integer> doseSwapClaimedIds = new HashSet<>();
+
 	/** The tick a potion/drink was finished and how many vessels it freed, so the empty containers book at 0 (#218). */
 	private int potionEmptiedTick = -1;
 
@@ -2404,6 +2407,7 @@ public class StockpilePlugin extends Plugin
 			pendingQuantitySync = false;
 			correlateProcessing();
 			correlateDecant();
+			correlateCombine();
 			correlateGathering();
 			correlateReward();
 			correlateThieving();
@@ -2856,7 +2860,19 @@ public class StockpilePlugin extends Plugin
 		if (client.getTickCount() - processingXpTick > 1)
 			return;
 
-		boolean trackedOutput = outputKinds == 1 && isTracked(outputId);
+		pairProcessingRecipe(inputs, outputId, outputQty, outputKinds == 1 && isTracked(outputId));
+	}
+
+	/**
+	 * Closes a recipe's consumed inputs under {@link AcquisitionSource#PROCESSING} at their FIFO
+	 * open-lot cost and queues the summed basis in {@code pendingProcessingOutput} so the matching
+	 * gain opens the produced lot carrying it. Untracked inputs contribute their fallback value.
+	 * When the output is untracked there is nothing to carry the basis onto, so the inputs close at
+	 * 0 and no output is queued. Shared by the XP-gated {@link #correlateProcessing} path and the
+	 * XP-less combine detector {@link #correlateCombine} (#231).
+	 */
+	private void pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)
+	{
 		long totalCost = 0;
 		for (int[] input : inputs)
 		{
@@ -2901,6 +2917,7 @@ public class StockpilePlugin extends Plugin
 	{
 		pendingDecantOutput.clear();
 		pendingConsumedOutput.clear();
+		doseSwapClaimedIds.clear();
 		potionEmptiedCount = 0;
 		if (!config.sourcePricing() || pendingItemDeltas.isEmpty()
 				|| client.getTickCount() - processingXpTick <= 1)
@@ -2959,6 +2976,8 @@ public class StockpilePlugin extends Plugin
 		boolean decant = consumedDoses == producedDoses;
 		AcquisitionSource source = decant ? AcquisitionSource.DECANT : AcquisitionSource.CONSUMED;
 		Map<Integer, Long> pending = decant ? pendingDecantOutput : pendingConsumedOutput;
+		for (int[] member : members)
+			doseSwapClaimedIds.add(member[0]);
 
 		long totalBasis = 0;
 		for (int[] member : members)
@@ -2989,6 +3008,63 @@ public class StockpilePlugin extends Plugin
 		for (Map.Entry<Integer, Long> share : shares.entrySet())
 			if (isTracked(share.getKey()))
 				pending.put(share.getKey(), share.getValue());
+	}
+
+	/**
+	 * Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single
+	 * tradeable output with no skill XP and no coin movement — as {@link AcquisitionSource#PROCESSING},
+	 * so the ingredients' cost basis carries onto the product instead of both sides falling to
+	 * Unknown at market value (#231). Handles the class of "mix"/combine recipes that grant no XP,
+	 * such as combining a Sunlight moth with Raw pyre fox meat into a Sunlight moth mix.
+	 *
+	 * <p>Runs after {@link #correlateDecant} and reuses its {@link #pairProcessingRecipe} basis
+	 * transfer. The XP-gated {@link #correlateProcessing} already claims recipes that emit XP, and
+	 * a destroyed output ({@link #isDestroyedProduct}) is claimed there before the XP gate, so both
+	 * are excluded here. A dose swap (decant/consume-down) is also a no-XP single-output tick, so any
+	 * id claimed by the dose-swap pass ({@code doseSwapClaimedIds}) is skipped, and a finished-potion
+	 * tick — where the freed vessel is the only gain — is left to the empty-container byproduct path.
+	 * The output must be tracked; an untracked product gives nothing to carry basis onto and would only
+	 * risk mislabelling an unrelated inventory shuffle. Gated by the Source-Based Pricing toggle.
+	 */
+	private void correlateCombine()
+	{
+		if (!config.sourcePricing() || pendingItemDeltas.isEmpty()
+				|| pendingItemDeltas.getOrDefault(ItemID.COINS, 0) != 0)
+			return;
+
+		int tick = client.getTickCount();
+		if (tick - processingXpTick <= 1 || tick - magicXpTick <= 1 || tick - gatherXpTick <= 1
+				|| tick - thievingXpTick <= 1 || tick - rewardContainerTick <= 1
+				|| tick - potionEmptiedTick <= 1)
+			return;
+
+		List<int[]> inputs = new ArrayList<>();
+		int outputId = 0;
+		int outputQty = 0;
+		int outputKinds = 0;
+		for (Map.Entry<Integer, Integer> entry : pendingItemDeltas.entrySet())
+		{
+			int itemId = entry.getKey();
+			int delta = entry.getValue();
+			if (itemId == ItemID.COINS || delta == 0 || doseSwapClaimedIds.contains(itemId))
+				continue;
+
+			if (delta < 0)
+			{
+				inputs.add(new int[]{itemId, -delta});
+			}
+			else
+			{
+				outputKinds++;
+				outputId = itemId;
+				outputQty = delta;
+			}
+		}
+
+		if (inputs.isEmpty() || outputKinds != 1 || isDestroyedProduct(outputId) || !isTracked(outputId))
+			return;
+
+		pairProcessingRecipe(inputs, outputId, outputQty, true);
 	}
 
 	/**
