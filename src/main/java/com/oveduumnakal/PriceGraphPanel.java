@@ -967,9 +967,7 @@ public class PriceGraphPanel extends JPanel
 				{
 					while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
 							|| cal.getTimeInMillis() / 1000L < startSec)
-					{
 						cal.add(Calendar.DAY_OF_MONTH, 1);
-					}
 
 					while (cal.getTimeInMillis() / 1000L <= endSec)
 					{

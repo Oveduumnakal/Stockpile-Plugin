@@ -66,8 +66,6 @@ final class HoverTintListener extends MouseAdapter
 		Point origin = label.getLocationOnScreen();
 		if (screen.x >= origin.x && screen.x < origin.x + label.getWidth()
 				&& screen.y >= origin.y && screen.y < origin.y + label.getHeight())
-		{
 			label.setText(highlightedText);
-		}
 	}
 }

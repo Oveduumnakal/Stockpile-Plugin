@@ -65,9 +65,7 @@ public class StockpileHighlightOverlay extends WidgetItemOverlay
 	{
 		if (!config.highlightTrackedItems().invBank()
 				|| !plugin.isTracked(itemManager.canonicalize(itemId)))
-		{
 			return;
-		}
 
 		Rectangle bounds = widgetItem.getCanvasBounds();
 		if (bounds != null)

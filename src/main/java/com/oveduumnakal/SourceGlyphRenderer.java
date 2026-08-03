@@ -14,6 +14,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JTable;
 import javax.swing.SwingConstants;
 import javax.swing.table.DefaultTableCellRenderer;
+
 import net.runelite.client.util.ImageUtil;
 
 /**

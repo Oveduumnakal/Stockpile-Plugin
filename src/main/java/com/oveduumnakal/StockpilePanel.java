@@ -5520,9 +5520,7 @@ public class StockpilePanel extends PluginPanel
 			{
 				if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1
 						&& table.rowAtPoint(e.getPoint()) < 0)
-				{
 					acqAddRow(table, model);
-				}
 			}
 		});
 
