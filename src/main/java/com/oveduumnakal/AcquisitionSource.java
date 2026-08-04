@@ -68,6 +68,13 @@ enum AcquisitionSource
 	/** A gem destroyed by a failed cut into gem dust; the uncut gem closes as a loss at 0. */
 	CRUSHED("Crushed"),
 
+	/**
+	 * Destroyed on use, gone for good — a cannonball fired, a chinchompa thrown. The lot closes at 0
+	 * (its cost realizes as a loss). Recoverable ammo that lands on the target's tile does not book
+	 * here; it suspends on the ground path and un-suspends when picked back up (#234).
+	 */
+	DESTROYED("Destroyed"),
+
 	/** Lost to or recovered after a death; lots suspend rather than close. */
 	DEATH("Death");
 

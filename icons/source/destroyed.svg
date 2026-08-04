@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <g fill="#fff">
+    <g transform="rotate(45 16 11)">
+      <path d="M15 9.4 L23 9.4 L23 12.6 L15 12.6 Z"/>
+      <path d="M23 6 L31 11 L23 16 Z"/>
+    </g>
+    <g transform="rotate(-45 16 11)">
+      <path d="M9 9.4 L17 9.4 L17 12.6 L9 12.6 Z"/>
+      <path d="M9 9.4 L2 6 L2 9.6 L6.5 11 Z"/>
+      <path d="M9 12.6 L2 16 L2 12.4 L6.5 11 Z"/>
+    </g>
+  </g>
+  <g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+    <path d="M16 2 L16 5.5"/>
+    <path d="M11 3.5 L13 6.5"/>
+    <path d="M21 3.5 L19 6.5"/>
+  </g>
+</svg>
