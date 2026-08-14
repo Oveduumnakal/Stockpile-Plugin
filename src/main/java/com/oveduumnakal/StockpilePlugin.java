@@ -284,6 +284,12 @@ public class StockpilePlugin extends Plugin
 	private boolean runePouchSeenSinceLogin = false;
 
 	/**
+	 * Set when a rune pouch varbit changes; the diff is deferred to {@link #onClientTick} so every
+	 * type/quantity varbit for the change has settled before it is read (#237).
+	 */
+	private boolean runePouchDirty = false;
+
+	/**
 	 * Whether the current logged-in session has been initialised. Guards the one-time
 	 * clear+reload so a respawn or region load re-firing {@code LOGGED_IN} mid-session
 	 * doesn't wipe pending quantity changes (e.g. a death loss) or reset held state (#70).
@@ -554,6 +560,14 @@ public class StockpilePlugin extends Plugin
 	 * abort an offer anywhere near this fast — so the window reliably separates the two.
 	 */
 	private static final int GE_LOGIN_SYNC_TICKS = 5;
+
+	/**
+	 * Grace window (in ticks) after login during which an empty→full rune pouch read is treated
+	 * as baseline hydration rather than a real acquisition. Pouch type/quantity varbits can arrive
+	 * across a couple of ticks as the login packet settles; a player cannot fill a pouch this fast,
+	 * so suppressing the delta here avoids the phantom login acquisition (#237).
+	 */
+	private static final int RUNE_POUCH_LOGIN_GRACE_TICKS = 2;
 
 	/** How often at most the GE ledger/window are rewritten to config during activity. */
 	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
@@ -2436,6 +2450,12 @@ public class StockpilePlugin extends Plugin
 	{
 		sourceAttribution.expire(client.getTickCount());
 		correlateGroundActivity();
+		if (runePouchDirty)
+		{
+			runePouchDirty = false;
+			flushRunePouchDelta();
+		}
+
 		if (pendingQuantitySync)
 		{
 			pendingQuantitySync = false;
@@ -3547,6 +3567,7 @@ public class StockpilePlugin extends Plugin
 					runePouchCounts.clear();
 					seenContainersSinceLogin.clear();
 					runePouchSeenSinceLogin = false;
+					runePouchDirty = false;
 					geLoginTick = client.getTickCount();
 					pendingQuantitySync = false;
 					pendingItemDeltas.clear();
@@ -3617,27 +3638,40 @@ public class StockpilePlugin extends Plugin
 		}
 
 		if (RUNE_POUCH_VARBITS.contains(event.getVarbitId()))
-		{
-			Map<Integer, Integer> oldPouch = new HashMap<>(runePouchCounts);
-			syncRunePouch();
-			boolean firstSync = !runePouchSeenSinceLogin;
-			runePouchSeenSinceLogin = true;
-			if (!firstSync)
-			{
-				Set<Integer> allIds = new HashSet<>(oldPouch.keySet());
-				allIds.addAll(runePouchCounts.keySet());
-				for (int itemId : allIds)
-				{
-					int delta = runePouchCounts.getOrDefault(itemId, 0) - oldPouch.getOrDefault(itemId, 0);
-					if (delta != 0)
-						pendingItemDeltas.merge(itemId, delta, Integer::sum);
-				}
+			runePouchDirty = true;
+	}
 
-				pendingQuantitySync = true;
+	/**
+	 * Diffs settled rune pouch contents once per tick. Debouncing to the tick (rather than diffing
+	 * per varbit event) means every type/quantity varbit for a change has landed before the read, so
+	 * a half-populated snapshot can no longer book a phantom acquisition (#237). The first settled
+	 * read after login — and any empty→full read inside {@link #RUNE_POUCH_LOGIN_GRACE_TICKS} — only
+	 * establishes the baseline, since a login must produce no pouch delta.
+	 */
+	private void flushRunePouchDelta()
+	{
+		Map<Integer, Integer> oldPouch = new HashMap<>(runePouchCounts);
+		syncRunePouch();
+		boolean firstSync = !runePouchSeenSinceLogin;
+		runePouchSeenSinceLogin = true;
+		boolean loginGrace = geLoginTick >= 0
+				&& client.getTickCount() - geLoginTick <= RUNE_POUCH_LOGIN_GRACE_TICKS;
+		boolean emptyToFullAtLogin = oldPouch.isEmpty() && !runePouchCounts.isEmpty() && loginGrace;
+		if (!firstSync && !emptyToFullAtLogin)
+		{
+			Set<Integer> allIds = new HashSet<>(oldPouch.keySet());
+			allIds.addAll(runePouchCounts.keySet());
+			for (int itemId : allIds)
+			{
+				int delta = runePouchCounts.getOrDefault(itemId, 0) - oldPouch.getOrDefault(itemId, 0);
+				if (delta != 0)
+					pendingItemDeltas.merge(itemId, delta, Integer::sum);
 			}
 
-			refreshPanel();
+			pendingQuantitySync = true;
 		}
+
+		refreshPanel();
 	}
 
 	/** Rebuilds {@link #runePouchCounts} by reading the rune pouch type/quantity varbits. */
