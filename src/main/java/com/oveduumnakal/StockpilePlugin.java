@@ -336,6 +336,24 @@ public class StockpilePlugin extends Plugin
 	/** {@link ItemCategoryClassifier} category holding the runes a spellcast burns (#235). */
 	private static final String RUNE_CATEGORY = "Runes";
 
+	/** {@link ItemCategoryClassifier} category holding recoverable ranged ammo — arrows, bolts, darts, … (#234). */
+	private static final String AMMO_CATEGORY = "Ammo";
+
+	/**
+	 * Name tokens marking ammo destroyed on use — a cannonball fired from a cannon, a chinchompa thrown —
+	 * matched by name rather than category, since chinchompas classify as Hunter and a few cannonballs as
+	 * Weapons. Such a removal closes at 0 under {@link AcquisitionSource#DESTROYED} (#234).
+	 */
+	private static final Set<String> DESTROYED_AMMO_TOKENS = ImmutableSet.of("cannonball", "chinchompa");
+
+	/**
+	 * Name tokens for thrown melee weapons that survive the throw and land recoverable like arrows —
+	 * knives and throwing axes classify as Weapons rather than the {@link #AMMO_CATEGORY}, so they need a
+	 * name match to reach the ground-suspension path (#234). A non-thrown "knife" tool never fires and only
+	 * ever leaves the inventory by a drop (handled earlier) or a claimed trade, so the loose token is safe.
+	 */
+	private static final Set<String> RECOVERABLE_WEAPON_TOKENS = ImmutableSet.of("knife", "thrownaxe", "throwing axe");
+
 	/**
 	 * Empty vessels left behind when a potion or drink/dish is finished — a free byproduct of the
 	 * consumption, booked at 0 rather than an avg-price Unknown purchase (#218). Claimed only on a
@@ -2864,8 +2882,13 @@ public class StockpilePlugin extends Plugin
 					? AcquisitionSource.CRUSHED
 					: AcquisitionSource.BURNED;
 			for (int[] input : inputs)
+			{
+				if (isAmmo(input[0]))
+					continue;
+
 				if (isTracked(input[0]))
 					sourceAttribution.claim(loss, input[0], input[1], 0, client.getTickCount());
+			}
 
 			if (isTracked(outputId))
 				sourceAttribution.claim(loss, outputId, outputQty, 0, client.getTickCount());
@@ -3818,6 +3841,7 @@ public class StockpilePlugin extends Plugin
 			remaining = consumeBuyLedger(tracked, remaining);
 			remaining = consumeDeathUnsuspend(tracked, remaining);
 			remaining = consumeGroundUnsuspend(tracked, remaining);
+			remaining = consumeFiredAmmoRecovery(tracked, remaining);
 			remaining = consumePouchUnsuspend(tracked, remaining);
 			if (remaining > 0 && isPouchDepositTick())
 			{
@@ -3841,10 +3865,15 @@ public class StockpilePlugin extends Plugin
 			if (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isPotionDiscardTick())
+				boolean unclaimed = a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing();
+				if (unclaimed && isPotionDiscardTick())
 					closeFifo(tracked, mag, 0, AcquisitionSource.GROUND);
-				else if (a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing() && isConsumable(itemId))
+				else if (unclaimed && isConsumable(itemId))
 					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
+				else if (unclaimed && isDestroyedAmmo(itemId))
+					closeFifo(tracked, mag, 0, AcquisitionSource.DESTROYED);
+				else if (unclaimed && isRecoverableAmmo(itemId))
+					suspendFiredAmmo(tracked, mag);
 				else
 					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
 			}
@@ -4007,6 +4036,20 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/**
+	 * Suspends fired recoverable ammo on the ground path (#234): the units left the ammo slot but landed
+	 * on the target's tile, still owned with their basis intact. They un-suspend when picked back up
+	 * ({@link #consumeFiredAmmoRecovery}), or close as a 0-gp {@link AcquisitionSource#GROUND} loss once the
+	 * suspension outlives {@link #GROUND_SUSPEND_EXPIRY} ({@link #expireGroundSuspensions}) — which also
+	 * covers the shots that broke on impact and were never really recoverable. Reuses the drop machinery's
+	 * suspension counter rather than a menu/animation hook, so an Ava's-device catch (no delta) is a no-op.
+	 */
+	private void suspendFiredAmmo(TrackedItem tracked, int qty)
+	{
+		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + qty);
+		tracked.setGroundSuspendedAt(Instant.now());
+	}
+
+	/**
 	 * Restores an addition from ground suspension, but only up to what an actual
 	 * re-pickup of one of our dropped {@code TileItem}s queued — so a same-item pickup
 	 * from an unrelated source (a monster drop while our own is on the floor) can't
@@ -4027,6 +4070,26 @@ public class StockpilePlugin extends Plugin
 		else
 			pendingGroundUnsuspend.remove(tracked.getItemId());
 
+		tracked.setGroundSuspendedQuantity(suspended - restore);
+		return qty - restore;
+	}
+
+	/**
+	 * Restores picked-up ammo from ground suspension (#234): a fired-ammo lot lands on the target's tile
+	 * with no {@code TileItem} of ours to key off, so its recovery can't route through
+	 * {@link #consumeGroundUnsuspend}. When a gain of recoverable ammo finds units still suspended on the
+	 * ground, it un-suspends them at their original basis — the net no-op that opens no new lot — instead of
+	 * the phantom 0-gp {@link AcquisitionSource#GROUND} re-buy that would otherwise collapse the stack's cost
+	 * basis. Runs after {@link #consumeGroundUnsuspend} so a hand-dropped stack resolves through its own
+	 * {@code TileItem} first. Returns the unconsumed remainder.
+	 */
+	private int consumeFiredAmmoRecovery(TrackedItem tracked, int qty)
+	{
+		int suspended = tracked.getGroundSuspendedQuantity();
+		if (qty <= 0 || suspended <= 0 || !config.sourcePricing() || !isRecoverableAmmo(tracked.getItemId()))
+			return qty;
+
+		int restore = Math.min(qty, suspended);
 		tracked.setGroundSuspendedQuantity(suspended - restore);
 		return qty - restore;
 	}
@@ -4785,6 +4848,50 @@ public class StockpilePlugin extends Plugin
 	{
 		String category = ItemCategoryClassifier.classify(itemManager.getItemComposition(itemId).getName());
 		return CONSUMABLE_CATEGORIES.contains(category);
+	}
+
+	/**
+	 * @return whether {@code itemId} is ammo destroyed on use — a cannonball or a thrown chinchompa —
+	 *         matched by {@link #DESTROYED_AMMO_TOKENS} name token. An unclaimed removal of one closes at 0
+	 *         under {@link AcquisitionSource#DESTROYED} rather than suspending on the ground path (#234).
+	 *         Client thread only.
+	 */
+	private boolean isDestroyedAmmo(int itemId)
+	{
+		String name = itemManager.getItemComposition(itemId).getName();
+		String lower = name.toLowerCase(Locale.ROOT);
+		return DESTROYED_AMMO_TOKENS.stream().anyMatch(lower::contains);
+	}
+
+	/**
+	 * @return whether {@code itemId} is recoverable ranged or thrown ammo — an arrow, bolt, dart or javelin
+	 *         in the {@link #AMMO_CATEGORY}, or a knife/throwing axe by {@link #RECOVERABLE_WEAPON_TOKENS} —
+	 *         that lands on the target's tile when fired. A fired unit suspends on the ground path with its
+	 *         basis intact instead of closing, so picking it back up nets to nothing (#234). Destroyed ammo
+	 *         is excluded; see {@link #isDestroyedAmmo}. Client thread only.
+	 */
+	private boolean isRecoverableAmmo(int itemId)
+	{
+		if (isDestroyedAmmo(itemId))
+			return false;
+
+		String name = itemManager.getItemComposition(itemId).getName();
+		if (AMMO_CATEGORY.equals(ItemCategoryClassifier.classify(name)))
+			return true;
+
+		String lower = name.toLowerCase(Locale.ROOT);
+		return RECOVERABLE_WEAPON_TOKENS.stream().anyMatch(lower::contains);
+	}
+
+	/**
+	 * @return whether {@code itemId} is ammo of either kind — destroyed-on-use or recoverable (#234). Ammo
+	 *         is fuel for a shot, never a recipe input, so it must never be booked as a processing loss;
+	 *         {@link #correlateProcessing} uses this to keep darts loaded into a blowpipe (a charged variant
+	 *         reads as a destroyed product) off the {@link AcquisitionSource#BURNED} path. Client thread only.
+	 */
+	private boolean isAmmo(int itemId)
+	{
+		return isDestroyedAmmo(itemId) || isRecoverableAmmo(itemId);
 	}
 
 	/**

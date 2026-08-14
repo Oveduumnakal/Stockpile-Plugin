@@ -111,6 +111,26 @@ public class ItemCategoryClassifierTest
 		assertEquals("Other", ItemCategoryClassifier.classify("Daeyalt essence"));
 	}
 
+	/**
+	 * Locks the category shapes #234's ammo routing relies on: recoverable arrows/bolts/darts/javelins
+	 * sit in Ammo, while the items that need a name token instead — chinchompas (Hunter), cannonballs
+	 * (mixed Ammo/Weapons), and knives/throwing axes (Weapons) — do not, so a category-only gate would
+	 * miss them.
+	 */
+	@Test
+	public void ammoRoutingCategoryAssumptions()
+	{
+		assertEquals("Ammo", ItemCategoryClassifier.classify("Rune arrow"));
+		assertEquals("Ammo", ItemCategoryClassifier.classify("Runite bolts"));
+		assertEquals("Ammo", ItemCategoryClassifier.classify("Steel dart"));
+		assertEquals("Ammo", ItemCategoryClassifier.classify("Rune javelin"));
+		assertEquals("Hunter", ItemCategoryClassifier.classify("Black chinchompa"));
+		assertEquals("Ammo", ItemCategoryClassifier.classify("Rune cannonball"));
+		assertEquals("Weapons", ItemCategoryClassifier.classify("Granite cannonball"));
+		assertEquals("Weapons", ItemCategoryClassifier.classify("Rune knife"));
+		assertEquals("Weapons", ItemCategoryClassifier.classify("Rune thrownaxe"));
+	}
+
 	@Test
 	public void nullAndBlankAreOther()
 	{
