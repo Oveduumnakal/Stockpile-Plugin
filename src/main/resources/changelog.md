@@ -9,6 +9,17 @@ Bug Fixes lists only bugs that shipped in a previous release; bugs introduced an
 fixed within the same release cycle are omitted, since users never saw them.
 -->
 
+# 1.4.1 - August 14 2026
+
+## Quick Overview
+
+Stockpile 1.4.1 is a bug-fix release that corrects two profit-tracking errors carried over from 1.4. Ammunition you fire is now valued correctly, and runes stored in a rune pouch are no longer counted twice when you log in.
+
+## Bug Fixes
+
+[#234](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/234) - Fired ammunition is now valued correctly: ammo destroyed on use is booked at 0, while ammo that lands on the ground is recovered instead of written off
+[#237](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/237) - Runes kept in a rune pouch are no longer double-counted as a phantom reward when you log in
+
 # 1.4 - July 18 2026
 
 ## Quick Overview
