@@ -76,10 +76,17 @@ public enum SortMode
 		return Comparator.comparing((TrackedItem item) -> !hasKey.test(item)).thenComparing(ordered);
 	}
 
-	/** @return an item's estimated profit (only meaningful once its cost basis is initialized). */
+	/**
+	 * @return the same estimated profit the item's rows, totals, and notification metric display
+	 *         ({@link TrackedItem#getProfitAt(long)} at the average price): realized profit plus the
+	 *         unrealized mark-to-market on held lots. Only meaningful once the cost basis is
+	 *         initialized. The old {@code getAvgValue() - getCostBasis()} omitted realized profit and
+	 *         mixed container quantity with all-open-lot cost, so the sort disagreed with every
+	 *         displayed figure and swung negative for the duration of an in-flight sell (#173).
+	 */
 	private static long profitKey(TrackedItem item)
 	{
-		return item.getAvgValue() - item.getCostBasis();
+		return item.getProfitAt(item.getAvgPrice());
 	}
 
 	/** @return whether the item has both a current price and a 24h baseline to compute a change from. */
