@@ -212,7 +212,12 @@ public class StockpilePlugin extends Plugin
 			InventoryID.TACKLE_BOX,
 			InventoryID.FORESTRY_KIT,
 			InventoryID.HUNTSMANS_KIT,
-			InventoryID.BARBARIAN_KNAPSACK
+			InventoryID.BARBARIAN_KNAPSACK,
+			InventoryID.SAILING_BOAT_1_CARGOHOLD,
+			InventoryID.SAILING_BOAT_2_CARGOHOLD,
+			InventoryID.SAILING_BOAT_3_CARGOHOLD,
+			InventoryID.SAILING_BOAT_4_CARGOHOLD,
+			InventoryID.SAILING_BOAT_5_CARGOHOLD
 	);
 
 	/**
