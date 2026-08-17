@@ -3247,13 +3247,8 @@ public class StockpilePlugin extends Plugin
 	/** @return an untracked processing input's per-unit value under the configured fallback pricing. */
 	private long untrackedInputValue(int itemId)
 	{
-		switch (config.fallbackPricing())
-		{
-			case ZERO:
-				return 0;
-			default:
-				return itemManager.getItemPrice(itemId);
-		}
+		long guide = itemManager.getItemPrice(itemId);
+		return config.fallbackPricing().select(guide, guide, guide);
 	}
 
 	/**
@@ -4550,18 +4545,8 @@ public class StockpilePlugin extends Plugin
 	 */
 	private long fallbackPrice(TrackedItem tracked)
 	{
-		switch (config.fallbackPricing())
-		{
-			case HIGH:
-				return tracked.getHighPrice();
-			case LOW:
-				return tracked.getLowPrice();
-			case ZERO:
-				return 0;
-			case AVG:
-			default:
-				return tracked.getAvgPrice();
-		}
+		return config.fallbackPricing()
+				.select(tracked.getHighPrice(), tracked.getLowPrice(), tracked.getAvgPrice());
 	}
 
 	/**
