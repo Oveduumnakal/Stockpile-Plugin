@@ -39,6 +39,34 @@ public enum FallbackPricing
 	}
 
 	/**
+	 * The single fallback-pricing policy, shared by every call site so a new value or a change to
+	 * HIGH/LOW/AVG meaning is decided once (#181). Selects among the candidate prices supplied for
+	 * one item: {@link #HIGH} → {@code high}, {@link #LOW} → {@code low}, {@link #ZERO} → {@code 0},
+	 * {@link #AVG} → {@code avg}. Callers that only have a single guide price (an item with no
+	 * {@link TrackedItem}) pass it for all three, so the choice still resolves consistently.
+	 *
+	 * @param high the item's current high price
+	 * @param low  the item's current low price
+	 * @param avg  the item's current average price (also the default)
+	 * @return the price this mode seeds the cost basis with
+	 */
+	long select(long high, long low, long avg)
+	{
+		switch (this)
+		{
+			case HIGH:
+				return high;
+			case LOW:
+				return low;
+			case ZERO:
+				return 0;
+			case AVG:
+			default:
+				return avg;
+		}
+	}
+
+	/**
 	 * Maps a legacy combined {@code AutoAddMode} name (HIGH/LOW/AVG/ZERO/OFF) to the
 	 * fallback price it migrates to (#219). OFF carried no pricing choice, so it lands on
 	 * {@link #AVG} (today's default). Returns {@code null} for a value already migrated to a
