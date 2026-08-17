@@ -25,7 +25,6 @@
 package com.oveduumnakal;
 
 import java.awt.image.BufferedImage;
-import java.lang.reflect.Type;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -54,8 +53,6 @@ import javax.swing.SwingUtilities;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 
@@ -165,6 +162,9 @@ public class StockpilePlugin extends Plugin
 
 	@Inject
 	private Gson gson;
+
+	/** Client-free persistence layer (#111); built in {@link #startUp()} once gson/config are injected. */
+	private StockpilePersistence persistence;
 
 	@Inject
 	private OverlayManager overlayManager;
@@ -551,10 +551,6 @@ public class StockpilePlugin extends Plugin
 	 */
 	private final Map<Integer, Deque<long[]>> pendingSellRealize = new HashMap<>();
 
-	private static final Type GE_LEDGER_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
-
-	private static final Type GE_LIMITS_TYPE = new TypeToken<Map<Integer, long[]>>(){}.getType();
-
 	/** The rolling GE buy-limit window length. */
 	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
 
@@ -581,8 +577,6 @@ public class StockpilePlugin extends Plugin
 
 	/** Per-item thinned time series of portfolio value/cost for the history chart. */
 	private final PortfolioHistory portfolioHistory = new PortfolioHistory();
-
-	private static final Type PORTFOLIO_HISTORY_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
 
 	/** How often at most the portfolio history is rewritten to config. */
 	private static final Duration PORTFOLIO_SAVE_INTERVAL = Duration.ofMinutes(5);
@@ -625,8 +619,7 @@ public class StockpilePlugin extends Plugin
 	private void persistPortfolioHistory()
 	{
 		lastPortfolioSave = Instant.now();
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_PORTFOLIO_HISTORY,
-				gson.toJson(portfolioHistory.seriesByItem(), PORTFOLIO_HISTORY_TYPE));
+		persistence.savePortfolioHistory(portfolioHistory.seriesByItem());
 	}
 
 	/**
@@ -636,20 +629,9 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void loadPortfolioHistory()
 	{
-		String saved = configManager.getRSProfileConfiguration(StockpileConfig.GROUP,
-				StockpileConfig.KEY_PORTFOLIO_HISTORY);
-		if (saved == null || !saved.trim().startsWith("{"))
-			return;
-
-		try
-		{
-			Map<Integer, List<long[]>> stored = gson.fromJson(saved.trim(), PORTFOLIO_HISTORY_TYPE);
+		Map<Integer, List<long[]>> stored = persistence.loadPortfolioHistory();
+		if (stored != null)
 			portfolioHistory.load(stored);
-		}
-		catch (JsonSyntaxException e)
-		{
-			log.warn("Failed to parse persisted portfolio history; ignoring", e);
-		}
 	}
 
 	/** @return the aggregated portfolio history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
@@ -740,6 +722,7 @@ public class StockpilePlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
+		persistence = new StockpilePersistence(configManager, gson);
 		changelog = Changelog.load();
 		detectVersionChange();
 		migrateAutoAddSetting();
@@ -1077,102 +1060,22 @@ public class StockpilePlugin extends Plugin
 		);
 	}
 
-	private static final Type PERSIST_TYPE = new TypeToken<List<PersistedItem>>(){}.getType();
-
-	private static final Type PRICE_CACHE_TYPE = new TypeToken<Map<Integer, CachedPrice>>(){}.getType();
-
 	/** How often at most the price cache is rewritten to config during regular refreshes. */
 	private static final Duration PRICE_CACHE_SAVE_INTERVAL = Duration.ofMinutes(5);
 
 	/** When the price cache was last written, to throttle per-refresh saves. */
 	private Instant lastPriceCacheSave;
 
-	/**
-	 * Last-known prices for one tracked item, stored as JSON in the RS profile config
-	 * so the panel can show (staleness-dimmed) values immediately at startup instead
-	 * of placeholders until the first wiki fetch lands. Package-private so
-	 * {@code PersistedSchemaSnapshotTest} can guard its shape; any field change fails
-	 * the schema snapshot until it is regenerated and explained in the PR.
-	 */
-	static class CachedPrice
-	{
-		long high;
-		long low;
-		long avg;
-		long highTime;
-		long lowTime;
-	}
-
-	/**
-	 * Serializable snapshot of a tracked item, stored as JSON in the RS profile config.
-	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
-	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
-	 * schema snapshot until it is regenerated and explained in the PR.
-	 */
-	static class PersistedItem
-	{
-		int itemId;
-		int quantity;
-		boolean costBasisInitialized;
-		List<AcquisitionRecord> acquisitions;
-		List<NotificationRule> notifications;
-		boolean notificationsInitialized;
-		boolean favorite;
-		String category;
-		boolean onOverlay;
-		int deathSuspendedQuantity;
-		Long deathSuspendedAt;
-		int pouchSuspendedQuantity;
-	}
-
-	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
-
-	/**
-	 * Serializable snapshot of the category definitions and special-group collapsed state.
-	 * Package-private so {@code PersistenceCompatTest} can freeze its legacy shape and
-	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the
-	 * schema snapshot until it is regenerated and explained in the PR.
-	 */
-	static class CategoryData
-	{
-		List<CategoryState> categories;
-		boolean favoritesCollapsed;
-		boolean uncategorizedCollapsed;
-	}
-
 	/** Restores tracked items from the per-profile JSON written by {@link #persistTrackedItems()}. */
 	private void loadPersistedItems()
 	{
-		String saved = configManager.getRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_TRACKED_ITEMS);
-		if (saved == null || saved.trim().isEmpty())
-			return;
-
-		String trimmed = saved.trim();
-		if (trimmed.startsWith("["))
+		for (StockpilePersistence.PersistedItem p : persistence.loadItems())
 		{
-			try
-			{
-				List<PersistedItem> list = gson.fromJson(trimmed, PERSIST_TYPE);
-				if (list != null)
-				{
-					for (PersistedItem p : list)
-					{
-						addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
-							p.notificationsInitialized, p.costBasisInitialized, false, false, TrackItemMode.TRACK);
-						applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
-						applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
-						applyPersistedPouchSuspension(p.itemId, p.pouchSuspendedQuantity);
-					}
-				}
-
-				return;
-			}
-			catch (JsonSyntaxException e)
-			{
-				log.warn("Failed to parse persisted item JSON; ignoring", e);
-				return;
-			}
+			addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
+				p.notificationsInitialized, p.costBasisInitialized, false, false, TrackItemMode.TRACK);
+			applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
+			applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
+			applyPersistedPouchSuspension(p.itemId, p.pouchSuspendedQuantity);
 		}
 	}
 
@@ -1246,50 +1149,36 @@ public class StockpilePlugin extends Plugin
 		favoritesCollapsed = false;
 		uncategorizedCollapsed = false;
 
-		String saved = configManager.getRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_CATEGORIES);
-		if (saved == null || saved.trim().isEmpty())
+		StockpilePersistence.CategoryData data = persistence.loadCategories();
+		if (data == null)
 			return;
 
-		try
-		{
-			CategoryData data = gson.fromJson(saved.trim(), CATEGORIES_TYPE);
-			if (data == null)
-				return;
+		if (data.categories != null)
+			data.categories.stream()
+					.filter(c -> c != null && c.getName() != null && !c.getName().trim().isEmpty())
+					.forEach(categories::add);
 
-			if (data.categories != null)
-				data.categories.stream()
-						.filter(c -> c != null && c.getName() != null && !c.getName().trim().isEmpty())
-						.forEach(categories::add);
-
-			favoritesCollapsed = data.favoritesCollapsed;
-			uncategorizedCollapsed = data.uncategorizedCollapsed;
-		}
-		catch (JsonSyntaxException e)
-		{
-			log.warn("Failed to parse persisted category JSON; ignoring", e);
-		}
+		favoritesCollapsed = data.favoritesCollapsed;
+		uncategorizedCollapsed = data.uncategorizedCollapsed;
 	}
 
 	/** Serializes the category definitions and group collapsed state to per-profile config. */
 	private void persistCategories()
 	{
-		CategoryData data = new CategoryData();
+		StockpilePersistence.CategoryData data = new StockpilePersistence.CategoryData();
 		data.categories = new ArrayList<>(categories);
 		data.favoritesCollapsed = favoritesCollapsed;
 		data.uncategorizedCollapsed = uncategorizedCollapsed;
-
-		configManager.setRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_CATEGORIES, gson.toJson(data, CATEGORIES_TYPE));
+		persistence.saveCategories(data);
 	}
 
 	/** Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config. */
 	void persistTrackedItems()
 	{
-		List<PersistedItem> list = new ArrayList<>();
+		List<StockpilePersistence.PersistedItem> list = new ArrayList<>();
 		for (TrackedItem item : trackedItems.values())
 		{
-			PersistedItem p = new PersistedItem();
+			StockpilePersistence.PersistedItem p = new StockpilePersistence.PersistedItem();
 			p.itemId = item.getItemId();
 			p.quantity = item.getQuantity();
 			p.costBasisInitialized = item.isCostBasisInitialized();
@@ -1307,8 +1196,7 @@ public class StockpilePlugin extends Plugin
 			list.add(p);
 		}
 
-		configManager.setRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_TRACKED_ITEMS, gson.toJson(list, PERSIST_TYPE));
+		persistence.saveItems(list);
 	}
 
 	/** Tracks an item by id with defaults (full tracking mode, no preset cost basis). */
@@ -2167,13 +2055,13 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void persistPriceCache()
 	{
-		Map<Integer, CachedPrice> cache = new HashMap<>();
+		Map<Integer, StockpilePersistence.CachedPrice> cache = new HashMap<>();
 		for (TrackedItem item : trackedItems.values())
 		{
 			if (!item.hasPrices())
 				continue;
 
-			CachedPrice p = new CachedPrice();
+			StockpilePersistence.CachedPrice p = new StockpilePersistence.CachedPrice();
 			p.high = item.getHighPrice();
 			p.low = item.getLowPrice();
 			p.avg = item.getAvgPrice();
@@ -2186,8 +2074,7 @@ public class StockpilePlugin extends Plugin
 			return;
 
 		lastPriceCacheSave = Instant.now();
-		configManager.setRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE, gson.toJson(cache, PRICE_CACHE_TYPE));
+		persistence.savePriceCache(cache);
 	}
 
 	/**
@@ -2201,33 +2088,18 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void hydratePriceCache()
 	{
-		String saved = configManager.getRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE);
-		if (saved == null || saved.trim().isEmpty())
-			return;
-
-		Map<Integer, CachedPrice> cache;
-		try
-		{
-			cache = gson.fromJson(saved, PRICE_CACHE_TYPE);
-		}
-		catch (JsonSyntaxException e)
-		{
-			log.warn("Failed to parse persisted price cache; ignoring", e);
-			return;
-		}
-
-		if (cache == null || cache.isEmpty())
+		Map<Integer, StockpilePersistence.CachedPrice> cache = persistence.loadPriceCache();
+		if (cache.isEmpty())
 			return;
 
 		boolean hydrated = false;
-		for (Map.Entry<Integer, CachedPrice> entry : cache.entrySet())
+		for (Map.Entry<Integer, StockpilePersistence.CachedPrice> entry : cache.entrySet())
 		{
 			TrackedItem item = trackedItems.get(entry.getKey());
 			if (item == null || item.hasPrices())
 				continue;
 
-			CachedPrice p = entry.getValue();
+			StockpilePersistence.CachedPrice p = entry.getValue();
 			item.setHighPrice(p.high);
 			item.setLowPrice(p.low);
 			item.setAvgPrice(p.avg);
@@ -4575,10 +4447,7 @@ public class StockpilePlugin extends Plugin
 			ledger.put(e.getKey(), new ArrayList<>(e.getValue()));
 
 		lastGeStateSave = Instant.now();
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER,
-				gson.toJson(ledger, GE_LEDGER_TYPE));
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS,
-				gson.toJson(geBuyLimits, GE_LIMITS_TYPE));
+		persistence.saveGeState(ledger, geBuyLimits);
 	}
 
 	/** Restores the GE buy ledger and buy-limit windows from the RS profile config, defaulting to empty. */
@@ -4587,40 +4456,10 @@ public class StockpilePlugin extends Plugin
 		pendingGeBuys.clear();
 		geBuyLimits.clear();
 
-		String ledgerJson = configManager.getRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER);
-		if (ledgerJson != null && !ledgerJson.trim().isEmpty())
-		{
-			try
-			{
-				Map<Integer, List<long[]>> ledger = gson.fromJson(ledgerJson, GE_LEDGER_TYPE);
-				if (ledger != null)
-				{
-					for (Map.Entry<Integer, List<long[]>> e : ledger.entrySet())
-						pendingGeBuys.put(e.getKey(), new ArrayDeque<>(e.getValue()));
-				}
-			}
-			catch (JsonSyntaxException ex)
-			{
-				log.warn("Failed to parse GE buy ledger; ignoring", ex);
-			}
-		}
+		for (Map.Entry<Integer, List<long[]>> e : persistence.loadGeLedger().entrySet())
+			pendingGeBuys.put(e.getKey(), new ArrayDeque<>(e.getValue()));
 
-		String limitsJson = configManager.getRSProfileConfiguration(
-				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS);
-		if (limitsJson != null && !limitsJson.trim().isEmpty())
-		{
-			try
-			{
-				Map<Integer, long[]> limits = gson.fromJson(limitsJson, GE_LIMITS_TYPE);
-				if (limits != null)
-					geBuyLimits.putAll(limits);
-			}
-			catch (JsonSyntaxException ex)
-			{
-				log.warn("Failed to parse GE buy limits; ignoring", ex);
-			}
-		}
+		geBuyLimits.putAll(persistence.loadGeBuyLimits());
 	}
 
 	/** Persists the GE state at most once per {@link #GE_STATE_SAVE_INTERVAL}. */

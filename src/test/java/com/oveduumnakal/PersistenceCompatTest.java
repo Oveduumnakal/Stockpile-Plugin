@@ -28,7 +28,7 @@ public class PersistenceCompatTest
 {
 	private static final Gson GSON = new Gson();
 
-	private static final Type ITEMS_TYPE = new TypeToken<List<StockpilePlugin.PersistedItem>>(){}.getType();
+	private static final Type ITEMS_TYPE = new TypeToken<List<StockpilePersistence.PersistedItem>>(){}.getType();
 
 	/** Two tracked items as Release 1.3 wrote them: lots, a rule, grouping flags. */
 	private static final String ITEMS_1_3 = "["
@@ -50,10 +50,10 @@ public class PersistenceCompatTest
 	@Test
 	public void legacyTrackedItemsLoadUnchanged()
 	{
-		List<StockpilePlugin.PersistedItem> items = GSON.fromJson(ITEMS_1_3, ITEMS_TYPE);
+		List<StockpilePersistence.PersistedItem> items = GSON.fromJson(ITEMS_1_3, ITEMS_TYPE);
 		assertEquals(2, items.size());
 
-		StockpilePlugin.PersistedItem runes = items.get(0);
+		StockpilePersistence.PersistedItem runes = items.get(0);
 		assertEquals(560, runes.itemId);
 		assertEquals(2500, runes.quantity);
 		assertTrue(runes.costBasisInitialized);
@@ -74,7 +74,7 @@ public class PersistenceCompatTest
 		assertTrue(runes.acquisitions.get(1).isSellEstimated());
 		assertFalse(runes.acquisitions.get(0).isSellEstimated());
 
-		StockpilePlugin.PersistedItem whip = items.get(1);
+		StockpilePersistence.PersistedItem whip = items.get(1);
 		assertEquals(4151, whip.itemId);
 		assertEquals("Weapons", whip.category);
 		assertFalse(whip.favorite);
@@ -95,7 +95,7 @@ public class PersistenceCompatTest
 	@Test
 	public void legacyCategoriesLoadUnchanged()
 	{
-		StockpilePlugin.CategoryData data = GSON.fromJson(CATEGORIES_1_3, StockpilePlugin.CategoryData.class);
+		StockpilePersistence.CategoryData data = GSON.fromJson(CATEGORIES_1_3, StockpilePersistence.CategoryData.class);
 		assertEquals(2, data.categories.size());
 		assertEquals("Weapons", data.categories.get(0).getName());
 		assertFalse(data.categories.get(0).isCollapsed());
@@ -109,8 +109,8 @@ public class PersistenceCompatTest
 	{
 		String future = "[{\"itemId\":560,\"quantity\":1,\"someFutureField\":\"x\","
 				+ "\"acquisitions\":[{\"quantity\":1,\"boughtAt\":5,\"futureSource\":\"GE_TRADE\"}]}]";
-		List<StockpilePlugin.PersistedItem> items = GSON.fromJson(future, ITEMS_TYPE);
-		StockpilePlugin.PersistedItem item = items.get(0);
+		List<StockpilePersistence.PersistedItem> items = GSON.fromJson(future, ITEMS_TYPE);
+		StockpilePersistence.PersistedItem item = items.get(0);
 		assertEquals(560, item.itemId);
 		assertEquals(5, item.acquisitions.get(0).getBoughtAt());
 	}
@@ -118,7 +118,7 @@ public class PersistenceCompatTest
 	@Test
 	public void legacyRoundTripKeepsEveryLegacyKey()
 	{
-		List<StockpilePlugin.PersistedItem> items = GSON.fromJson(ITEMS_1_3, ITEMS_TYPE);
+		List<StockpilePersistence.PersistedItem> items = GSON.fromJson(ITEMS_1_3, ITEMS_TYPE);
 		String rewritten = GSON.toJson(items, ITEMS_TYPE);
 
 		Type rawType = new TypeToken<List<Map<String, Object>>>(){}.getType();

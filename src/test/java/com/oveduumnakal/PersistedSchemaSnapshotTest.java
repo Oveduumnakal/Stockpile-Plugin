@@ -50,9 +50,9 @@ public class PersistedSchemaSnapshotTest
 
 	/** The types actually serialized to config; everything else is reached from these. */
 	private static final Class<?>[] ROOTS = {
-			StockpilePlugin.PersistedItem.class,
-			StockpilePlugin.CategoryData.class,
-			StockpilePlugin.CachedPrice.class,
+			StockpilePersistence.PersistedItem.class,
+			StockpilePersistence.CategoryData.class,
+			StockpilePersistence.CachedPrice.class,
 	};
 
 	@Test
