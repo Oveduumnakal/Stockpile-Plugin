@@ -1269,17 +1269,16 @@ public class StockpilePanel extends PluginPanel
 			return;
 		}
 
-		String sign = profit > 0 ? "+" : "";
 		Color profitColor = profit == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (profit > 0 ? COLOR_HIGH : COLOR_LOW);
 		String grey = StockpileColors.toHex(ColorScheme.LIGHT_GRAY_COLOR);
 		String profitHex = StockpileColors.toHex(profitColor);
 
 		compactTotalsValueLabel.setText("<html><span style='color:" + StockpileColors.toHex(COLOR_AVG) + "'>" + avgText
 				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + profitHex
-				+ "'>" + sign + GpFormat.shortValue(profit) + "</span>"
+				+ "'>" + GpFormat.signedShort(profit) + "</span>"
 				+ "<span style='color:" + grey + "'>)</span></html>");
 		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
-				+ sign + NUMBER_FORMAT.format(profit) + " gp</html>");
+				+ signedGp(profit) + "</html>");
 	}
 
 	/**
@@ -1314,7 +1313,7 @@ public class StockpilePanel extends PluginPanel
 		Color color = total == 0 ? ColorScheme.LIGHT_GRAY_COLOR : (total > 0 ? COLOR_HIGH : COLOR_LOW);
 
 		sessionValueLabel.setForeground(color);
-		sessionValueLabel.setText(signedShort(total));
+		sessionValueLabel.setText(GpFormat.signedShort(total));
 
 		String tooltip = "<html>Since login:<br>"
 				+ "Price movement: " + signedGp(delta.getPrice()) + "<br>"
@@ -1362,13 +1361,6 @@ public class StockpilePanel extends PluginPanel
 	public void removeSessionBaseline(int itemId)
 	{
 		sessionStats.removeItem(itemId);
-	}
-
-	/** @return the value in short gp with an explicit +/- sign (e.g. {@code +1.2M}, {@code -350K}). */
-	private String signedShort(long value)
-	{
-		String sign = value > 0 ? "+" : (value < 0 ? "-" : "");
-		return sign + GpFormat.shortValue(Math.abs(value));
 	}
 
 	/** Builds a small footer button that runs the given action when clicked. */
@@ -6593,7 +6585,7 @@ public class StockpilePanel extends PluginPanel
 	/** @return the value as a comma-grouped gp string with an explicit {@code +} when positive. */
 	private static String signedGp(long v)
 	{
-		return (v > 0 ? "+" : "") + NUMBER_FORMAT.format(v) + " gp";
+		return GpFormat.signedGrouped(v) + " gp";
 	}
 
 	/** Builds the tooltip breaking down an alch-profit figure: alch value minus item cost and rune cost. */

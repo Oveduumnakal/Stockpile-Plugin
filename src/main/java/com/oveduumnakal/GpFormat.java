@@ -59,6 +59,33 @@ public final class GpFormat
 	}
 
 	/**
+	 * {@link #shortValue} with an explicit leading {@code +} on positive values
+	 * ({@code +1.2M}, {@code -350K}, {@code 0}). Negatives already carry their sign
+	 * from {@link #shortValue}; zero is unsigned. This is the single sign convention
+	 * shared by the session-stats and est-profit labels.
+	 */
+	public static String signedShort(long value)
+	{
+		return sign(value) + shortValue(value);
+	}
+
+	/**
+	 * {@link #grouped} with an explicit leading {@code +} on positive values
+	 * ({@code +1,234}, {@code -350}, {@code 0}), using the same zero-unsigned
+	 * convention as {@link #signedShort}.
+	 */
+	public static String signedGrouped(long value)
+	{
+		return sign(value) + grouped(value);
+	}
+
+	/** @return {@code "+"} for a positive value, empty otherwise (negatives get their sign from the number). */
+	private static String sign(long value)
+	{
+		return value > 0 ? "+" : "";
+	}
+
+	/**
 	 * Core abbreviation: scales by the largest fitting magnitude (K/M/B) and
 	 * formats the mantissa, or returns grouped digits below 1,000.
 	 *

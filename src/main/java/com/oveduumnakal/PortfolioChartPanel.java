@@ -16,7 +16,6 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
-import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -66,8 +65,6 @@ public final class PortfolioChartPanel extends JPanel
 	private static final Color PROFIT_UP = StockpileColors.HIGH;
 
 	private static final Color PROFIT_DOWN = StockpileColors.LOW;
-
-	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 
 	private static final DateTimeFormatter DAY_LABEL =
 			DateTimeFormatter.ofPattern("d MMM", Locale.US).withZone(ZoneId.systemDefault());
@@ -417,16 +414,16 @@ public final class PortfolioChartPanel extends JPanel
 
 		List<TipLine> lines = new ArrayList<>();
 		lines.add(new TipLine(TOOLTIP_TIME.format(Instant.ofEpochSecond(p[0])), "", null));
-		lines.add(new TipLine("Value:  ", NUMBER_FORMAT.format(p[1]), TOOLTIP_VALUE));
+		lines.add(new TipLine("Value:  ", GpFormat.grouped(p[1]), TOOLTIP_VALUE));
 		if (p[2] > 0)
 		{
 			int costY = valueY(p[2], axisMin, axisRange, plotTop, plotBottom, plotH);
 			g2.setColor(COST_LINE);
 			g2.fillOval(x - 3, costY - 3, 6, 6);
 
-			lines.add(new TipLine("Cost:   ", NUMBER_FORMAT.format(p[2]), TOOLTIP_VALUE));
+			lines.add(new TipLine("Cost:   ", GpFormat.grouped(p[2]), TOOLTIP_VALUE));
 			long profit = p[1] - p[2];
-			lines.add(new TipLine("Profit: ", (profit >= 0 ? "+" : "") + NUMBER_FORMAT.format(profit),
+			lines.add(new TipLine("Profit: ", GpFormat.signedGrouped(profit),
 					profit >= 0 ? PROFIT_UP : PROFIT_DOWN));
 		}
 
