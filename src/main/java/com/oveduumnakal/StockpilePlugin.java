@@ -2903,9 +2903,7 @@ public class StockpilePlugin extends Plugin
 
 		if (outputKinds == 1 && isDestroyedProduct(outputId))
 		{
-			AcquisitionSource loss = outputId == ItemID.CRUSHED_GEMSTONE
-					? AcquisitionSource.CRUSHED
-					: AcquisitionSource.BURNED;
+			AcquisitionSource loss = DestroyedOutputSources.sourceFor(outputId);
 			for (int[] input : inputs)
 			{
 				if (isAmmo(input[0]))
