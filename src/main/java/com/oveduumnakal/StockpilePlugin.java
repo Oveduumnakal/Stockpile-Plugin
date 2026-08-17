@@ -747,22 +747,6 @@ public class StockpilePlugin extends Plugin
 		panel = new StockpilePanel(
 				itemManager,
 				config,
-				this::addTrackedItem,
-				this::removeTrackedItem,
-				this::onAcquisitionsEdited,
-				this::requestDetailData,
-				this::clearAcquisitions,
-				this::onNotificationsEdited,
-				this::clearAllTrackedItems,
-				this::examineFor,
-				this::reorderTrackedItem,
-				this::setGlobalOrder,
-				this::toggleCompactView,
-				this::setSortMode,
-				this::toggleSortReversed,
-				this::setFavorite,
-				this::setOnOverlay,
-				this::setGroupCollapsed,
 				new CategoryActions()
 				{
 					@Override
@@ -801,13 +785,136 @@ public class StockpilePlugin extends Plugin
 						return StockpilePlugin.this.autoCategorize(includeCategorized);
 					}
 				},
-				this::buildShareToken,
-				this::importTrackedList,
-				this::buildAcquisitionsCsv,
-				this::portfolioHistoryPoints,
+				new PanelActions()
+				{
+					@Override
+					public void addItem(int itemId, TrackItemMode mode)
+					{
+						addTrackedItem(itemId, mode);
+					}
+
+					@Override
+					public void removeItem(int itemId)
+					{
+						removeTrackedItem(itemId);
+					}
+
+					@Override
+					public void acquisitionsEdited(int itemId)
+					{
+						onAcquisitionsEdited(itemId);
+					}
+
+					@Override
+					public void requestDetailData(int itemId)
+					{
+						StockpilePlugin.this.requestDetailData(itemId);
+					}
+
+					@Override
+					public void clearAcquisitions(int itemId)
+					{
+						StockpilePlugin.this.clearAcquisitions(itemId);
+					}
+
+					@Override
+					public void notificationsEdited(int itemId)
+					{
+						onNotificationsEdited(itemId);
+					}
+
+					@Override
+					public void clearAll()
+					{
+						clearAllTrackedItems();
+					}
+
+					@Override
+					public String examineLookup(int itemId)
+					{
+						return examineFor(itemId);
+					}
+
+					@Override
+					public void reorder(int from, int to)
+					{
+						reorderTrackedItem(from, to);
+					}
+
+					@Override
+					public void setGlobalOrder(List<Integer> order)
+					{
+						StockpilePlugin.this.setGlobalOrder(order);
+					}
+
+					@Override
+					public void toggleCompactView()
+					{
+						StockpilePlugin.this.toggleCompactView();
+					}
+
+					@Override
+					public void setSortMode(SortMode mode)
+					{
+						StockpilePlugin.this.setSortMode(mode);
+					}
+
+					@Override
+					public void toggleSortDirection()
+					{
+						toggleSortReversed();
+					}
+
+					@Override
+					public void setFavorite(int itemId, boolean favorite)
+					{
+						StockpilePlugin.this.setFavorite(itemId, favorite);
+					}
+
+					@Override
+					public void setOnOverlay(int itemId, boolean onOverlay)
+					{
+						StockpilePlugin.this.setOnOverlay(itemId, onOverlay);
+					}
+
+					@Override
+					public void setGroupCollapsed(String group, boolean collapsed)
+					{
+						StockpilePlugin.this.setGroupCollapsed(group, collapsed);
+					}
+
+					@Override
+					public void exportList(Consumer<String> callback)
+					{
+						buildShareToken(callback);
+					}
+
+					@Override
+					public void importList(String data, Consumer<String> callback)
+					{
+						importTrackedList(data, callback);
+					}
+
+					@Override
+					public void exportCsv(Consumer<String> callback)
+					{
+						buildAcquisitionsCsv(callback);
+					}
+
+					@Override
+					public List<long[]> portfolioHistory()
+					{
+						return portfolioHistoryPoints();
+					}
+
+					@Override
+					public void whatsNewSeen()
+					{
+						markWhatsNewSeen();
+					}
+				},
 				changelog,
-				isWhatsNew(),
-				this::markWhatsNewSeen
+				isWhatsNew()
 		);
 
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");

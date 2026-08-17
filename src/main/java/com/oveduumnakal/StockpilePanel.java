@@ -237,7 +237,10 @@ public class StockpilePanel extends PluginPanel
 	 */
 	private boolean groupingActive;
 
-	/** Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full plugin refresh. */
+	/**
+	 * Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full
+	 * plugin refresh, and so a session reset ({@link #resetSession()}) re-primes from the same list.
+	 */
 	private List<TrackedItem> lastRenderItems = new ArrayList<>();
 	private PriceIndicatorMode lastRenderIndicatorMode = PriceIndicatorMode.OFF;
 
@@ -504,9 +507,6 @@ public class StockpilePanel extends PluginPanel
 	private JPanel sessionRow;
 	/** In-memory session tracking; baseline captured on the first priced render after a reset. */
 	private final SessionStats sessionStats = new SessionStats();
-	/** The items from the most recent rebuild, so a session reset can re-render without one. */
-	private List<TrackedItem> lastRenderedItems = new ArrayList<>();
-
 	/** The standard totals rows (high/low/avg + profit), toggled off in compact view. */
 	private JPanel totalsRows;
 
@@ -579,72 +579,47 @@ public class StockpilePanel extends PluginPanel
 	 * Builds the panel and its two cards (main list and detail view). The header toggles
 	 * sit on their own right-justified row above the Tracked Items label.
 	 *
-	 * @param itemManager           for item names, icons, and prices
-	 * @param config                the plugin configuration
-	 * @param onAddItem             callback to start tracking an item in a mode
-	 * @param onRemoveItem          callback to stop tracking an item
-	 * @param onAcquisitionsEdited  callback after the acquisitions log is edited
-	 * @param onRequestDetailData   callback to request full history/metadata for an item
-	 * @param onClearAcquisitions   callback to clear an item's acquisitions
-	 * @param onNotificationsEdited callback after notification rules are edited
-	 * @param onClearAll            callback to clear all tracked items
-	 * @param examineLookup         resolves an item id to its examine text, or {@code null}
-	 * @param onReorder             callback to move an item to a new index in the tracked list
+	 * @param itemManager     for item names, icons, and prices
+	 * @param config          the plugin configuration
+	 * @param categoryActions the category-management operations, implemented by the plugin
+	 * @param actions         the plugin-facing callbacks the panel invokes (see {@link PanelActions})
+	 * @param changelog       the bundled changelog shown in the What's New view
+	 * @param whatsNew        whether this launch should surface the What's New badge
 	 */
 	public StockpilePanel(
 			ItemManager itemManager,
 			StockpileConfig config,
-			BiConsumer<Integer, TrackItemMode> onAddItem,
-			Consumer<Integer> onRemoveItem,
-			Consumer<Integer> onAcquisitionsEdited,
-			Consumer<Integer> onRequestDetailData,
-			Consumer<Integer> onClearAcquisitions,
-			Consumer<Integer> onNotificationsEdited,
-			Runnable onClearAll,
-			IntFunction<String> examineLookup,
-			BiConsumer<Integer, Integer> onReorder,
-			Consumer<List<Integer>> onSetGlobalOrder,
-			Runnable onToggleCompactView,
-			Consumer<SortMode> onSetSortMode,
-			Runnable onToggleSortDirection,
-			BiConsumer<Integer, Boolean> onSetFavorite,
-			BiConsumer<Integer, Boolean> onSetOnOverlay,
-			BiConsumer<String, Boolean> onSetGroupCollapsed,
 			CategoryActions categoryActions,
-			Consumer<Consumer<String>> onExportList,
-			BiConsumer<String, Consumer<String>> onImportList,
-			Consumer<Consumer<String>> onExportCsv,
-			Supplier<List<long[]>> onPortfolioHistory,
+			PanelActions actions,
 			Changelog changelog,
-			boolean whatsNew,
-			Runnable onWhatsNewSeen)
+			boolean whatsNew)
 	{
 		this.itemManager = itemManager;
 		this.config = config;
-		this.onAddItem = onAddItem;
-		this.onRemoveItem = onRemoveItem;
-		this.onAcquisitionsEdited = onAcquisitionsEdited;
-		this.onRequestDetailData = onRequestDetailData;
-		this.onClearAcquisitions = onClearAcquisitions;
-		this.onNotificationsEdited = onNotificationsEdited;
-		this.onClearAll = onClearAll;
-		this.examineLookup = examineLookup;
-		this.onReorder = onReorder;
-		this.onSetGlobalOrder = onSetGlobalOrder;
-		this.onToggleCompactView = onToggleCompactView;
-		this.onSetSortMode = onSetSortMode;
-		this.onToggleSortDirection = onToggleSortDirection;
-		this.onSetFavorite = onSetFavorite;
-		this.onSetOnOverlay = onSetOnOverlay;
-		this.onSetGroupCollapsed = onSetGroupCollapsed;
+		this.onAddItem = actions::addItem;
+		this.onRemoveItem = actions::removeItem;
+		this.onAcquisitionsEdited = actions::acquisitionsEdited;
+		this.onRequestDetailData = actions::requestDetailData;
+		this.onClearAcquisitions = actions::clearAcquisitions;
+		this.onNotificationsEdited = actions::notificationsEdited;
+		this.onClearAll = actions::clearAll;
+		this.examineLookup = actions::examineLookup;
+		this.onReorder = actions::reorder;
+		this.onSetGlobalOrder = actions::setGlobalOrder;
+		this.onToggleCompactView = actions::toggleCompactView;
+		this.onSetSortMode = actions::setSortMode;
+		this.onToggleSortDirection = actions::toggleSortDirection;
+		this.onSetFavorite = actions::setFavorite;
+		this.onSetOnOverlay = actions::setOnOverlay;
+		this.onSetGroupCollapsed = actions::setGroupCollapsed;
 		this.categoryActions = categoryActions;
-		this.onExportList = onExportList;
-		this.onImportList = onImportList;
-		this.onExportCsv = onExportCsv;
-		this.onPortfolioHistory = onPortfolioHistory;
+		this.onExportList = actions::exportList;
+		this.onImportList = actions::importList;
+		this.onExportCsv = actions::exportCsv;
+		this.onPortfolioHistory = actions::portfolioHistory;
 		this.changelog = changelog;
 		this.whatsNew = whatsNew;
-		this.onWhatsNewSeen = onWhatsNewSeen;
+		this.onWhatsNewSeen = actions::whatsNewSeen;
 
 		setLayout(new BorderLayout(0, 8));
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -1344,8 +1319,8 @@ public class StockpilePanel extends PluginPanel
 	public void resetSession()
 	{
 		sessionStats.clear();
-		boolean hasPrices = lastRenderedItems.stream().anyMatch(TrackedItem::hasPrices);
-		updateSessionLine(lastRenderedItems, hasPrices);
+		boolean hasPrices = lastRenderItems.stream().anyMatch(TrackedItem::hasPrices);
+		updateSessionLine(lastRenderItems, hasPrices);
 	}
 
 	/**
@@ -2380,7 +2355,6 @@ public class StockpilePanel extends PluginPanel
 
 			boolean hasPrices = items.stream().anyMatch(TrackedItem::hasPrices);
 
-			lastRenderedItems = items;
 			updateSessionLine(items, hasPrices);
 
 			totalHighRow.setVisible(showEstHigh);
