@@ -27,11 +27,10 @@ package com.oveduumnakal;
 import java.awt.image.BufferedImage;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -131,7 +130,7 @@ import net.runelite.client.util.ImageUtil;
 		description = "Track item quantities across your inventory and bank with live GE prices",
 		tags = {"items", "bank", "inventory", "price", "ge", "tracker"}
 )
-public class StockpilePlugin extends Plugin
+public class StockpilePlugin extends Plugin implements LedgerHost
 {
 	@Inject
 	private Client client;
@@ -315,12 +314,6 @@ public class StockpilePlugin extends Plugin
 	private final Map<Integer, Integer> myTradeOffer = new HashMap<>();
 	private final Map<Integer, Integer> theirTradeOffer = new HashMap<>();
 
-	/** Per-item units queued to move into trade suspension when this tick's offer removals apply (#66). */
-	private final Map<Integer, Integer> pendingTradeSuspend = new HashMap<>();
-
-	/** Per-item units queued to leave trade suspension when this tick's additions apply (offer withdrawn). */
-	private final Map<Integer, Integer> pendingTradeUnsuspend = new HashMap<>();
-
 	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
 			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC,
@@ -414,79 +407,8 @@ public class StockpilePlugin extends Plugin
 	/** The tick of the most recent Thieving XP gain, marking a gain as free stolen loot (#217). */
 	private int thievingXpTick = -1;
 
-	/**
-	 * The tick a fur/meat hunting pouch was "Fill"ed from the inventory, so the matching
-	 * container removal suspends the moved lots (keeping source + basis) rather than
-	 * closing them as a loss (#214).
-	 */
-	private int pouchFillTick = -1;
-
-	/**
-	 * The tick a fur/meat hunting pouch was emptied to the bank, so the matching bank
-	 * gain first un-suspends previously-filled lots and books only the surplus as a free
-	 * {@code GATHER} (directly-caught furs) rather than an unknown-source purchase (#214).
-	 */
-	private int pouchDepositTick = -1;
-
-	/**
-	 * The tick the local player clicked "Empty" on a potion, discarding the liquid for no gp. The
-	 * matching dose removal closes at 0 tagged {@code GROUND} (a drop/discard) rather than realizing
-	 * the cost as an avg-price Unknown sale, and the freed vial books under the same source (#232).
-	 */
-	private int potionDiscardTick = -1;
-
-	/** Tracked-output item → total input basis to carry onto its processing-produced lot(s) this tick (#69). */
-	private final Map<Integer, Long> pendingProcessingOutput = new HashMap<>();
-
-	/** Tracked-output dose id → combined input basis to carry onto its decant-produced lot(s) this tick (#220). */
-	private final Map<Integer, Long> pendingDecantOutput = new HashMap<>();
-
-	/** Tracked lower-dose id → basis carried onto the potion left after a dose is drunk this tick (#218). */
-	private final Map<Integer, Long> pendingConsumedOutput = new HashMap<>();
-
 	/** Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). */
 	private final Set<Integer> doseSwapClaimedIds = new HashSet<>();
-
-	/** The tick a potion/drink was finished and how many vessels it freed, so the empty containers book at 0 (#218). */
-	private int potionEmptiedTick = -1;
-
-	private int potionEmptiedCount = 0;
-
-	/** The tick of the local player's most recent death, gating the death-loss window (#70). */
-	private int deathTick = -1;
-
-	/**
-	 * The tick this death's losses were first consumed, or -1 before any were. The death
-	 * wipes the containers in one batch, so consumption is bounded to that batch (plus
-	 * {@link #DEATH_LOSS_BATCH_GRACE_TICKS}) — without the bound, every unmatched removal
-	 * in the 15-tick window (eating after respawning, dropping an item) was misbooked as
-	 * a death loss and later closed at 0. Reset when the next death opens a new window.
-	 */
-	private int deathLossTick = -1;
-
-	/** How many ticks after a death removals still count as death losses (respawn wipe + lag). */
-	private static final int DEATH_LOSS_WINDOW_TICKS = 15;
-
-	/** How many ticks past the first consumed death loss the same death may keep consuming. */
-	private static final int DEATH_LOSS_BATCH_GRACE_TICKS = 1;
-
-	/** How long a death suspension may await recovery before its units close as lost at 0. */
-	private static final Duration DEATH_SUSPEND_EXPIRY = Duration.ofMinutes(65);
-
-	/**
-	 * True once the player's gravestone has been observed active, so its later
-	 * disappearance is a real transition rather than a login-time reading (#70).
-	 */
-	private boolean graveSeen = false;
-
-	/**
-	 * The tick the observed gravestone vanished (collected or expired), pending the
-	 * recovery grace check; -1 when none.
-	 */
-	private int graveGoneTick = -1;
-
-	/** Ticks to wait after a gravestone vanishes for a collection's items to return before ruling the rest a loss. */
-	private static final int GRAVE_RECOVERY_GRACE_TICKS = 5;
 
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
@@ -500,15 +422,6 @@ public class StockpilePlugin extends Plugin
 
 	/** Ground items this player dropped: the {@code TileItem} → how many of its units are ours. */
 	private final Map<TileItem, Integer> myDrops = new HashMap<>();
-
-	/** Per-item units queued to move into ground suspension when this tick's removals apply. */
-	private final Map<Integer, Integer> pendingGroundSuspend = new HashMap<>();
-
-	/** Per-item units queued to leave ground suspension when this tick's additions apply (re-pickups). */
-	private final Map<Integer, Integer> pendingGroundUnsuspend = new HashMap<>();
-
-	/** How long a ground suspension may go unresolved before its units close as lost. */
-	private static final Duration GROUND_SUSPEND_EXPIRY = Duration.ofMinutes(10);
 
 	private StockpilePanel panel;
 	private NavigationButton navButton;
@@ -525,34 +438,8 @@ public class StockpilePlugin extends Plugin
 
 	private volatile boolean mappingsLoaded;
 
-	/** Matches detector claims to observed quantity deltas; see {@link SourceAttributionCore}. */
-	private final SourceAttributionCore sourceAttribution = new SourceAttributionCore();
-
-	/** Derives discrete increments from the raw GE offer stream; see {@link GeOfferTracker}. */
-	private final GeOfferTracker geOfferTracker = new GeOfferTracker();
-
-	/** Per-item FIFO of GE buy fills awaiting collection: each entry is {@code {quantity, unitPrice}}. Persisted. */
-	private final Map<Integer, Deque<long[]>> pendingGeBuys = new HashMap<>();
-
-	/** Per-item rolling GE buy-limit window: {@code {firstBuyEpochSec, boughtInWindow}}. Persisted. */
-	private final Map<Integer, long[]> geBuyLimits = new HashMap<>();
-
-	/** Units of a just-placed GE sell awaiting their placement inventory decrease (session-only). */
-	private final Map<Integer, Integer> pendingSellSuspend = new HashMap<>();
-
-	/** Units of a cancelled GE sell awaiting their return inventory increase (session-only). */
-	private final Map<Integer, Integer> pendingSellUnsuspend = new HashMap<>();
-
-	/**
-	 * Per-item FIFO of GE sell fills that outran their suspension: each entry is
-	 * {@code {quantity, unitPrice}}. A same-tick fill realizes before the placement
-	 * inventory decrease has moved {@link #pendingSellSuspend} into {@code suspendedQuantity},
-	 * so the shortfall is parked here and drained once the units suspend (session-only).
-	 */
-	private final Map<Integer, Deque<long[]>> pendingSellRealize = new HashMap<>();
-
-	/** The rolling GE buy-limit window length. */
-	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
+	/** The cost-basis / GE trade ledger (#255); this plugin is its {@link LedgerHost} seam. */
+	private CostBasisLedger ledger;
 
 	/**
 	 * Ticks after login during which {@code GrandExchangeOfferChanged} events are treated as the
@@ -569,11 +456,6 @@ public class StockpilePlugin extends Plugin
 	 * so suppressing the delta here avoids the phantom login acquisition (#237).
 	 */
 	private static final int RUNE_POUCH_LOGIN_GRACE_TICKS = 2;
-
-	/** How often at most the GE ledger/window are rewritten to config during activity. */
-	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
-
-	private Instant lastGeStateSave;
 
 	/** Per-item thinned time series of portfolio value/cost for the history chart. */
 	private final PortfolioHistory portfolioHistory = new PortfolioHistory();
@@ -723,6 +605,7 @@ public class StockpilePlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		persistence = new StockpilePersistence(configManager, gson);
+		ledger = new CostBasisLedger(this, persistence);
 		changelog = Changelog.load();
 		detectVersionChange();
 		migrateAutoAddSetting();
@@ -929,7 +812,7 @@ public class StockpilePlugin extends Plugin
 
 			loadCategories();
 			loadPersistedItems();
-			loadGeState();
+			ledger.load();
 			loadPortfolioHistory();
 
 			refreshPanel();
@@ -1027,18 +910,12 @@ public class StockpilePlugin extends Plugin
 			priceRefreshTask = null;
 		}
 
-		persistGeState();
+		ledger.persist();
 		persistPortfolioHistory();
 		trackedItems.clear();
 		containerCounts.clear();
 		runePouchCounts.clear();
-		sourceAttribution.clear();
-		geOfferTracker.clear();
-		pendingSellSuspend.clear();
-		pendingSellUnsuspend.clear();
-		pendingSellRealize.clear();
-		pendingTradeSuspend.clear();
-		pendingTradeUnsuspend.clear();
+		ledger.resetForShutdown();
 		lastPriceRefresh = null;
 	}
 
@@ -1173,7 +1050,8 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/** Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config. */
-	void persistTrackedItems()
+	@Override
+	public void persistTrackedItems()
 	{
 		List<StockpilePersistence.PersistedItem> list = new ArrayList<>();
 		for (TrackedItem item : trackedItems.values())
@@ -1996,7 +1874,7 @@ public class StockpilePlugin extends Plugin
 				if (!item.isCostBasisInitialized())
 				{
 					if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
-						addOpenAcquisition(item, item.getQuantity(), fallbackPrice(item),
+						ledger.addOpenAcquisition(item, item.getQuantity(), ledger.fallbackPrice(item),
 								AcquisitionSource.UNKNOWN);
 
 					item.setCostBasisInitialized(true);
@@ -2245,13 +2123,13 @@ public class StockpilePlugin extends Plugin
 
 		if (POUCH_FILL_OPTION.equals(event.getMenuOption()) && isPouchTarget(target))
 		{
-			pouchFillTick = client.getTickCount();
+			ledger.signalPouchFill();
 			return;
 		}
 
 		if (POTION_EMPTY_OPTION.equals(event.getMenuOption()) && isDosePotion(event.getItemId()))
 		{
-			potionDiscardTick = client.getTickCount();
+			ledger.signalPotionDiscard();
 			return;
 		}
 
@@ -2275,7 +2153,7 @@ public class StockpilePlugin extends Plugin
 		if (alchValue <= 0)
 			return;
 
-		sourceAttribution.claim(AcquisitionSource.ALCHEMY, canonicalId, 1, alchValue, client.getTickCount());
+		ledger.claim(AcquisitionSource.ALCHEMY, canonicalId, 1, alchValue, client.getTickCount());
 	}
 
 	/**
@@ -2432,7 +2310,7 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
-		sourceAttribution.expire(client.getTickCount());
+		ledger.expireClaims(client.getTickCount());
 		correlateGroundActivity();
 		if (runePouchDirty)
 		{
@@ -2452,7 +2330,7 @@ public class StockpilePlugin extends Plugin
 			syncQuantitiesFromContainers();
 		}
 
-		flushPendingSellRealize();
+		ledger.flushPendingSellRealize();
 
 		evaluateNotifications();
 
@@ -2487,9 +2365,9 @@ public class StockpilePlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		expireGroundSuspensions();
-		expireDeathSuspensions();
-		closeVanishedGraveLosses();
+		ledger.expireGroundSuspensions();
+		ledger.expireDeathSuspensions();
+		ledger.closeVanishedGraveLosses();
 
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
@@ -2737,13 +2615,13 @@ public class StockpilePlugin extends Plugin
 		if (!isTracked(canonicalId))
 			return;
 
-		int queued = pendingGroundSuspend.getOrDefault(canonicalId, 0);
+		int queued = ledger.pendingGroundSuspend(canonicalId);
 		int pendingRemoval = -pendingItemDeltas.getOrDefault(canonicalId, 0) - queued;
 		if (pendingRemoval <= 0)
 			return;
 
 		int qty = Math.min(gained, pendingRemoval);
-		pendingGroundSuspend.merge(canonicalId, qty, Integer::sum);
+		ledger.queueGroundSuspend(canonicalId, qty);
 		myDrops.merge(item, qty, Integer::sum);
 	}
 
@@ -2763,9 +2641,9 @@ public class StockpilePlugin extends Plugin
 		{
 			int resolved = Math.min(ours, taken);
 			if (pendingAddition > 0)
-				pendingGroundUnsuspend.merge(canonicalId, Math.min(resolved, pendingAddition), Integer::sum);
+				ledger.queueGroundUnsuspend(canonicalId, Math.min(resolved, pendingAddition));
 			else
-				closeGroundLost(canonicalId, resolved);
+				ledger.closeGroundLost(canonicalId, resolved);
 
 			if (resolved >= ours)
 				myDrops.remove(item);
@@ -2776,7 +2654,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		if (pendingAddition > 0 && isTracked(canonicalId))
-			sourceAttribution.claim(AcquisitionSource.GROUND, canonicalId, Math.min(taken, pendingAddition), 0,
+			ledger.claim(AcquisitionSource.GROUND, canonicalId, Math.min(taken, pendingAddition), 0,
 					client.getTickCount());
 	}
 
@@ -2786,9 +2664,7 @@ public class StockpilePlugin extends Plugin
 	{
 		if (event.getActor() == client.getLocalPlayer())
 		{
-			deathTick = client.getTickCount();
-			deathLossTick = -1;
-			graveGoneTick = -1;
+			ledger.signalDeath();
 		}
 	}
 
@@ -2821,7 +2697,7 @@ public class StockpilePlugin extends Plugin
 	 * XP gain identifies a recipe action (#69), transferring the summed input cost: tracked
 	 * inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their
 	 * fallback market value, and the total is carried onto the output's new lot(s) by
-	 * {@link #consumeProcessingOutput} so their basis sums exactly to it. Multi-output ticks
+	 * {@link CostBasisLedger} so their basis sums exactly to it. Multi-output ticks
 	 * are unattributable and left to the fallback; tracked inputs with no tracked output
 	 * close at 0. A worthless, non-tradeable output is a destroyed product and is handled
 	 * without an XP signal — a burn or crush gives none — closing each tracked input as a
@@ -2839,7 +2715,7 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void correlateProcessing()
 	{
-		pendingProcessingOutput.clear();
+		ledger.clearProcessingOutput();
 		if (!config.sourcePricing() || pendingItemDeltas.isEmpty())
 			return;
 
@@ -2859,7 +2735,7 @@ public class StockpilePlugin extends Plugin
 				if (isSpellcastRune(itemId))
 				{
 					if (isTracked(itemId))
-						sourceAttribution.claim(AcquisitionSource.CAST, itemId, -delta, 0, client.getTickCount());
+						ledger.claim(AcquisitionSource.CAST, itemId, -delta, 0, client.getTickCount());
 
 					continue;
 				}
@@ -2889,11 +2765,11 @@ public class StockpilePlugin extends Plugin
 					continue;
 
 				if (isTracked(input[0]))
-					sourceAttribution.claim(loss, input[0], input[1], 0, client.getTickCount());
+					ledger.claim(loss, input[0], input[1], 0, client.getTickCount());
 			}
 
 			if (isTracked(outputId))
-				sourceAttribution.claim(loss, outputId, outputQty, 0, client.getTickCount());
+				ledger.claim(loss, outputId, outputQty, 0, client.getTickCount());
 
 			return;
 		}
@@ -2926,12 +2802,12 @@ public class StockpilePlugin extends Plugin
 
 			long basis = ProcessingBasis.openLotCost(tracked.getAcquisitions(), input[1]);
 			totalCost += basis;
-			sourceAttribution.claim(AcquisitionSource.PROCESSING, input[0], input[1],
+			ledger.claim(AcquisitionSource.PROCESSING, input[0], input[1],
 					trackedOutput ? basis / input[1] : 0, client.getTickCount());
 		}
 
 		if (trackedOutput && outputQty > 0)
-			pendingProcessingOutput.put(outputId, totalCost);
+			ledger.queueProcessingOutput(outputId, totalCost);
 	}
 
 	/**
@@ -2956,10 +2832,9 @@ public class StockpilePlugin extends Plugin
 	 */
 	private void correlateDecant()
 	{
-		pendingDecantOutput.clear();
-		pendingConsumedOutput.clear();
+		ledger.clearDecantAndConsumedOutput();
 		doseSwapClaimedIds.clear();
-		potionEmptiedCount = 0;
+		ledger.resetPotionEmptied();
 		if (!config.sourcePricing() || pendingItemDeltas.isEmpty()
 				|| client.getTickCount() - processingXpTick <= 1)
 			return;
@@ -2988,7 +2863,7 @@ public class StockpilePlugin extends Plugin
 	 * a dose-conserving swap (consumed doses equal produced doses) is a <b>decant</b> under
 	 * {@link AcquisitionSource#DECANT}; a swap that loses doses while leaving some (a dose drunk) is
 	 * a <b>consume-down</b> under {@link AcquisitionSource#CONSUMED}. Anything else — no consumption,
-	 * or every dose gone (a last dose drunk, left to the {@link #applyDelta} loss path) — is skipped.
+	 * or every dose gone (a last dose drunk, left to the {@link CostBasisLedger#applyDelta} loss path) — is skipped.
 	 * The consumed lots close at their FIFO cost and the summed basis is distributed onto the produced
 	 * ids: dose-weighted for a decant, but in full for a consume-down since a used dose is not a loss.
 	 */
@@ -3007,8 +2882,7 @@ public class StockpilePlugin extends Plugin
 			if (consumedDoses > 0 && producedDoses == 0)
 			{
 				int emptied = members.stream().filter(m -> m[1] < 0).mapToInt(m -> -m[1]).sum();
-				potionEmptiedTick = client.getTickCount();
-				potionEmptiedCount += emptied;
+				ledger.addPotionEmptied(emptied);
 			}
 
 			return;
@@ -3016,7 +2890,6 @@ public class StockpilePlugin extends Plugin
 
 		boolean decant = consumedDoses == producedDoses;
 		AcquisitionSource source = decant ? AcquisitionSource.DECANT : AcquisitionSource.CONSUMED;
-		Map<Integer, Long> pending = decant ? pendingDecantOutput : pendingConsumedOutput;
 		for (int[] member : members)
 			doseSwapClaimedIds.add(member[0]);
 
@@ -3037,7 +2910,7 @@ public class StockpilePlugin extends Plugin
 
 			long basis = ProcessingBasis.openLotCost(tracked.getAcquisitions(), qty);
 			totalBasis += basis;
-			sourceAttribution.claim(source, itemId, qty, basis / qty, client.getTickCount());
+			ledger.claim(source, itemId, qty, basis / qty, client.getTickCount());
 		}
 
 		List<int[]> outputs = new ArrayList<>();
@@ -3047,8 +2920,15 @@ public class StockpilePlugin extends Plugin
 
 		Map<Integer, Long> shares = DecantBasis.distribute(totalBasis, outputs);
 		for (Map.Entry<Integer, Long> share : shares.entrySet())
-			if (isTracked(share.getKey()))
-				pending.put(share.getKey(), share.getValue());
+		{
+			if (!isTracked(share.getKey()))
+				continue;
+
+			if (decant)
+				ledger.queueDecantOutput(share.getKey(), share.getValue());
+			else
+				ledger.queueConsumedOutput(share.getKey(), share.getValue());
+		}
 	}
 
 	/**
@@ -3076,7 +2956,7 @@ public class StockpilePlugin extends Plugin
 		int tick = client.getTickCount();
 		if (tick - processingXpTick <= 1 || tick - magicXpTick <= 1 || tick - gatherXpTick <= 1
 				|| tick - thievingXpTick <= 1 || tick - rewardContainerTick <= 1
-				|| tick - potionEmptiedTick <= 1)
+				|| tick - ledger.potionEmptiedTick() <= 1)
 			return;
 
 		List<int[]> inputs = new ArrayList<>();
@@ -3135,12 +3015,12 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || ledger.hasProcessingOutput(itemId)
+					|| ledger.hasDecantOrConsumedOutput(itemId))
 				continue;
 
 			if (isTracked(itemId))
-				sourceAttribution.claim(AcquisitionSource.GATHER, itemId, delta, 0, client.getTickCount());
+				ledger.claim(AcquisitionSource.GATHER, itemId, delta, 0, client.getTickCount());
 		}
 	}
 
@@ -3164,12 +3044,12 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || ledger.hasProcessingOutput(itemId)
+					|| ledger.hasDecantOrConsumedOutput(itemId))
 				continue;
 
 			if (isTracked(itemId))
-				sourceAttribution.claim(AcquisitionSource.REWARD, itemId, delta, 0, client.getTickCount());
+				ledger.claim(AcquisitionSource.REWARD, itemId, delta, 0, client.getTickCount());
 		}
 	}
 
@@ -3199,12 +3079,12 @@ public class StockpilePlugin extends Plugin
 		{
 			int itemId = entry.getKey();
 			int delta = entry.getValue();
-			if (delta <= 0 || itemId == ItemID.COINS || pendingProcessingOutput.containsKey(itemId)
-					|| pendingDecantOutput.containsKey(itemId) || pendingConsumedOutput.containsKey(itemId))
+			if (delta <= 0 || itemId == ItemID.COINS || ledger.hasProcessingOutput(itemId)
+					|| ledger.hasDecantOrConsumedOutput(itemId))
 				continue;
 
 			if (isTracked(itemId))
-				sourceAttribution.claim(AcquisitionSource.THIEVING, itemId, delta, 0, client.getTickCount());
+				ledger.claim(AcquisitionSource.THIEVING, itemId, delta, 0, client.getTickCount());
 		}
 	}
 
@@ -3255,7 +3135,7 @@ public class StockpilePlugin extends Plugin
 	 * Turns the change in our own offer into pending suspend/un-suspend intents: items added to
 	 * the offer left our inventory and should suspend, items withdrawn returned and should
 	 * un-suspend. Only tracked, non-currency items queue — coins and platinum tokens are the
-	 * trade's numerator, not a lot, and untracked items never flow through {@link #applyDelta}
+	 * trade's numerator, not a lot, and untracked items never flow through {@link CostBasisLedger#applyDelta}
 	 * to consume the intent.
 	 */
 	private void queueTradeSuspension(Map<Integer, Integer> before, Map<Integer, Integer> after)
@@ -3272,9 +3152,9 @@ public class StockpilePlugin extends Plugin
 
 			int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
 			if (delta > 0)
-				pendingTradeSuspend.merge(id, delta, Integer::sum);
+				ledger.queueTradeSuspend(id, delta);
 			else if (delta < 0)
-				pendingTradeUnsuspend.merge(id, -delta, Integer::sum);
+				ledger.queueTradeUnsuspend(id, -delta);
 		}
 	}
 
@@ -3286,7 +3166,7 @@ public class StockpilePlugin extends Plugin
 			registerTradeClaims();
 
 		if (isPouchDepositMessage(event.getMessage()))
-			pouchDepositTick = client.getTickCount();
+			ledger.signalPouchDeposit();
 
 		if (event.getMessage() != null && event.getMessage().startsWith(REWARD_LOOT_PREFIX))
 			rewardContainerTick = client.getTickCount();
@@ -3379,7 +3259,7 @@ public class StockpilePlugin extends Plugin
 		for (TradeApportioner.Leg leg : legs)
 		{
 			if (isTracked(leg.itemId))
-				sourceAttribution.claim(AcquisitionSource.PLAYER_TRADE, leg.itemId, leg.quantity,
+				ledger.claim(AcquisitionSource.PLAYER_TRADE, leg.itemId, leg.quantity,
 						prices.get(leg.itemId), client.getTickCount());
 		}
 	}
@@ -3404,7 +3284,7 @@ public class StockpilePlugin extends Plugin
 			if (qty <= 0)
 				continue;
 
-			closeFifo(tracked, qty, prices.get(leg.itemId), AcquisitionSource.PLAYER_TRADE);
+			ledger.closeFifo(tracked, qty, prices.get(leg.itemId), AcquisitionSource.PLAYER_TRADE);
 			tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() - qty);
 			changed = true;
 		}
@@ -3470,51 +3350,15 @@ public class StockpilePlugin extends Plugin
 			return;
 
 		long unitPrice = Math.abs(coinDelta) / Math.abs(itemDelta);
-		sourceAttribution.claim(AcquisitionSource.SHOP, changedItem, Math.abs(itemDelta), unitPrice,
+		ledger.claim(AcquisitionSource.SHOP, changedItem, Math.abs(itemDelta), unitPrice,
 				client.getTickCount());
 	}
 
-	/** Closes {@code qty} ground-suspended units of an item as lost: gone from the floor with no pickup. */
-	private void closeGroundLost(int itemId, int qty)
-	{
-		TrackedItem tracked = trackedItems.get(itemId);
-		if (tracked == null)
-			return;
-
-		int lost = Math.min(qty, tracked.getGroundSuspendedQuantity());
-		if (lost <= 0)
-			return;
-
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() - lost);
-		closeFifo(tracked, lost, 0, AcquisitionSource.GROUND);
-		persistTrackedItems();
-		refreshPanel();
-	}
-
-	/** Closes ground suspensions that outlived {@link #GROUND_SUSPEND_EXPIRY} as lost drops. */
-	private void expireGroundSuspensions()
-	{
-		Instant cutoff = Instant.now().minus(GROUND_SUSPEND_EXPIRY);
-		for (TrackedItem tracked : trackedItems.values())
-		{
-			if (tracked.getGroundSuspendedQuantity() > 0 && tracked.getGroundSuspendedAt() != null
-					&& tracked.getGroundSuspendedAt().isBefore(cutoff))
-				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
-		}
-	}
-
-	/** Closes every remaining ground suspension as lost — floor items rarely survive a logout. */
+	/** Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking. */
 	private void closeAllGroundSuspensions()
 	{
-		for (TrackedItem tracked : trackedItems.values())
-		{
-			if (tracked.getGroundSuspendedQuantity() > 0)
-				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
-		}
-
+		ledger.closeAllGroundSuspensions();
 		myDrops.clear();
-		pendingGroundSuspend.clear();
-		pendingGroundUnsuspend.clear();
 	}
 
 	/**
@@ -3550,35 +3394,19 @@ public class StockpilePlugin extends Plugin
 					pendingItemDeltas.clear();
 					loadCategories();
 					loadPersistedItems();
-					loadGeState();
+					ledger.load();
 					loadPortfolioHistory();
-					geOfferTracker.clear();
-					pendingSellSuspend.clear();
-					pendingSellUnsuspend.clear();
-					pendingSellRealize.clear();
+					ledger.resetForLogin();
 					myDrops.clear();
-					pendingGroundSuspend.clear();
-					pendingGroundUnsuspend.clear();
 					shopOpen = false;
 					myTradeOffer.clear();
 					theirTradeOffer.clear();
-					pendingTradeSuspend.clear();
-					pendingTradeUnsuspend.clear();
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					magicXpTick = -1;
 					gatherXpTick = -1;
 					rewardContainerTick = -1;
 					thievingXpTick = -1;
-					pouchFillTick = -1;
-					pouchDepositTick = -1;
-					potionDiscardTick = -1;
-					pendingProcessingOutput.clear();
-					pendingDecantOutput.clear();
-					pendingConsumedOutput.clear();
-					potionEmptiedTick = -1;
-					potionEmptiedCount = 0;
-					deathTick = -1;
 					clientThread.invokeLater(this::hydratePriceCache);
 				}
 
@@ -3610,7 +3438,8 @@ public class StockpilePlugin extends Plugin
 	{
 		if (event.getVarbitId() == VarbitID.GRAVESTONE_VISIBLE)
 		{
-			onGravestoneVisibility(event.getValue() != 0);
+			boolean durationExpired = client.getVarbitValue(VarbitID.GRAVESTONE_DURATION) <= 0;
+			ledger.onGravestoneVisibility(event.getValue() != 0, durationExpired);
 			return;
 		}
 
@@ -3675,7 +3504,7 @@ public class StockpilePlugin extends Plugin
 	 *
 	 * <p>Just after login the offer sync replays pre-existing offers here rather than at
 	 * container sync (whose offers array isn't populated yet). Within that window the state
-	 * is rebuilt via {@link #primeGeStateFromLogin()} and the events are swallowed so they
+	 * is rebuilt via {@link CostBasisLedger#primeGeStateFromLogin()} and the events are swallowed so they
 	 * aren't replayed as fresh placements or fills.
 	 */
 	@Subscribe
@@ -3687,7 +3516,7 @@ public class StockpilePlugin extends Plugin
 
 		if (geLoginTick >= 0 && client.getTickCount() - geLoginTick <= GE_LOGIN_SYNC_TICKS)
 		{
-			primeGeStateFromLogin();
+			ledger.primeGeStateFromLogin();
 			return;
 		}
 
@@ -3699,955 +3528,8 @@ public class StockpilePlugin extends Plugin
 				|| state == GrandExchangeOfferState.CANCELLED_SELL;
 		boolean empty = state == GrandExchangeOfferState.EMPTY;
 
-		for (GeOfferTracker.Event e : geOfferTracker.onOffer(event.getSlot(), offer.getItemId(),
-				buying, cancelled, empty, offer.getTotalQuantity(), offer.getQuantitySold(), offer.getSpent()))
-			handleGeEvent(e);
-	}
-
-	/**
-	 * Applies one derived GE event: ledger a buy, suspend/realize/restore a sell, and record
-	 * the buy limit. With Source-Based Pricing off, no new pricing state is created — buys
-	 * aren't ledgered (their additions price classically) and placements don't suspend (their
-	 * removals close classically at the average price) — while fills and cancels still drain
-	 * suspensions taken while the toggle was on, so nothing is stranded. Buy-limit tracking
-	 * is informational, not pricing, and stays on either way.
-	 */
-	private void handleGeEvent(GeOfferTracker.Event e)
-	{
-		if (e.kind == GeOfferTracker.Kind.BUY)
-		{
-			if (e.type == GeOfferTracker.Type.FILL)
-			{
-				recordBuyLimit(e.itemId, e.quantity);
-				if (config.sourcePricing())
-				{
-					pendingGeBuys.computeIfAbsent(e.itemId, k -> new ArrayDeque<>())
-							.addLast(new long[]{e.quantity, e.unitPrice});
-					scheduleGeStateSave();
-				}
-			}
-
-			return;
-		}
-
-		switch (e.type)
-		{
-			case PLACED:
-				if (config.sourcePricing())
-					pendingSellSuspend.merge(e.itemId, e.quantity, Integer::sum);
-
-				break;
-			case FILL:
-				realizeSell(e.itemId, e.quantity, e.unitPrice);
-				break;
-			case CANCELLED:
-				pendingSellUnsuspend.merge(e.itemId, e.quantity, Integer::sum);
-				break;
-			default:
-				break;
-		}
-	}
-
-	/** Closes {@code qty} suspended units of a sold item at the realized GE price, then persists and refreshes. */
-	private void realizeSell(int itemId, int qty, long unitPrice)
-	{
-		TrackedItem tracked = trackedItems.get(itemId);
-		if (tracked == null)
-			return;
-
-		int realized = Math.min(qty, tracked.getSuspendedQuantity());
-		if (realized > 0)
-		{
-			closeFifo(tracked, realized, unitPrice, AcquisitionSource.GE_TRADE);
-			tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
-			persistTrackedItems();
-			refreshPanel();
-		}
-
-		int shortfall = qty - realized;
-		if (shortfall > 0 && config.sourcePricing())
-			pendingSellRealize.computeIfAbsent(itemId, k -> new ArrayDeque<>())
-					.addLast(new long[]{shortfall, unitPrice});
-
-		scheduleGeStateSave();
-	}
-
-	/**
-	 * Closes any GE sell fill that outran its suspension, now that the placement inventory
-	 * decrease has moved the units into {@code suspendedQuantity}. Runs each tick after the
-	 * container sync; unmatched fills stay parked and retry on a later tick.
-	 */
-	private void flushPendingSellRealize()
-	{
-		if (pendingSellRealize.isEmpty())
-			return;
-
-		boolean changed = false;
-		Iterator<Map.Entry<Integer, Deque<long[]>>> it = pendingSellRealize.entrySet().iterator();
-		while (it.hasNext())
-		{
-			Map.Entry<Integer, Deque<long[]>> entry = it.next();
-			TrackedItem tracked = trackedItems.get(entry.getKey());
-			if (tracked == null)
-			{
-				it.remove();
-				continue;
-			}
-
-			Deque<long[]> queue = entry.getValue();
-			while (!queue.isEmpty() && tracked.getSuspendedQuantity() > 0)
-			{
-				long[] chunk = queue.peekFirst();
-				int realize = (int) Math.min(chunk[0], tracked.getSuspendedQuantity());
-				closeFifo(tracked, realize, chunk[1], AcquisitionSource.GE_TRADE);
-				tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realize);
-				chunk[0] -= realize;
-				changed = true;
-				if (chunk[0] <= 0)
-					queue.removeFirst();
-			}
-
-			if (queue.isEmpty())
-				it.remove();
-		}
-
-		if (changed)
-		{
-			persistTrackedItems();
-			scheduleGeStateSave();
-			refreshPanel();
-		}
-	}
-
-	/** Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. */
-	private void recordBuyLimit(int itemId, int qty)
-	{
-		long now = Instant.now().getEpochSecond();
-		long[] window = geBuyLimits.get(itemId);
-		if (window == null || now >= window[0] + BUY_LIMIT_WINDOW.getSeconds())
-			geBuyLimits.put(itemId, new long[]{now, qty});
-		else
-			window[1] += qty;
-	}
-
-		/**
-	 * Prices one item's net container delta. On a gain: restore trade/sell suspensions, then open
-	 * positively-detected same-tick production — processing and decant outputs, which carry transferred
-	 * cost basis — <em>before</em> draining the GE buy ledger, so a lingering buy for that same id can't
-	 * steal a decant/processing output (#220); then the remaining GE and suspension routing, the
-	 * source-attribution claim, and finally the classic fallback.
-	 */
-	private void applyDelta(TrackedItem tracked, int delta)
-	{
-		int itemId = tracked.getItemId();
-		if (delta > 0)
-		{
-			int remaining = delta;
-			remaining = consumeTradeUnsuspend(tracked, remaining);
-			remaining = consumeSellUnsuspend(tracked, remaining);
-			remaining = consumeProcessingOutput(tracked, remaining);
-			remaining = consumeDecantOutput(tracked, remaining);
-			remaining = consumeConsumedOutput(tracked, remaining);
-			remaining = consumeEmptyContainerByproduct(tracked, remaining);
-			remaining = consumeBuyLedger(tracked, remaining);
-			remaining = consumeDeathUnsuspend(tracked, remaining);
-			remaining = consumeGroundUnsuspend(tracked, remaining);
-			remaining = consumeFiredAmmoRecovery(tracked, remaining);
-			remaining = consumePouchUnsuspend(tracked, remaining);
-			if (remaining > 0 && isPouchDepositTick())
-			{
-				addOpenAcquisition(tracked, remaining, 0, AcquisitionSource.GATHER);
-				remaining = 0;
-			}
-
-			if (remaining > 0)
-			{
-				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
-				addOpenAcquisition(tracked, remaining, a.unitPriceOr(fallbackPrice(tracked)), a.source());
-			}
-		}
-		else
-		{
-			int mag = consumePouchSuspend(tracked, -delta);
-			mag = consumeTradeSuspend(tracked, mag);
-			mag = consumeSellSuspend(tracked, mag);
-			mag = consumeGroundSuspend(tracked, mag);
-			mag = consumeDeathLoss(tracked, mag);
-			if (mag > 0)
-			{
-				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				boolean unclaimed = a.source() == AcquisitionSource.UNKNOWN && config.sourcePricing();
-				if (unclaimed && isPotionDiscardTick())
-					closeFifo(tracked, mag, 0, AcquisitionSource.GROUND);
-				else if (unclaimed && isConsumable(itemId))
-					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
-				else if (unclaimed && isDestroyedAmmo(itemId))
-					closeFifo(tracked, mag, 0, AcquisitionSource.DESTROYED);
-				else if (unclaimed && isRecoverableAmmo(itemId))
-					suspendFiredAmmo(tracked, mag);
-				else
-					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
-			}
-		}
-	}
-
-	/**
-	 * Suspends removals in the post-death window (#70): the units were lost to the
-	 * death, so quantities drop but the lots stay open pending gravestone/Death's
-	 * Office recovery. Consumption is bounded to the death's own container batch —
-	 * the first tick that consumes, plus a one-tick grace for a split
-	 * inventory/equipment sync — so ordinary removals later in the window (eating
-	 * after respawning, dropping an item) close normally instead of being misbooked
-	 * as 0-gp death losses. The suspension timestamp is only set when none exists,
-	 * so a second death can't reset the first's recovery-expiry clock. Returns the
-	 * unconsumed remainder (0 when consumed).
-	 */
-	private int consumeDeathLoss(TrackedItem tracked, int qty)
-	{
-		int tick = client.getTickCount();
-		if (qty <= 0 || !config.sourcePricing() || deathTick < 0
-				|| tick - deathTick > DEATH_LOSS_WINDOW_TICKS)
-			return qty;
-
-		if (deathLossTick >= 0 && tick - deathLossTick > DEATH_LOSS_BATCH_GRACE_TICKS)
-		{
-			deathTick = -1;
-			return qty;
-		}
-
-		if (deathLossTick < 0)
-			deathLossTick = tick;
-
-		tracked.setDeathSuspendedQuantity(tracked.getDeathSuspendedQuantity() + qty);
-		if (tracked.getDeathSuspendedAt() == null)
-			tracked.setDeathSuspendedAt(Instant.now());
-
-		return 0;
-	}
-
-	/**
-	 * Greedily restores an addition from death suspension — a recovery reactivates
-	 * the suspended lots with their basis intact, opening nothing new. Returns the
-	 * unconsumed remainder.
-	 */
-	private int consumeDeathUnsuspend(TrackedItem tracked, int qty)
-	{
-		int suspended = tracked.getDeathSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0)
-			return qty;
-
-		int restore = Math.min(qty, suspended);
-		tracked.setDeathSuspendedQuantity(suspended - restore);
-		if (tracked.getDeathSuspendedQuantity() == 0)
-			tracked.setDeathSuspendedAt(null);
-
-		return qty - restore;
-	}
-
-	/** Closes death suspensions that outlived {@link #DEATH_SUSPEND_EXPIRY} as unrecovered losses at 0. */
-	private void expireDeathSuspensions()
-	{
-		Instant cutoff = Instant.now().minus(DEATH_SUSPEND_EXPIRY);
-		boolean changed = false;
-		for (TrackedItem tracked : trackedItems.values())
-		{
-			if (tracked.getDeathSuspendedQuantity() > 0 && tracked.getDeathSuspendedAt() != null
-					&& tracked.getDeathSuspendedAt().isBefore(cutoff))
-			{
-				closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
-				tracked.setDeathSuspendedQuantity(0);
-				tracked.setDeathSuspendedAt(null);
-				changed = true;
-			}
-		}
-
-		if (changed)
-		{
-			persistTrackedItems();
-			refreshPanel();
-		}
-	}
-
-	/**
-	 * Tracks the local player's gravestone via {@link VarbitID#GRAVESTONE_VISIBLE} (non-zero
-	 * while a grave stands, the value being its type). A grave that vanishes with its
-	 * {@link VarbitID#GRAVESTONE_DURATION} timer run out has expired and its items are lost,
-	 * so this arms the grace check in {@link #closeVanishedGraveLosses()}. A grave that
-	 * vanishes with time still on the clock was collected — its returning items un-suspend
-	 * themselves, so no loss is armed.
-	 */
-	private void onGravestoneVisibility(boolean present)
-	{
-		if (present)
-		{
-			graveSeen = true;
-			graveGoneTick = -1;
-		}
-		else if (graveSeen)
-		{
-			graveSeen = false;
-			if (client.getVarbitValue(VarbitID.GRAVESTONE_DURATION) <= 0)
-				graveGoneTick = client.getTickCount();
-		}
-	}
-
-	/**
-	 * Once an expired gravestone has been gone for {@link #GRAVE_RECOVERY_GRACE_TICKS},
-	 * closes any death suspension it left standing as lost at 0 (#70). The grace absorbs a
-	 * last-tick collection whose items are still landing; anything still suspended after it
-	 * is a genuine loss, so the collection log reflects it the moment the grave expires
-	 * rather than after the blunt {@link #DEATH_SUSPEND_EXPIRY} fallback.
-	 */
-	private void closeVanishedGraveLosses()
-	{
-		if (graveGoneTick < 0 || client.getTickCount() - graveGoneTick < GRAVE_RECOVERY_GRACE_TICKS)
-			return;
-
-		graveGoneTick = -1;
-		boolean changed = false;
-		for (TrackedItem tracked : trackedItems.values())
-		{
-			if (tracked.getDeathSuspendedQuantity() <= 0)
-				continue;
-
-			closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
-			tracked.setDeathSuspendedQuantity(0);
-			tracked.setDeathSuspendedAt(null);
-			changed = true;
-		}
-
-		if (changed)
-		{
-			persistTrackedItems();
-			refreshPanel();
-		}
-	}
-
-	/**
-	 * Moves up to this tick's correlated drop quantity of a removal into ground
-	 * suspension — the units left the containers but sit on the floor, still owned,
-	 * lots untouched. Returns the unconsumed remainder.
-	 */
-	private int consumeGroundSuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingGroundSuspend.get(tracked.getItemId());
-		if (qty <= 0 || pending == null || pending <= 0)
-			return qty;
-
-		int take = Math.min(qty, pending);
-		int left = pending - take;
-		if (left > 0)
-			pendingGroundSuspend.put(tracked.getItemId(), left);
-		else
-			pendingGroundSuspend.remove(tracked.getItemId());
-
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + take);
-		tracked.setGroundSuspendedAt(Instant.now());
-		return qty - take;
-	}
-
-	/**
-	 * Suspends fired recoverable ammo on the ground path (#234): the units left the ammo slot but landed
-	 * on the target's tile, still owned with their basis intact. They un-suspend when picked back up
-	 * ({@link #consumeFiredAmmoRecovery}), or close as a 0-gp {@link AcquisitionSource#GROUND} loss once the
-	 * suspension outlives {@link #GROUND_SUSPEND_EXPIRY} ({@link #expireGroundSuspensions}) — which also
-	 * covers the shots that broke on impact and were never really recoverable. Reuses the drop machinery's
-	 * suspension counter rather than a menu/animation hook, so an Ava's-device catch (no delta) is a no-op.
-	 */
-	private void suspendFiredAmmo(TrackedItem tracked, int qty)
-	{
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + qty);
-		tracked.setGroundSuspendedAt(Instant.now());
-	}
-
-	/**
-	 * Restores an addition from ground suspension, but only up to what an actual
-	 * re-pickup of one of our dropped {@code TileItem}s queued — so a same-item pickup
-	 * from an unrelated source (a monster drop while our own is on the floor) can't
-	 * cancel the suspension and instead gets its own 0-cost ground lot. A re-pickup of
-	 * our drop is the net no-op that opens no new lot. Returns the unconsumed remainder.
-	 */
-	private int consumeGroundUnsuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingGroundUnsuspend.get(tracked.getItemId());
-		int suspended = tracked.getGroundSuspendedQuantity();
-		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
-			return qty;
-
-		int restore = Math.min(qty, Math.min(pending, suspended));
-		int left = pending - restore;
-		if (left > 0)
-			pendingGroundUnsuspend.put(tracked.getItemId(), left);
-		else
-			pendingGroundUnsuspend.remove(tracked.getItemId());
-
-		tracked.setGroundSuspendedQuantity(suspended - restore);
-		return qty - restore;
-	}
-
-	/**
-	 * Restores picked-up ammo from ground suspension (#234): a fired-ammo lot lands on the target's tile
-	 * with no {@code TileItem} of ours to key off, so its recovery can't route through
-	 * {@link #consumeGroundUnsuspend}. When a gain of recoverable ammo finds units still suspended on the
-	 * ground, it un-suspends them at their original basis — the net no-op that opens no new lot — instead of
-	 * the phantom 0-gp {@link AcquisitionSource#GROUND} re-buy that would otherwise collapse the stack's cost
-	 * basis. Runs after {@link #consumeGroundUnsuspend} so a hand-dropped stack resolves through its own
-	 * {@code TileItem} first. Returns the unconsumed remainder.
-	 */
-	private int consumeFiredAmmoRecovery(TrackedItem tracked, int qty)
-	{
-		int suspended = tracked.getGroundSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0 || !config.sourcePricing() || !isRecoverableAmmo(tracked.getItemId()))
-			return qty;
-
-		int restore = Math.min(qty, suspended);
-		tracked.setGroundSuspendedQuantity(suspended - restore);
-		return qty - restore;
-	}
-
-	/**
-	 * Moves a removal into fur/meat-pouch suspension when it lands on the tick the pouch was
-	 * "Fill"ed — the units left the inventory into the pouch but stay owned, lots (and their
-	 * original source/basis) intact, until the pouch is emptied. Consumes the whole removal,
-	 * since a Fill click's only container effect is the furs/meats leaving the inventory.
-	 * Returns the unconsumed remainder (0 while the fill tick is live) (#214).
-	 */
-	private int consumePouchSuspend(TrackedItem tracked, int qty)
-	{
-		if (qty <= 0 || !config.sourcePricing() || pouchFillTick < 0
-				|| client.getTickCount() - pouchFillTick > 1)
-			return qty;
-
-		tracked.setPouchSuspendedQuantity(tracked.getPouchSuspendedQuantity() + qty);
-		return 0;
-	}
-
-	/**
-	 * Restores an addition from fur/meat-pouch suspension on an empty-to-bank tick, up to what
-	 * was filled in — those units re-enter tracked containers as the net no-op that reopens no
-	 * lot, keeping their original source and basis. Any surplus beyond the suspended amount is
-	 * left for the caller to book as freshly-gathered {@code GATHER}. Returns the unconsumed
-	 * remainder (#214).
-	 */
-	private int consumePouchUnsuspend(TrackedItem tracked, int qty)
-	{
-		int suspended = tracked.getPouchSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0 || !isPouchDepositTick())
-			return qty;
-
-		int restore = Math.min(qty, suspended);
-		tracked.setPouchSuspendedQuantity(suspended - restore);
-		return qty - restore;
-	}
-
-	/** @return whether a fur/meat pouch was emptied to the bank on (or one tick before) this tick (#214). */
-	private boolean isPouchDepositTick()
-	{
-		return config.sourcePricing() && pouchDepositTick >= 0 && client.getTickCount() - pouchDepositTick <= 1;
-	}
-
-	/** @return whether a potion was "Empty"-clicked on (or one tick before) this tick, discarding it (#232). */
-	private boolean isPotionDiscardTick()
-	{
-		return potionDiscardTick >= 0 && client.getTickCount() - potionDiscardTick <= 1;
-	}
-
-	/**
-	 * Moves up to {@code qty} of a removal into trade suspension — the units were placed into a
-	 * player-trade offer, so they left the containers but stay owned with their lots intact until
-	 * the trade finalizes or is withdrawn. Returns the unconsumed remainder.
-	 */
-	private int consumeTradeSuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingTradeSuspend.get(tracked.getItemId());
-		if (qty <= 0 || pending == null || pending <= 0)
-			return qty;
-
-		int take = Math.min(qty, pending);
-		int left = pending - take;
-		if (left > 0)
-			pendingTradeSuspend.put(tracked.getItemId(), left);
-		else
-			pendingTradeSuspend.remove(tracked.getItemId());
-
-		tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() + take);
-		return qty - take;
-	}
-
-	/**
-	 * Restores an addition from trade suspension — an offered item withdrawn from the trade
-	 * returns to the inventory, a net no-op that opens no new lot. Bounded by both the queued
-	 * withdrawal and the units actually suspended. Returns the unconsumed remainder.
-	 */
-	private int consumeTradeUnsuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingTradeUnsuspend.get(tracked.getItemId());
-		int suspended = tracked.getTradeSuspendedQuantity();
-		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
-			return qty;
-
-		int restore = Math.min(qty, Math.min(pending, suspended));
-		int left = pending - restore;
-		if (left > 0)
-			pendingTradeUnsuspend.put(tracked.getItemId(), left);
-		else
-			pendingTradeUnsuspend.remove(tracked.getItemId());
-
-		tracked.setTradeSuspendedQuantity(suspended - restore);
-		return qty - restore;
-	}
-
-	/**
-	 * Opens the output lot(s) of a processing action (#69), carrying the transferred
-	 * input basis so their cost sums <em>exactly</em> to it.
-	 */
-	private int consumeProcessingOutput(TrackedItem tracked, int qty)
-	{
-		return consumeCarriedOutput(tracked, qty, pendingProcessingOutput, AcquisitionSource.PROCESSING);
-	}
-
-	/**
-	 * Opens the output lot(s) of a decant (#220), carrying the combined dose-weighted input
-	 * basis so the swapped potion keeps its cost — no profit is realized on the swap.
-	 */
-	private int consumeDecantOutput(TrackedItem tracked, int qty)
-	{
-		return consumeCarriedOutput(tracked, qty, pendingDecantOutput, AcquisitionSource.DECANT);
-	}
-
-	/**
-	 * Opens the lower-dose potion left after a dose is drunk (#218), carrying the full basis of the
-	 * higher-dose lot so using a dose realizes no profit or loss — the cost simply follows the liquid.
-	 */
-	private int consumeConsumedOutput(TrackedItem tracked, int qty)
-	{
-		return consumeCarriedOutput(tracked, qty, pendingConsumedOutput, AcquisitionSource.CONSUMED);
-	}
-
-	/**
-	 * Opens the empty vessel(s) freed by finishing a potion or drink this tick (#218) at 0 — a
-	 * leftover byproduct, not a purchase. Bounded to the number of vessels emptied, so any vials bought
-	 * separately still price normally. The source matches the event: {@link AcquisitionSource#GROUND}
-	 * when the potion was discarded via "Empty" (#232), so the whole drop sits under one glyph, else
-	 * {@link AcquisitionSource#CONSUMED} for a drunk-dry potion. Returns the remainder.
-	 */
-	private int consumeEmptyContainerByproduct(TrackedItem tracked, int qty)
-	{
-		if (qty <= 0 || potionEmptiedCount <= 0 || client.getTickCount() != potionEmptiedTick
-				|| !EMPTY_CONTAINERS.contains(tracked.getItemId()))
-			return qty;
-
-		int free = Math.min(qty, potionEmptiedCount);
-		potionEmptiedCount -= free;
-		AcquisitionSource source = isPotionDiscardTick() ? AcquisitionSource.GROUND : AcquisitionSource.CONSUMED;
-		addOpenAcquisition(tracked, free, 0, source);
-		return qty - free;
-	}
-
-	/**
-	 * Opens {@code qty} newly-produced units carrying the basis queued in {@code carried} for this
-	 * item, tagged with {@code source}. An uneven split gives the remainder units one extra gp each
-	 * — 13 gp across 60 units becomes 13 units at 1 gp plus 47 at 0 gp — since a single integer
-	 * per-unit price can't hold a sub-gp basis. Consumes the whole addition (returns 0) so it
-	 * bypasses the fallback auto-add.
-	 */
-	private int consumeCarriedOutput(TrackedItem tracked, int qty, Map<Integer, Long> carried, AcquisitionSource source)
-	{
-		Long totalCost = carried.remove(tracked.getItemId());
-		if (qty <= 0 || totalCost == null)
-			return qty;
-
-		long base = totalCost / qty;
-		int remainder = (int) (totalCost % qty);
-		if (remainder > 0)
-			addOpenAcquisition(tracked, remainder, base + 1, source);
-
-		addOpenAcquisition(tracked, qty - remainder, base, source);
-		return 0;
-	}
-
-	/** Restores up to {@code qty} cancelled-sell units to held (un-suspends), returning the unconsumed remainder. */
-	private int consumeSellUnsuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingSellUnsuspend.get(tracked.getItemId());
-		if (pending == null || pending <= 0)
-			return qty;
-
-		int take = Math.min(qty, Math.min(pending, tracked.getSuspendedQuantity()));
-		if (take <= 0)
-			return qty;
-
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - take);
-		int left = pending - take;
-		if (left > 0)
-			pendingSellUnsuspend.put(tracked.getItemId(), left);
-		else
-			pendingSellUnsuspend.remove(tracked.getItemId());
-
-		return qty - take;
-	}
-
-	/**
-	 * Consumes up to {@code qty} from the item's GE buy ledger into priced lots, returning
-	 * the unconsumed remainder.
-	 */
-	private int consumeBuyLedger(TrackedItem tracked, int qty)
-	{
-		Deque<long[]> ledger = pendingGeBuys.get(tracked.getItemId());
-		if (ledger == null || ledger.isEmpty())
-			return qty;
-
-		int remaining = qty;
-		while (remaining > 0 && !ledger.isEmpty())
-		{
-			long[] chunk = ledger.peekFirst();
-			int take = (int) Math.min(remaining, chunk[0]);
-			addOpenAcquisition(tracked, take, chunk[1], AcquisitionSource.GE_TRADE);
-			remaining -= take;
-			chunk[0] -= take;
-			if (chunk[0] <= 0)
-				ledger.removeFirst();
-		}
-
-		if (ledger.isEmpty())
-			pendingGeBuys.remove(tracked.getItemId());
-
-		scheduleGeStateSave();
-		return remaining;
-	}
-
-	/** Suspends up to {@code qty} units for a just-placed GE sell (no close), returning the unconsumed remainder. */
-	private int consumeSellSuspend(TrackedItem tracked, int qty)
-	{
-		Integer pending = pendingSellSuspend.get(tracked.getItemId());
-		if (pending == null || pending <= 0)
-			return qty;
-
-		int take = Math.min(qty, pending);
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() + take);
-		int left = pending - take;
-		if (left > 0)
-			pendingSellSuspend.put(tracked.getItemId(), left);
-		else
-			pendingSellSuspend.remove(tracked.getItemId());
-
-		scheduleGeStateSave();
-		return qty - take;
-	}
-
-	/**
-	 * Post-login GE reconciliation, run for each offer event inside the {@link #GE_LOGIN_SYNC_TICKS}
-	 * login window (when the offers array is finally populated, unlike at container sync). Seeds the
-	 * offer tracker's baselines from the live offers so an offer that already existed at login is not
-	 * replayed as a fresh placement or fill, drops the stale session sell-routing maps, and rebuilds
-	 * {@code suspendedQuantity} from those offers so a later cancel un-suspends correctly instead of
-	 * logging a phantom acquisition. Idempotent, so repeating it as the array fills in is safe.
-	 */
-	private void primeGeStateFromLogin()
-	{
-		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
-		if (offers != null)
-		{
-			for (int slot = 0; slot < offers.length; slot++)
-			{
-				GrandExchangeOffer offer = offers[slot];
-				if (offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
-					continue;
-
-				geOfferTracker.seed(slot, offer.getItemId(), offer.getQuantitySold(), offer.getSpent());
-			}
-		}
-
-		pendingSellSuspend.clear();
-		pendingSellUnsuspend.clear();
-		pendingSellRealize.clear();
-		seedCancelledSellReturns(offers);
-		reconcileSuspendedFromOffers();
-	}
-
-	/**
-	 * Queues the uncollected remainder of every cancelled sell offer as a pending un-suspend,
-	 * so those units stay suspended (they are still the player's, sitting in the collection
-	 * box) and collecting them restores the original lots instead of opening fresh ones.
-	 * Runs after the login prime clears the pending maps, so re-priming stays idempotent.
-	 */
-	private void seedCancelledSellReturns(GrandExchangeOffer[] offers)
-	{
-		if (offers == null)
-			return;
-
-		for (GrandExchangeOffer offer : offers)
-		{
-			if (offer == null || offer.getState() != GrandExchangeOfferState.CANCELLED_SELL)
-				continue;
-
-			int returned = offer.getTotalQuantity() - offer.getQuantitySold();
-			if (returned > 0)
-				pendingSellUnsuspend.merge(offer.getItemId(), returned, Integer::sum);
-		}
-	}
-
-	/**
-	 * Rewrites {@code suspendedQuantity} from the live open sell offers plus the pending
-	 * cancelled-sell returns (units cancelled but not yet collected, which are still the
-	 * player's), so offline fills or cancels self-heal at login; released units are then
-	 * re-priced by {@link #reconcileAllQuantities}.
-	 *
-	 * <p>With Source-Based Pricing off no offer suspends: placements made while off were
-	 * already closed classically (re-suspending them would double-count), and any leftover
-	 * suspension from while the toggle was on zeroes here, letting the reconcile close those
-	 * lots at the average price — the classic removal semantics the toggle promises.
-	 */
-	private void reconcileSuspendedFromOffers()
-	{
-		if (!config.sourcePricing())
-		{
-			for (TrackedItem tracked : trackedItems.values())
-				tracked.setSuspendedQuantity(0);
-
-			return;
-		}
-
-		Map<Integer, Integer> openSell = new HashMap<>();
-		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
-		if (offers != null)
-		{
-			for (GrandExchangeOffer offer : offers)
-			{
-				if (offer != null && offer.getState() == GrandExchangeOfferState.SELLING)
-					openSell.merge(offer.getItemId(), offer.getTotalQuantity() - offer.getQuantitySold(), Integer::sum);
-			}
-		}
-
-		for (TrackedItem tracked : trackedItems.values())
-			tracked.setSuspendedQuantity(openSell.getOrDefault(tracked.getItemId(), 0)
-					+ pendingSellUnsuspend.getOrDefault(tracked.getItemId(), 0));
-	}
-
-	/** Sets the item's transient buy-limit fields from its window, clearing them when the window has expired. */
-	private void applyBuyLimitFields(TrackedItem item)
-	{
-		long[] window = geBuyLimits.get(item.getItemId());
-		if (window == null || Instant.now().getEpochSecond() >= window[0] + BUY_LIMIT_WINDOW.getSeconds())
-		{
-			item.setLimitBought(0);
-			item.setLimitResetEpoch(0);
-			return;
-		}
-
-		item.setLimitBought((int) window[1]);
-		item.setLimitResetEpoch(window[0] + BUY_LIMIT_WINDOW.getSeconds());
-	}
-
-	/** Persists the GE buy ledger and buy-limit windows to the RS profile config. */
-	private void persistGeState()
-	{
-		Map<Integer, List<long[]>> ledger = new HashMap<>();
-		for (Map.Entry<Integer, Deque<long[]>> e : pendingGeBuys.entrySet())
-			ledger.put(e.getKey(), new ArrayList<>(e.getValue()));
-
-		lastGeStateSave = Instant.now();
-		persistence.saveGeState(ledger, geBuyLimits);
-	}
-
-	/** Restores the GE buy ledger and buy-limit windows from the RS profile config, defaulting to empty. */
-	private void loadGeState()
-	{
-		pendingGeBuys.clear();
-		geBuyLimits.clear();
-
-		for (Map.Entry<Integer, List<long[]>> e : persistence.loadGeLedger().entrySet())
-			pendingGeBuys.put(e.getKey(), new ArrayDeque<>(e.getValue()));
-
-		geBuyLimits.putAll(persistence.loadGeBuyLimits());
-	}
-
-	/** Persists the GE state at most once per {@link #GE_STATE_SAVE_INTERVAL}. */
-	private void scheduleGeStateSave()
-	{
-		if (lastGeStateSave == null
-				|| Duration.between(lastGeStateSave, Instant.now()).compareTo(GE_STATE_SAVE_INTERVAL) >= 0)
-			persistGeState();
-	}
-
-	/**
-	 * Attributes a quantity change against the open detector claims, honouring the
-	 * Source-Based Pricing kill switch: when disabled, everything is
-	 * {@link AcquisitionSource#UNKNOWN} and priced by the classic fallbacks.
-	 */
-	private SourceAttributionCore.Attribution attributeDelta(int itemId, int quantity)
-	{
-		if (!config.sourcePricing())
-			return SourceAttributionCore.Attribution.UNKNOWN;
-
-		return sourceAttribution.attribute(itemId, quantity, client.getTickCount());
-	}
-
-	/**
-	 * @return the cost-basis price to seed an unknown-source change with (an auto-add or any
-	 * delta no detector observed), per the configured {@link FallbackPricing}.
-	 */
-	private long fallbackPrice(TrackedItem tracked)
-	{
-		return config.fallbackPricing()
-				.select(tracked.getHighPrice(), tracked.getLowPrice(), tracked.getAvgPrice());
-	}
-
-	/**
-	 * Adds {@code qty} units to an item's held lots at {@code boughtAt} gp.
-	 *
-	 * <p>First it reverses any equal-and-opposite "wash" closes (a prior sell at
-	 * the same price, which a re-acquire should cancel), then merges into an
-	 * existing open lot at the same price, or appends a new lot.
-	 */
-	private void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)
-	{
-		if (qty <= 0)
-			return;
-
-		List<AcquisitionRecord> records = tracked.getAcquisitions();
-
-		int undoBudget = qty;
-		Iterator<AcquisitionRecord> it = records.iterator();
-		while (it.hasNext() && undoBudget > 0)
-		{
-			AcquisitionRecord r = it.next();
-			Long sold = r.getSoldAt();
-			if (sold != null && r.getBoughtAt() == boughtAt && sold == boughtAt)
-			{
-				int undo = Math.min(r.getQuantity(), undoBudget);
-				r.setQuantity(r.getQuantity() - undo);
-				if (r.getQuantity() == 0)
-					it.remove();
-
-				undoBudget -= undo;
-			}
-		}
-
-		for (AcquisitionRecord r : records)
-		{
-			if (r.getSoldAt() == null && r.getBoughtAt() == boughtAt && r.sourceOrUnknown() == source)
-			{
-				r.setQuantity(r.getQuantity() + qty);
-				return;
-			}
-		}
-
-		records.add(new AcquisitionRecord(qty, boughtAt, null, source));
-	}
-
-	/**
-	 * Merges {@code qty} into an existing closed (sold) lot with the same
-	 * bought/sold prices and sell provenance, to avoid fragmenting the log.
-	 *
-	 * @return {@code true} if a matching lot absorbed the quantity
-	 */
-	private boolean mergeClosed(List<AcquisitionRecord> records, int qty, long boughtAt, long soldAtPrice,
-			AcquisitionSource sellSource)
-	{
-		for (AcquisitionRecord r : records)
-		{
-			Long sold = r.getSoldAt();
-			if (sold != null && r.getBoughtAt() == boughtAt && sold == soldAtPrice
-					&& r.sellSourceOrUnknown() == sellSource)
-			{
-				r.setQuantity(r.getQuantity() + qty);
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Closes {@code amount} units of held inventory at {@code soldAtPrice},
-	 * oldest lot first (FIFO), recording {@code sellSource} as the sale's
-	 * provenance — {@link AcquisitionSource#UNKNOWN} marks the price as an
-	 * estimate rather than an observed sale.
-	 *
-	 * <p>It first cancels any just-added open lots bought at the same price (a
-	 * buy immediately followed by a sell nets out), then realizes the remaining
-	 * amount across the oldest open lots, splitting a lot when only part of it is
-	 * sold and merging into matching closed lots where possible.
-	 */
-	private void closeFifo(TrackedItem tracked, int amount, long soldAtPrice, AcquisitionSource sellSource)
-	{
-		List<AcquisitionRecord> records = tracked.getAcquisitions();
-		int remaining = amount;
-
-		Iterator<AcquisitionRecord> cancelIt = records.iterator();
-		while (cancelIt.hasNext() && remaining > 0)
-		{
-			AcquisitionRecord r = cancelIt.next();
-			if (r.getSoldAt() == null && r.getBoughtAt() == soldAtPrice)
-			{
-				int cancel = Math.min(r.getQuantity(), remaining);
-				r.setQuantity(r.getQuantity() - cancel);
-				if (r.getQuantity() == 0)
-					cancelIt.remove();
-
-				remaining -= cancel;
-			}
-		}
-
-		remaining = realizeOpenLots(records, remaining, soldAtPrice, sellSource, sellSource);
-		realizeOpenLots(records, remaining, soldAtPrice, sellSource, null);
-	}
-
-	/**
-	 * Realizes up to {@code remaining} units across the open lots oldest-first,
-	 * closing (or splitting) each at {@code soldAtPrice} with {@code sellSource} and
-	 * merging into a matching closed lot where possible. When {@code onlySource} is
-	 * non-null, only lots that entered from that source are eligible — so a sell
-	 * closes its own source's buys before any others (#137), with the caller running
-	 * a matched pass followed by an unrestricted one.
-	 *
-	 * @return the units still unrealized after this pass
-	 */
-	private int realizeOpenLots(List<AcquisitionRecord> records, int remaining, long soldAtPrice,
-			AcquisitionSource sellSource, AcquisitionSource onlySource)
-	{
-		int i = 0;
-		while (i < records.size() && remaining > 0)
-		{
-			AcquisitionRecord r = records.get(i);
-			if (r.getSoldAt() != null || (onlySource != null && r.sourceOrUnknown() != onlySource))
-			{
-				i++;
-				continue;
-			}
-
-			if (r.getQuantity() <= remaining)
-			{
-				int closeQty = r.getQuantity();
-				remaining -= closeQty;
-				if (mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice, sellSource))
-				{
-					records.remove(i);
-				}
-				else
-				{
-					r.setSoldAt(soldAtPrice);
-					r.setSellSource(sellSource);
-					i++;
-				}
-			}
-			else
-			{
-				int closeQty = remaining;
-				r.setQuantity(r.getQuantity() - closeQty);
-				remaining = 0;
-				if (!mergeClosed(records, closeQty, r.getBoughtAt(), soldAtPrice, sellSource))
-				{
-					AcquisitionRecord closed = new AcquisitionRecord(closeQty, r.getBoughtAt(), soldAtPrice,
-							r.getSource());
-					closed.setSellSource(sellSource);
-					records.add(i, closed);
-				}
-			}
-		}
-
-		return remaining;
+		ledger.onGeOffer(event.getSlot(), offer.getItemId(), buying, cancelled, empty,
+				offer.getTotalQuantity(), offer.getQuantitySold(), offer.getSpent());
 	}
 
 	/**
@@ -4676,7 +3558,7 @@ public class StockpilePlugin extends Plugin
 			if (delta == null || delta == 0)
 				continue;
 
-			applyDelta(tracked, delta);
+			ledger.applyDelta(tracked, delta);
 
 			tracked.setQuantity(tracked.getQuantity() + delta);
 			changed = true;
@@ -4717,7 +3599,7 @@ public class StockpilePlugin extends Plugin
 		}
 
 		syncRunePouch();
-		reconcileSuspendedFromOffers();
+		ledger.reconcileSuspendedFromOffers();
 
 		boolean changed = false;
 		for (TrackedItem tracked : trackedItems.values())
@@ -4733,12 +3615,12 @@ public class StockpilePlugin extends Plugin
 			int logDelta = owned - tracked.getRecordQuantitySum();
 			if (logDelta > 0)
 			{
-				addOpenAcquisition(tracked, logDelta, fallbackPrice(tracked), AcquisitionSource.UNKNOWN);
+				ledger.addOpenAcquisition(tracked, logDelta, ledger.fallbackPrice(tracked), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
 			else if (logDelta < 0)
 			{
-				closeFifo(tracked, -logDelta, tracked.getAvgPrice(), AcquisitionSource.UNKNOWN);
+				ledger.closeFifo(tracked, -logDelta, tracked.getAvgPrice(), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
 
@@ -4812,7 +3694,8 @@ public class StockpilePlugin extends Plugin
 	 *         used up at 0 rather than an avg-price Unknown sale (#218). Ammo and runes are
 	 *         excluded; see {@link #CONSUMABLE_CATEGORIES}. Client thread only.
 	 */
-	private boolean isConsumable(int itemId)
+	@Override
+	public boolean isConsumable(int itemId)
 	{
 		String category = ItemCategoryClassifier.classify(itemManager.getItemComposition(itemId).getName());
 		return CONSUMABLE_CATEGORIES.contains(category);
@@ -4824,7 +3707,8 @@ public class StockpilePlugin extends Plugin
 	 *         under {@link AcquisitionSource#DESTROYED} rather than suspending on the ground path (#234).
 	 *         Client thread only.
 	 */
-	private boolean isDestroyedAmmo(int itemId)
+	@Override
+	public boolean isDestroyedAmmo(int itemId)
 	{
 		String name = itemManager.getItemComposition(itemId).getName();
 		String lower = name.toLowerCase(Locale.ROOT);
@@ -4838,7 +3722,8 @@ public class StockpilePlugin extends Plugin
 	 *         basis intact instead of closing, so picking it back up nets to nothing (#234). Destroyed ammo
 	 *         is excluded; see {@link #isDestroyedAmmo}. Client thread only.
 	 */
-	private boolean isRecoverableAmmo(int itemId)
+	@Override
+	public boolean isRecoverableAmmo(int itemId)
 	{
 		if (isDestroyedAmmo(itemId))
 			return false;
@@ -4959,9 +3844,52 @@ public class StockpilePlugin extends Plugin
 	}
 
 	/** Refreshes the panel without flagging a price update (no change indicators). */
-	private void refreshPanel()
+	@Override
+	public void refreshPanel()
 	{
 		refreshPanel(false);
+	}
+
+	@Override
+	public int currentTick()
+	{
+		return client.getTickCount();
+	}
+
+	@Override
+	public boolean sourcePricing()
+	{
+		return config.sourcePricing();
+	}
+
+	@Override
+	public FallbackPricing fallbackPricing()
+	{
+		return config.fallbackPricing();
+	}
+
+	@Override
+	public TrackedItem trackedItem(int itemId)
+	{
+		return trackedItems.get(itemId);
+	}
+
+	@Override
+	public Collection<TrackedItem> trackedItems()
+	{
+		return trackedItems.values();
+	}
+
+	@Override
+	public boolean isEmptyContainer(int itemId)
+	{
+		return EMPTY_CONTAINERS.contains(itemId);
+	}
+
+	@Override
+	public GrandExchangeOffer[] openGeOffers()
+	{
+		return client.getGrandExchangeOffers();
 	}
 
 	/**
@@ -4984,7 +3912,7 @@ public class StockpilePlugin extends Plugin
 				? config.priceChangeIndicator()
 				: PriceIndicatorMode.OFF;
 		for (TrackedItem item : trackedItems.values())
-			applyBuyLimitFields(item);
+			ledger.applyBuyLimitFields(item);
 
 		final List<TrackedItem> items = new ArrayList<>(trackedItems.values());
 
