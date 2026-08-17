@@ -63,4 +63,21 @@ public class GpFormatTest
 		assertEquals("2K", GpFormat.shortValue(2_000));
 		assertEquals("2.5M", GpFormat.shortValue(2_500_000));
 	}
+
+	@Test
+	public void signedShortAddsPlusOnlyForPositives()
+	{
+		assertEquals("+1.5K", GpFormat.signedShort(1_500));
+		assertEquals("+2.1B", GpFormat.signedShort(2_100_000_000L));
+		assertEquals("-350K", GpFormat.signedShort(-350_000));
+		assertEquals("0", GpFormat.signedShort(0));
+	}
+
+	@Test
+	public void signedGroupedAddsPlusOnlyForPositives()
+	{
+		assertEquals("+1,234", GpFormat.signedGrouped(1_234));
+		assertEquals("-1,234", GpFormat.signedGrouped(-1_234));
+		assertEquals("0", GpFormat.signedGrouped(0));
+	}
 }
