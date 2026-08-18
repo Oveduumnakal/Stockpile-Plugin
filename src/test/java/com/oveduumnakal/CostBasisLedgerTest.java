@@ -265,14 +265,14 @@ public class CostBasisLedgerTest
 		ledger.onGeOffer(1, ITEM, false, false, false, 10, 0, 0);
 		ledger.applyDelta(t, -10);
 
-		assertEquals("units suspend, not closed", 10, t.getSuspendedQuantity());
+		assertEquals("units suspend, not closed", 10, t.getSuspended(SuspensionSource.SELL));
 		assertEquals(1, openCount(t));
 		assertEquals(0, closedCount(t));
 
 		ledger.onGeOffer(1, ITEM, false, false, false, 10, 10, 1500);
 
 		AcquisitionRecord sold = firstClosed(t);
-		assertEquals(0, t.getSuspendedQuantity());
+		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals("the sold lot closes at the realized price", 1, closedCount(t));
 		assertEquals(150, (long) sold.getSoldAt());
 		assertEquals("basis is preserved", 100, sold.getBoughtAt());
@@ -292,7 +292,7 @@ public class CostBasisLedgerTest
 		ledger.flushPendingSellRealize();
 
 		AcquisitionRecord sold = firstClosed(t);
-		assertEquals(0, t.getSuspendedQuantity());
+		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals("the parked fill closes once the units suspend", 1, closedCount(t));
 		assertEquals(150, (long) sold.getSoldAt());
 	}
@@ -304,12 +304,12 @@ public class CostBasisLedgerTest
 
 		ledger.onGeOffer(1, ITEM, false, false, false, 10, 0, 0);
 		ledger.applyDelta(t, -10);
-		assertEquals(10, t.getSuspendedQuantity());
+		assertEquals(10, t.getSuspended(SuspensionSource.SELL));
 
 		ledger.onGeOffer(1, ITEM, false, true, false, 10, 0, 0);
 		ledger.applyDelta(t, 10);
 
-		assertEquals("units un-suspend with no phantom acquisition", 0, t.getSuspendedQuantity());
+		assertEquals("units un-suspend with no phantom acquisition", 0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals(1, openCount(t));
 		assertEquals(0, closedCount(t));
 	}
@@ -322,14 +322,14 @@ public class CostBasisLedgerTest
 		ledger.signalDeath();
 		ledger.applyDelta(t, -4);
 
-		assertEquals("death losses suspend rather than close at 0", 4, t.getDeathSuspendedQuantity());
+		assertEquals("death losses suspend rather than close at 0", 4, t.getSuspended(SuspensionSource.DEATH));
 		assertEquals(1, openCount(t));
 		assertEquals(0, closedCount(t));
 
 		ledger.applyDelta(t, 4);
 
 		AcquisitionRecord lot = firstOpen(t);
-		assertEquals(0, t.getDeathSuspendedQuantity());
+		assertEquals(0, t.getSuspended(SuspensionSource.DEATH));
 		assertEquals("basis intact, no fresh lot", 1, openCount(t));
 		assertEquals(100, lot.getBoughtAt());
 		assertEquals(AcquisitionSource.GE_TRADE, lot.sourceOrUnknown());
@@ -339,12 +339,12 @@ public class CostBasisLedgerTest
 	public void sourcePricingOffZeroesSuspensionsOnReconcile()
 	{
 		TrackedItem t = item(5, 100);
-		t.setSuspendedQuantity(5);
+		t.setSuspended(SuspensionSource.SELL, 5);
 		host.sourcePricing = false;
 
 		ledger.reconcileSuspendedFromOffers();
 
-		assertEquals("the classic path holds no suspensions", 0, t.getSuspendedQuantity());
+		assertEquals("the classic path holds no suspensions", 0, t.getSuspended(SuspensionSource.SELL));
 	}
 
 	@Test

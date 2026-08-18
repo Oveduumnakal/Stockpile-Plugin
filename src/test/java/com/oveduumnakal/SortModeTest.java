@@ -54,7 +54,7 @@ public class SortModeTest
 
 		TrackedItem selling = item("Sell in flight", 0, 200,
 				new AcquisitionRecord(100, 100, null));
-		selling.setSuspendedQuantity(100);
+		selling.setSuspended(SuspensionSource.SELL, 100);
 
 		assertEquals("suspended units keep marking to market, not read as a loss",
 				10_000, selling.getProfitAt(selling.getAvgPrice()));

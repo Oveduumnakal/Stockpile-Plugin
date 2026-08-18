@@ -35,14 +35,8 @@ class CostBasisLedger
 	/** How many ticks past the first consumed death loss the same death may keep consuming. */
 	private static final int DEATH_LOSS_BATCH_GRACE_TICKS = 1;
 
-	/** How long a death suspension may await recovery before its units close as lost at 0. */
-	private static final Duration DEATH_SUSPEND_EXPIRY = Duration.ofMinutes(65);
-
 	/** Once an expired gravestone has been gone this many ticks, its remaining suspensions close as lost. */
 	private static final int GRAVE_RECOVERY_GRACE_TICKS = 5;
-
-	/** How long a ground suspension may sit before its units close as lost at 0. */
-	private static final Duration GROUND_SUSPEND_EXPIRY = Duration.ofMinutes(10);
 
 	/** The rolling GE buy-limit window length. */
 	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
@@ -208,11 +202,11 @@ class CostBasisLedger
 		if (tracked == null)
 			return;
 
-		int realized = Math.min(qty, tracked.getSuspendedQuantity());
+		int realized = Math.min(qty, tracked.getSuspended(SuspensionSource.SELL));
 		if (realized > 0)
 		{
 			closeFifo(tracked, realized, unitPrice, AcquisitionSource.GE_TRADE);
-			tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realized);
+			tracked.reduceSuspended(SuspensionSource.SELL, realized);
 			host.persistTrackedItems();
 			host.refreshPanel();
 		}
@@ -248,12 +242,12 @@ class CostBasisLedger
 			}
 
 			Deque<long[]> queue = entry.getValue();
-			while (!queue.isEmpty() && tracked.getSuspendedQuantity() > 0)
+			while (!queue.isEmpty() && tracked.getSuspended(SuspensionSource.SELL) > 0)
 			{
 				long[] chunk = queue.peekFirst();
-				int realize = (int) Math.min(chunk[0], tracked.getSuspendedQuantity());
+				int realize = (int) Math.min(chunk[0], tracked.getSuspended(SuspensionSource.SELL));
 				closeFifo(tracked, realize, chunk[1], AcquisitionSource.GE_TRADE);
-				tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - realize);
+				tracked.reduceSuspended(SuspensionSource.SELL, realize);
 				chunk[0] -= realize;
 				changed = true;
 				if (chunk[0] <= 0)
@@ -371,10 +365,7 @@ class CostBasisLedger
 		if (deathLossTick < 0)
 			deathLossTick = tick;
 
-		tracked.setDeathSuspendedQuantity(tracked.getDeathSuspendedQuantity() + qty);
-		if (tracked.getDeathSuspendedAt() == null)
-			tracked.setDeathSuspendedAt(Instant.now());
-
+		tracked.addSuspended(SuspensionSource.DEATH, qty);
 		return 0;
 	}
 
@@ -385,31 +376,37 @@ class CostBasisLedger
 	 */
 	private int consumeDeathUnsuspend(TrackedItem tracked, int qty)
 	{
-		int suspended = tracked.getDeathSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0)
+		if (qty <= 0 || tracked.getSuspended(SuspensionSource.DEATH) <= 0)
 			return qty;
 
-		int restore = Math.min(qty, suspended);
-		tracked.setDeathSuspendedQuantity(suspended - restore);
-		if (tracked.getDeathSuspendedQuantity() == 0)
-			tracked.setDeathSuspendedAt(null);
-
+		int restore = tracked.reduceSuspended(SuspensionSource.DEATH, qty);
 		return qty - restore;
 	}
 
-	/** Closes death suspensions that outlived {@link #DEATH_SUSPEND_EXPIRY} as unrecovered losses at 0. */
-	void expireDeathSuspensions()
+	/**
+	 * Closes every suspension that outlived its source's {@link SuspensionSource#expiry()} as an
+	 * unrecovered loss at 0 gp, booked under that source's {@link SuspensionSource#closeSource()}.
+	 * One sweep now covers ground drops and death losses alike (#179); the gravestone-grace fast
+	 * path that closes a death sooner stays in {@link #closeVanishedGraveLosses()}.
+	 */
+	void expireSuspensions()
 	{
-		Instant cutoff = Instant.now().minus(DEATH_SUSPEND_EXPIRY);
+		Instant now = Instant.now();
 		boolean changed = false;
 		for (TrackedItem tracked : host.trackedItems())
 		{
-			if (tracked.getDeathSuspendedQuantity() > 0 && tracked.getDeathSuspendedAt() != null
-					&& tracked.getDeathSuspendedAt().isBefore(cutoff))
+			for (SuspensionSource source : SuspensionSource.values())
 			{
-				closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
-				tracked.setDeathSuspendedQuantity(0);
-				tracked.setDeathSuspendedAt(null);
+				if (source.expiry() == null)
+					continue;
+
+				int qty = tracked.getSuspended(source);
+				Instant at = tracked.getSuspendedAt(source);
+				if (qty <= 0 || at == null || !at.isBefore(now.minus(source.expiry())))
+					continue;
+
+				closeFifo(tracked, qty, 0, source.closeSource());
+				tracked.clearSuspended(source);
 				changed = true;
 			}
 		}
@@ -447,7 +444,7 @@ class CostBasisLedger
 	 * closes any death suspension it left standing as lost at 0 (#70). The grace absorbs a
 	 * last-tick collection whose items are still landing; anything still suspended after it
 	 * is a genuine loss, so the collection log reflects it the moment the grave expires
-	 * rather than after the blunt {@link #DEATH_SUSPEND_EXPIRY} fallback.
+	 * rather than after the blunt {@link SuspensionSource#DEATH death} expiry fallback.
 	 */
 	void closeVanishedGraveLosses()
 	{
@@ -458,12 +455,11 @@ class CostBasisLedger
 		boolean changed = false;
 		for (TrackedItem tracked : host.trackedItems())
 		{
-			if (tracked.getDeathSuspendedQuantity() <= 0)
+			if (tracked.getSuspended(SuspensionSource.DEATH) <= 0)
 				continue;
 
-			closeFifo(tracked, tracked.getDeathSuspendedQuantity(), 0, AcquisitionSource.DEATH);
-			tracked.setDeathSuspendedQuantity(0);
-			tracked.setDeathSuspendedAt(null);
+			closeFifo(tracked, tracked.getSuspended(SuspensionSource.DEATH), 0, AcquisitionSource.DEATH);
+			tracked.clearSuspended(SuspensionSource.DEATH);
 			changed = true;
 		}
 
@@ -492,8 +488,7 @@ class CostBasisLedger
 		else
 			pendingGroundSuspend.remove(tracked.getItemId());
 
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + take);
-		tracked.setGroundSuspendedAt(Instant.now());
+		tracked.addSuspended(SuspensionSource.GROUND, take);
 		return qty - take;
 	}
 
@@ -501,14 +496,13 @@ class CostBasisLedger
 	 * Suspends fired recoverable ammo on the ground path (#234): the units left the ammo slot but landed
 	 * on the target's tile, still owned with their basis intact. They un-suspend when picked back up
 	 * ({@link #consumeFiredAmmoRecovery}), or close as a 0-gp {@link AcquisitionSource#GROUND} loss once the
-	 * suspension outlives {@link #GROUND_SUSPEND_EXPIRY} ({@link #expireGroundSuspensions}) — which also
+	 * suspension outlives the {@link SuspensionSource#GROUND ground} expiry ({@link #expireSuspensions}) — which also
 	 * covers the shots that broke on impact and were never really recoverable. Reuses the drop machinery's
 	 * suspension counter rather than a menu/animation hook, so an Ava's-device catch (no delta) is a no-op.
 	 */
 	private void suspendFiredAmmo(TrackedItem tracked, int qty)
 	{
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() + qty);
-		tracked.setGroundSuspendedAt(Instant.now());
+		tracked.addSuspended(SuspensionSource.GROUND, qty);
 	}
 
 	/**
@@ -521,7 +515,7 @@ class CostBasisLedger
 	private int consumeGroundUnsuspend(TrackedItem tracked, int qty)
 	{
 		Integer pending = pendingGroundUnsuspend.get(tracked.getItemId());
-		int suspended = tracked.getGroundSuspendedQuantity();
+		int suspended = tracked.getSuspended(SuspensionSource.GROUND);
 		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
 			return qty;
 
@@ -532,7 +526,7 @@ class CostBasisLedger
 		else
 			pendingGroundUnsuspend.remove(tracked.getItemId());
 
-		tracked.setGroundSuspendedQuantity(suspended - restore);
+		tracked.reduceSuspended(SuspensionSource.GROUND, restore);
 		return qty - restore;
 	}
 
@@ -547,12 +541,11 @@ class CostBasisLedger
 	 */
 	private int consumeFiredAmmoRecovery(TrackedItem tracked, int qty)
 	{
-		int suspended = tracked.getGroundSuspendedQuantity();
+		int suspended = tracked.getSuspended(SuspensionSource.GROUND);
 		if (qty <= 0 || suspended <= 0 || !host.sourcePricing() || !host.isRecoverableAmmo(tracked.getItemId()))
 			return qty;
 
-		int restore = Math.min(qty, suspended);
-		tracked.setGroundSuspendedQuantity(suspended - restore);
+		int restore = tracked.reduceSuspended(SuspensionSource.GROUND, qty);
 		return qty - restore;
 	}
 
@@ -569,7 +562,7 @@ class CostBasisLedger
 				|| host.currentTick() - pouchFillTick > 1)
 			return qty;
 
-		tracked.setPouchSuspendedQuantity(tracked.getPouchSuspendedQuantity() + qty);
+		tracked.addSuspended(SuspensionSource.POUCH, qty);
 		return 0;
 	}
 
@@ -582,12 +575,10 @@ class CostBasisLedger
 	 */
 	private int consumePouchUnsuspend(TrackedItem tracked, int qty)
 	{
-		int suspended = tracked.getPouchSuspendedQuantity();
-		if (qty <= 0 || suspended <= 0 || !isPouchDepositTick())
+		if (qty <= 0 || tracked.getSuspended(SuspensionSource.POUCH) <= 0 || !isPouchDepositTick())
 			return qty;
 
-		int restore = Math.min(qty, suspended);
-		tracked.setPouchSuspendedQuantity(suspended - restore);
+		int restore = tracked.reduceSuspended(SuspensionSource.POUCH, qty);
 		return qty - restore;
 	}
 
@@ -621,7 +612,7 @@ class CostBasisLedger
 		else
 			pendingTradeSuspend.remove(tracked.getItemId());
 
-		tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() + take);
+		tracked.addSuspended(SuspensionSource.TRADE, take);
 		return qty - take;
 	}
 
@@ -633,7 +624,7 @@ class CostBasisLedger
 	private int consumeTradeUnsuspend(TrackedItem tracked, int qty)
 	{
 		Integer pending = pendingTradeUnsuspend.get(tracked.getItemId());
-		int suspended = tracked.getTradeSuspendedQuantity();
+		int suspended = tracked.getSuspended(SuspensionSource.TRADE);
 		if (qty <= 0 || pending == null || pending <= 0 || suspended <= 0)
 			return qty;
 
@@ -644,7 +635,7 @@ class CostBasisLedger
 		else
 			pendingTradeUnsuspend.remove(tracked.getItemId());
 
-		tracked.setTradeSuspendedQuantity(suspended - restore);
+		tracked.reduceSuspended(SuspensionSource.TRADE, restore);
 		return qty - restore;
 	}
 
@@ -724,11 +715,11 @@ class CostBasisLedger
 		if (pending == null || pending <= 0)
 			return qty;
 
-		int take = Math.min(qty, Math.min(pending, tracked.getSuspendedQuantity()));
+		int take = Math.min(qty, Math.min(pending, tracked.getSuspended(SuspensionSource.SELL)));
 		if (take <= 0)
 			return qty;
 
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() - take);
+		tracked.reduceSuspended(SuspensionSource.SELL, take);
 		int left = pending - take;
 		if (left > 0)
 			pendingSellUnsuspend.put(tracked.getItemId(), left);
@@ -767,7 +758,7 @@ class CostBasisLedger
 			return qty;
 
 		int take = Math.min(qty, pending);
-		tracked.setSuspendedQuantity(tracked.getSuspendedQuantity() + take);
+		tracked.addSuspended(SuspensionSource.SELL, take);
 		int left = pending - take;
 		if (left > 0)
 			pendingSellSuspend.put(tracked.getItemId(), left);
@@ -846,7 +837,7 @@ class CostBasisLedger
 		if (!host.sourcePricing())
 		{
 			for (TrackedItem tracked : host.trackedItems())
-				tracked.setSuspendedQuantity(0);
+				tracked.clearSuspended(SuspensionSource.SELL);
 
 			return;
 		}
@@ -863,7 +854,7 @@ class CostBasisLedger
 		}
 
 		for (TrackedItem tracked : host.trackedItems())
-			tracked.setSuspendedQuantity(openSell.getOrDefault(tracked.getItemId(), 0)
+			tracked.setSuspended(SuspensionSource.SELL, openSell.getOrDefault(tracked.getItemId(), 0)
 					+ pendingSellUnsuspend.getOrDefault(tracked.getItemId(), 0));
 	}
 
@@ -1100,26 +1091,14 @@ class CostBasisLedger
 		if (tracked == null)
 			return;
 
-		int lost = Math.min(qty, tracked.getGroundSuspendedQuantity());
+		int lost = Math.min(qty, tracked.getSuspended(SuspensionSource.GROUND));
 		if (lost <= 0)
 			return;
 
-		tracked.setGroundSuspendedQuantity(tracked.getGroundSuspendedQuantity() - lost);
+		tracked.reduceSuspended(SuspensionSource.GROUND, lost);
 		closeFifo(tracked, lost, 0, AcquisitionSource.GROUND);
 		host.persistTrackedItems();
 		host.refreshPanel();
-	}
-
-	/** Closes ground suspensions that outlived {@link #GROUND_SUSPEND_EXPIRY} as lost at 0. */
-	void expireGroundSuspensions()
-	{
-		Instant cutoff = Instant.now().minus(GROUND_SUSPEND_EXPIRY);
-		for (TrackedItem tracked : host.trackedItems())
-		{
-			if (tracked.getGroundSuspendedQuantity() > 0 && tracked.getGroundSuspendedAt() != null
-					&& tracked.getGroundSuspendedAt().isBefore(cutoff))
-				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
-		}
 	}
 
 	/**
@@ -1130,8 +1109,8 @@ class CostBasisLedger
 	{
 		for (TrackedItem tracked : host.trackedItems())
 		{
-			if (tracked.getGroundSuspendedQuantity() > 0)
-				closeGroundLost(tracked.getItemId(), tracked.getGroundSuspendedQuantity());
+			if (tracked.getSuspended(SuspensionSource.GROUND) > 0)
+				closeGroundLost(tracked.getItemId(), tracked.getSuspended(SuspensionSource.GROUND));
 		}
 
 		pendingGroundSuspend.clear();
