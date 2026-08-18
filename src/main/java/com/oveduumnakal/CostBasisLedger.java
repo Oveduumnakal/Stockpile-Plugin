@@ -7,7 +7,6 @@ package com.oveduumnakal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -55,14 +54,14 @@ class CostBasisLedger
 
 	private final StockpilePersistence persistence;
 
-	/** Matches detector claims to observed quantity deltas; see {@link SourceAttributionCore}. */
+	/**
+	 * Matches detector claims to observed quantity deltas, and holds GE buy fills awaiting
+	 * collection as durable claims (#180); see {@link SourceAttributionCore}.
+	 */
 	private final SourceAttributionCore sourceAttribution = new SourceAttributionCore();
 
 	/** Derives discrete increments from the raw GE offer stream; see {@link GeOfferTracker}. */
 	private final GeOfferTracker geOfferTracker = new GeOfferTracker();
-
-	/** Per-item FIFO of GE buy fills awaiting collection: each entry is {@code {quantity, unitPrice}}. Persisted. */
-	private final Map<Integer, Deque<long[]>> pendingGeBuys = new HashMap<>();
 
 	/** Per-item rolling buy-limit window: {@code {windowStartEpochSeconds, quantityBought}}. Persisted. */
 	private final Map<Integer, long[]> geBuyLimits = new HashMap<>();
@@ -176,8 +175,7 @@ class CostBasisLedger
 				recordBuyLimit(e.itemId, e.quantity);
 				if (host.sourcePricing())
 				{
-					pendingGeBuys.computeIfAbsent(e.itemId, k -> new ArrayDeque<>())
-							.addLast(new long[]{e.quantity, e.unitPrice});
+					sourceAttribution.claimDurable(AcquisitionSource.GE_TRADE, e.itemId, e.quantity, e.unitPrice);
 					scheduleGeStateSave();
 				}
 			}
@@ -746,24 +744,16 @@ class CostBasisLedger
 	 */
 	private int consumeBuyLedger(TrackedItem tracked, int qty)
 	{
-		Deque<long[]> ledger = pendingGeBuys.get(tracked.getItemId());
-		if (ledger == null || ledger.isEmpty())
+		List<long[]> chunks = sourceAttribution.attributeDurable(tracked.getItemId(), qty);
+		if (chunks.isEmpty())
 			return qty;
 
 		int remaining = qty;
-		while (remaining > 0 && !ledger.isEmpty())
+		for (long[] chunk : chunks)
 		{
-			long[] chunk = ledger.peekFirst();
-			int take = (int) Math.min(remaining, chunk[0]);
-			addOpenAcquisition(tracked, take, chunk[1], AcquisitionSource.GE_TRADE);
-			remaining -= take;
-			chunk[0] -= take;
-			if (chunk[0] <= 0)
-				ledger.removeFirst();
+			addOpenAcquisition(tracked, (int) chunk[0], chunk[1], AcquisitionSource.GE_TRADE);
+			remaining -= (int) chunk[0];
 		}
-
-		if (ledger.isEmpty())
-			pendingGeBuys.remove(tracked.getItemId());
 
 		scheduleGeStateSave();
 		return remaining;
@@ -892,26 +882,23 @@ class CostBasisLedger
 		item.setLimitResetEpoch(window[0] + BUY_LIMIT_WINDOW.getSeconds());
 	}
 
-	/** Persists the GE buy ledger and buy-limit windows to the RS profile config. */
+	/** Persists the GE buy ledger (the durable claims) and buy-limit windows to the RS profile config. */
 	void persist()
 	{
-		Map<Integer, List<long[]>> ledger = new HashMap<>();
-		for (Map.Entry<Integer, Deque<long[]>> e : pendingGeBuys.entrySet())
-			ledger.put(e.getKey(), new ArrayList<>(e.getValue()));
-
 		lastGeStateSave = Instant.now();
-		persistence.saveGeState(ledger, geBuyLimits);
+		persistence.saveGeState(sourceAttribution.exportDurable(), geBuyLimits);
 	}
 
-	/** Restores the GE buy ledger and buy-limit windows from the RS profile config, defaulting to empty. */
+	/**
+	 * Restores the GE buy ledger (as durable claims) and buy-limit windows from the RS profile
+	 * config, defaulting to empty.
+	 */
 	void load()
 	{
-		pendingGeBuys.clear();
+		sourceAttribution.clearDurable();
 		geBuyLimits.clear();
 
-		for (Map.Entry<Integer, List<long[]>> e : persistence.loadGeLedger().entrySet())
-			pendingGeBuys.put(e.getKey(), new ArrayDeque<>(e.getValue()));
-
+		sourceAttribution.importDurable(persistence.loadGeLedger());
 		geBuyLimits.putAll(persistence.loadGeBuyLimits());
 	}
 
