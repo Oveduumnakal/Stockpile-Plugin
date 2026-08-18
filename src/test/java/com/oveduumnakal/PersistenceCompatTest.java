@@ -89,7 +89,7 @@ public class PersistenceCompatTest
 	{
 		TrackedItem legacy = GSON.fromJson(
 				"{\"itemId\":560,\"quantity\":100,\"acquisitions\":[]}", TrackedItem.class);
-		assertEquals(0, legacy.getSuspendedQuantity());
+		assertEquals(0, legacy.getSuspended(SuspensionSource.SELL));
 	}
 
 	@Test

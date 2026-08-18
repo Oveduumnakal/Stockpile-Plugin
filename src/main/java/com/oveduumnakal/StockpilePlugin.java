@@ -991,8 +991,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			if (tracked == null)
 				return;
 
-			tracked.setDeathSuspendedQuantity(quantity);
-			tracked.setDeathSuspendedAt(suspendedAtEpoch == null
+			tracked.restoreSuspended(SuspensionSource.DEATH, quantity, suspendedAtEpoch == null
 					? Instant.now()
 					: Instant.ofEpochSecond(suspendedAtEpoch));
 		});
@@ -1015,7 +1014,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			if (tracked == null)
 				return;
 
-			tracked.setPouchSuspendedQuantity(quantity);
+			tracked.restoreSuspended(SuspensionSource.POUCH, quantity, null);
 		});
 	}
 
@@ -1066,11 +1065,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			p.favorite = item.isFavorite();
 			p.category = item.getCategory();
 			p.onOverlay = item.isOnOverlay();
-			p.deathSuspendedQuantity = item.getDeathSuspendedQuantity();
-			p.deathSuspendedAt = item.getDeathSuspendedAt() == null
+			p.deathSuspendedQuantity = item.getSuspended(SuspensionSource.DEATH);
+			p.deathSuspendedAt = item.getSuspendedAt(SuspensionSource.DEATH) == null
 					? null
-					: item.getDeathSuspendedAt().getEpochSecond();
-			p.pouchSuspendedQuantity = item.getPouchSuspendedQuantity();
+					: item.getSuspendedAt(SuspensionSource.DEATH).getEpochSecond();
+			p.pouchSuspendedQuantity = item.getSuspended(SuspensionSource.POUCH);
 			list.add(p);
 		}
 
@@ -2279,14 +2278,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		if (!firstSync)
 		{
-			Set<Integer> allIds = new HashSet<>(oldCounts.keySet());
-			allIds.addAll(newCounts.keySet());
-			for (int itemId : allIds)
-			{
-				int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
-				if (delta != 0)
-					pendingItemDeltas.merge(itemId, delta, Integer::sum);
-			}
+			ItemDeltas.forEachDelta(oldCounts, newCounts, (itemId, delta) ->
+					pendingItemDeltas.merge(itemId, delta, Integer::sum));
 
 			pendingQuantitySync = true;
 
@@ -2365,8 +2358,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		ledger.expireGroundSuspensions();
-		ledger.expireDeathSuspensions();
+		ledger.expireSuspensions();
 		ledger.closeVanishedGraveLosses();
 
 		GeIntegrationMode mode = config.geIntegration();
@@ -3143,19 +3135,16 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (!config.sourcePricing())
 			return;
 
-		Set<Integer> ids = new HashSet<>(before.keySet());
-		ids.addAll(after.keySet());
-		for (int id : ids)
+		ItemDeltas.forEachDelta(before, after, (id, delta) ->
 		{
 			if (isTradeCurrency(id) || !isTracked(id))
-				continue;
+				return;
 
-			int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
 			if (delta > 0)
 				ledger.queueTradeSuspend(id, delta);
-			else if (delta < 0)
+			else
 				ledger.queueTradeUnsuspend(id, -delta);
-		}
+		});
 	}
 
 	/** Registers the completed trade's claims when the game confirms the exchange (#66). */
@@ -3280,12 +3269,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			if (tracked == null)
 				continue;
 
-			int qty = Math.min(leg.quantity, tracked.getTradeSuspendedQuantity());
+			int qty = Math.min(leg.quantity, tracked.getSuspended(SuspensionSource.TRADE));
 			if (qty <= 0)
 				continue;
 
 			ledger.closeFifo(tracked, qty, prices.get(leg.itemId), AcquisitionSource.PLAYER_TRADE);
-			tracked.setTradeSuspendedQuantity(tracked.getTradeSuspendedQuantity() - qty);
+			tracked.reduceSuspended(SuspensionSource.TRADE, qty);
 			changed = true;
 		}
 
@@ -3322,9 +3311,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		int itemDelta = 0;
 		int changedCount = 0;
 
-		Set<Integer> allIds = new HashSet<>(oldCounts.keySet());
-		allIds.addAll(newCounts.keySet());
-		for (int itemId : allIds)
+		for (int itemId : ItemDeltas.keyUnion(oldCounts, newCounts))
 		{
 			int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
 			if (delta == 0)

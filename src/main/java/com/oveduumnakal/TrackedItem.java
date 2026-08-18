@@ -59,58 +59,112 @@ public class TrackedItem
 	private List<NotificationRule> notifications = new ArrayList<>();
 
 	/**
-	 * Units committed to an in-flight GE sell offer: physically gone from held
-	 * containers but not yet realized, so their lots stay open (cost basis intact)
-	 * until the offer fills. Reconciled from the live open sell offers on login;
-	 * legacy records default to 0 (no in-flight sale) — the safe additive default.
+	 * Per-source suspension state (#179): for each {@link SuspensionSource}, this item's units
+	 * currently held in that suspension and — for sources that expire — when the newest was taken.
+	 * A unit here has left the held containers but is still owned, its lot kept open at basis until
+	 * it resolves. All transient: sell/trade/ground suspensions are session-only, while death and
+	 * pouch are re-seeded on login from {@code PersistedItem} (see {@link SuspensionSource#persisted()}),
+	 * so Gson never touches this map. Legacy records default to empty — the safe additive default.
 	 */
-	private int suspendedQuantity;
+	private transient Map<SuspensionSource, SuspensionState> suspensions;
+
+	/** Mutable per-source suspension counter and its (optional) recovery-expiry timestamp. */
+	private static final class SuspensionState
+	{
+		private int quantity;
+		private Instant at;
+	}
 
 	/**
-	 * Units lost to a death and awaiting recovery: gone from held containers but
-	 * their lots stay open (cost basis intact) until a gravestone/Death's Office
-	 * reclaim restores them, or the suspension outlives the gravestone timer and
-	 * closes at 0. Survives relogs — persisted explicitly through
-	 * {@code PersistedItem} (transient here so Gson never touches these fields).
+	 * @return the suspension map, lazily created. Lazy because Gson deserializes a legacy record
+	 *         through {@code Unsafe} without running field initializers, leaving the field null.
 	 */
-	private transient int deathSuspendedQuantity;
+	private Map<SuspensionSource, SuspensionState> suspensions()
+	{
+		if (suspensions == null)
+			suspensions = new EnumMap<>(SuspensionSource.class);
 
-	/** When the newest death suspension was taken, for the recovery-expiry sweep. */
-	private transient Instant deathSuspendedAt;
+		return suspensions;
+	}
+
+	/** @return this item's units currently suspended by {@code source}. */
+	public int getSuspended(SuspensionSource source)
+	{
+		SuspensionState state = suspensions == null ? null : suspensions.get(source);
+		return state == null ? 0 : state.quantity;
+	}
+
+	/** @return when {@code source}'s newest suspension was taken, or {@code null} when none is held. */
+	public Instant getSuspendedAt(SuspensionSource source)
+	{
+		SuspensionState state = suspensions == null ? null : suspensions.get(source);
+		return state == null ? null : state.at;
+	}
 
 	/**
-	 * Units dropped on the ground and still considered owned: gone from held
-	 * containers but their lots stay open (cost basis intact) until re-picked-up
-	 * (un-suspends, a net no-op) or lost (despawn/expiry closes them at 0). Kept
-	 * transient — floor items rarely survive a logout, so remaining suspensions
-	 * close as losses on logout/shutdown rather than persisting.
+	 * Suspends {@code qty} more units under {@code source}, updating the timestamp per the source's
+	 * {@link SuspensionSource#stampMode()} so death can't reset its recovery clock while ground can.
 	 */
-	private transient int groundSuspendedQuantity;
+	public void addSuspended(SuspensionSource source, int qty)
+	{
+		if (qty <= 0)
+			return;
 
-	/** When the newest ground suspension was taken, for the lost-drop expiry sweep (transient). */
-	private transient Instant groundSuspendedAt;
-
-	/**
-	 * Units placed into a player-trade offer and still considered owned: gone from
-	 * held containers the moment they were offered, but their lots stay open (cost
-	 * basis intact) until the trade finalizes (closes them at the apportioned
-	 * trade price) or is withdrawn/declined (un-suspends, a net no-op). Kept
-	 * transient — a trade cannot survive a logout, so the offer returns to the
-	 * inventory and any remaining suspension is moot on relog (#66).
-	 */
-	private transient int tradeSuspendedQuantity;
+		SuspensionState state = suspensions().computeIfAbsent(source, k -> new SuspensionState());
+		state.quantity += qty;
+		if (source.stampMode() == SuspensionSource.StampMode.REFRESH
+				|| (source.stampMode() == SuspensionSource.StampMode.STAMP_IF_EMPTY && state.at == null))
+			state.at = Instant.now();
+	}
 
 	/**
-	 * Units moved into a fur/meat hunting pouch and still considered owned: gone from
-	 * held containers the moment they were "Fill"ed in, but their lots stay open (cost
-	 * basis and original source intact) until the pouch is emptied to the bank, which
-	 * un-suspends them as a net no-op. Any surplus emptied beyond what was filled is
-	 * newly-gathered ({@code GATHER}). Survives relogs — the pouch keeps its contents
-	 * across a logout — so it is persisted explicitly through {@code PersistedItem}
-	 * (transient here so Gson never touches it directly). Legacy records default to 0
-	 * (nothing parked in a pouch), the safe additive default (#214).
+	 * Restores up to {@code qty} units from {@code source}'s suspension, clearing the entry (and its
+	 * timestamp) once it empties. Returns the number actually restored.
 	 */
-	private transient int pouchSuspendedQuantity;
+	public int reduceSuspended(SuspensionSource source, int qty)
+	{
+		SuspensionState state = suspensions == null ? null : suspensions.get(source);
+		if (state == null || qty <= 0)
+			return 0;
+
+		int restored = Math.min(qty, state.quantity);
+		state.quantity -= restored;
+		if (state.quantity == 0)
+			suspensions.remove(source);
+
+		return restored;
+	}
+
+	/** Sets {@code source}'s suspended count outright, stamping per policy; drops the entry when 0. */
+	public void setSuspended(SuspensionSource source, int qty)
+	{
+		clearSuspended(source);
+		addSuspended(source, qty);
+	}
+
+	/** Drops {@code source}'s entire suspension — count and timestamp. */
+	public void clearSuspended(SuspensionSource source)
+	{
+		if (suspensions != null)
+			suspensions.remove(source);
+	}
+
+	/**
+	 * Seeds {@code source}'s suspension to {@code qty} at timestamp {@code at} when restoring persisted
+	 * (death/pouch) state on login, so the recovery-expiry clock resumes from where it was saved rather
+	 * than restarting now. A non-positive {@code qty} clears the entry.
+	 */
+	public void restoreSuspended(SuspensionSource source, int qty, Instant at)
+	{
+		clearSuspended(source);
+		if (qty <= 0)
+			return;
+
+		SuspensionState state = new SuspensionState();
+		state.quantity = qty;
+		state.at = at;
+		suspensions().put(source, state);
+	}
 
 	/** Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). */
 	private transient int limitBought;
@@ -253,8 +307,14 @@ public class TrackedItem
 	 */
 	public int getTotalSuspendedQuantity()
 	{
-		return suspendedQuantity + tradeSuspendedQuantity + groundSuspendedQuantity + deathSuspendedQuantity
-				+ pouchSuspendedQuantity;
+		if (suspensions == null)
+			return 0;
+
+		int total = 0;
+		for (SuspensionState state : suspensions.values())
+			total += state.quantity;
+
+		return total;
 	}
 
 	/**

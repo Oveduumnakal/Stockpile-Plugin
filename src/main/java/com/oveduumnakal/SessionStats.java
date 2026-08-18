@@ -5,7 +5,6 @@
 package com.oveduumnakal;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -89,8 +88,7 @@ public final class SessionStats
 		if (!hasBaseline)
 			return new Delta(0, 0, 0);
 
-		Set<Integer> ids = new HashSet<>(baseline.keySet());
-		ids.addAll(current.keySet());
+		Set<Integer> ids = ItemDeltas.keyUnion(baseline, current);
 
 		long priceEffect = 0;
 		long quantityEffect = 0;
