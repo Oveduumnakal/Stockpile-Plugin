@@ -289,12 +289,51 @@ public class CostBasisLedgerTest
 		assertEquals("nothing closed yet — the fill outran its suspension (#107 Finding 3)", 0, closedCount(t));
 
 		ledger.applyDelta(t, -10);
-		ledger.flushPendingSellRealize();
+		ledger.flushPendingRealize();
 
 		AcquisitionRecord sold = firstClosed(t);
 		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals("the parked fill closes once the units suspend", 1, closedCount(t));
 		assertEquals(150, (long) sold.getSoldAt());
+	}
+
+	@Test
+	public void tradeGivenClosesAgainstItsSuspension()
+	{
+		TrackedItem t = item(10, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+
+		ledger.queueTradeSuspend(ITEM, 10);
+		ledger.applyDelta(t, -10);
+		assertEquals("offered units suspend, not closed", 10, t.getSuspended(SuspensionSource.TRADE));
+
+		ledger.realizeTradeSale(ITEM, 10, 150);
+
+		AcquisitionRecord sold = firstClosed(t);
+		assertEquals(0, t.getSuspended(SuspensionSource.TRADE));
+		assertEquals("the given lot closes at the apportioned trade price", 1, closedCount(t));
+		assertEquals(150, (long) sold.getSoldAt());
+		assertEquals(AcquisitionSource.PLAYER_TRADE, sold.sellSourceOrUnknown());
+	}
+
+	@Test
+	public void sameTickTradeAcceptParksShortfallThenFlushClosesIt()
+	{
+		TrackedItem t = item(10, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+
+		ledger.queueTradeSuspend(ITEM, 10);
+		ledger.realizeTradeSale(ITEM, 10, 150);
+
+		assertEquals("nothing closed yet — the accept outran the offer's decrease (#175)", 0, closedCount(t));
+		assertEquals(0, t.getSuspended(SuspensionSource.TRADE));
+
+		ledger.applyDelta(t, -10);
+		ledger.flushPendingRealize();
+
+		AcquisitionRecord sold = firstClosed(t);
+		assertEquals("the parked sale closes once the units suspend", 1, closedCount(t));
+		assertEquals(0, t.getSuspended(SuspensionSource.TRADE));
+		assertEquals(150, (long) sold.getSoldAt());
+		assertEquals(AcquisitionSource.PLAYER_TRADE, sold.sellSourceOrUnknown());
 	}
 
 	@Test

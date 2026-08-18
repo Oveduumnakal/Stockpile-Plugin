@@ -2323,7 +2323,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			syncQuantitiesFromContainers();
 		}
 
-		ledger.flushPendingSellRealize();
+		ledger.flushPendingRealize();
 
 		evaluateNotifications();
 
@@ -3254,34 +3254,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * Closes given items as sells at the apportioned per-unit price, realizing them against the
-	 * trade suspension taken when they were offered (bounded by it, so a partial or already-settled
-	 * suspension can never over-close).
+	 * Closes given items as sells at the apportioned per-unit price, realizing them against the trade
+	 * suspension taken when they were offered. Any leg whose suspension has not landed yet — a same-tick
+	 * offer+accept where "Accepted trade." outran the offer's inventory decrease — is parked and retried
+	 * after the container sync, exactly as the GE sell path does, so the sale is never dropped (#175).
 	 */
 	private void closeGivenItems(Map<Integer, Integer> side, long gp)
 	{
 		List<TradeApportioner.Leg> legs = tradeLegs(side);
 		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
-		boolean changed = false;
 		for (TradeApportioner.Leg leg : legs)
 		{
-			TrackedItem tracked = trackedItems.get(leg.itemId);
-			if (tracked == null)
-				continue;
-
-			int qty = Math.min(leg.quantity, tracked.getSuspended(SuspensionSource.TRADE));
-			if (qty <= 0)
-				continue;
-
-			ledger.closeFifo(tracked, qty, prices.get(leg.itemId), AcquisitionSource.PLAYER_TRADE);
-			tracked.reduceSuspended(SuspensionSource.TRADE, qty);
-			changed = true;
-		}
-
-		if (changed)
-		{
-			persistTrackedItems();
-			refreshPanel();
+			if (isTracked(leg.itemId))
+				ledger.realizeTradeSale(leg.itemId, leg.quantity, prices.get(leg.itemId));
 		}
 	}
 

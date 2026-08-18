@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -66,8 +67,13 @@ class CostBasisLedger
 	/** Units of a cancelled GE sell awaiting the container increase that un-suspends them. */
 	private final Map<Integer, Integer> pendingSellUnsuspend = new HashMap<>();
 
-	/** GE sell fills that outran their suspension, parked until the placement decrease lands. */
-	private final Map<Integer, Deque<long[]>> pendingSellRealize = new HashMap<>();
+	/**
+	 * Realize-at-price settlements (GE sell fills, accepted trades) that outran their suspension,
+	 * parked per {@link SuspensionSource} until the offer/trade removal lands and suspends the units,
+	 * each chunk {@code {quantity, unitPrice}}. Drained by {@link #flushPendingRealize()} every tick.
+	 */
+	private final Map<SuspensionSource, Map<Integer, Deque<long[]>>> pendingRealize =
+			new EnumMap<>(SuspensionSource.class);
 
 	/** Units dropped on the floor this tick awaiting the container decrease that suspends them. */
 	private final Map<Integer, Integer> pendingGroundSuspend = new HashMap<>();
@@ -195,42 +201,96 @@ class CostBasisLedger
 		}
 	}
 
-	/** Closes {@code qty} suspended units of a sold item at the realized GE price, then persists and refreshes. */
+	/** Realizes a completed GE sell fill against its SELL suspension, then debounces a GE-state save. */
 	private void realizeSell(int itemId, int qty, long unitPrice)
+	{
+		realize(SuspensionSource.SELL, itemId, qty, unitPrice);
+		scheduleGeStateSave();
+	}
+
+	/**
+	 * Realizes a completed player trade against its {@link SuspensionSource#TRADE} suspension —
+	 * the same shortfall-parking race fix the GE sell path carries (#175), so a same-tick offer+accept
+	 * that outruns the offer's inventory decrease no longer drops the sale.
+	 */
+	void realizeTradeSale(int itemId, int qty, long unitPrice)
+	{
+		realize(SuspensionSource.TRADE, itemId, qty, unitPrice);
+	}
+
+	/**
+	 * Closes {@code qty} suspended units of a settled sale at its realized {@code unitPrice}, booking the
+	 * source's {@link SuspensionSource#realizeSource()}. Any part whose suspension has not yet landed (the
+	 * settlement event outran the container removal) is parked and retried by {@link #flushPendingRealize()}.
+	 */
+	private void realize(SuspensionSource source, int itemId, int qty, long unitPrice)
 	{
 		TrackedItem tracked = host.trackedItem(itemId);
 		if (tracked == null)
 			return;
 
-		int realized = Math.min(qty, tracked.getSuspended(SuspensionSource.SELL));
+		int realized = Math.min(qty, tracked.getSuspended(source));
 		if (realized > 0)
 		{
-			closeFifo(tracked, realized, unitPrice, AcquisitionSource.GE_TRADE);
-			tracked.reduceSuspended(SuspensionSource.SELL, realized);
+			closeFifo(tracked, realized, unitPrice, source.realizeSource());
+			tracked.reduceSuspended(source, realized);
 			host.persistTrackedItems();
 			host.refreshPanel();
 		}
 
 		int shortfall = qty - realized;
 		if (shortfall > 0 && host.sourcePricing())
-			pendingSellRealize.computeIfAbsent(itemId, k -> new ArrayDeque<>())
+			pendingRealize.computeIfAbsent(source, k -> new HashMap<>())
+					.computeIfAbsent(itemId, k -> new ArrayDeque<>())
 					.addLast(new long[]{shortfall, unitPrice});
-
-		scheduleGeStateSave();
 	}
 
 	/**
-	 * Closes any GE sell fill that outran its suspension, now that the placement inventory
-	 * decrease has moved the units into {@code suspendedQuantity}. Runs each tick after the
-	 * container sync; unmatched fills stay parked and retry on a later tick.
+	 * Closes any settled sale that outran its suspension, now that the offer/trade removal has moved the
+	 * units into their {@link SuspensionSource} suspension. Runs each tick after the container sync;
+	 * unmatched settlements stay parked and retry on a later tick.
 	 */
-	void flushPendingSellRealize()
+	void flushPendingRealize()
 	{
-		if (pendingSellRealize.isEmpty())
+		if (pendingRealize.isEmpty())
 			return;
 
 		boolean changed = false;
-		Iterator<Map.Entry<Integer, Deque<long[]>>> it = pendingSellRealize.entrySet().iterator();
+		boolean geChanged = false;
+		Iterator<Map.Entry<SuspensionSource, Map<Integer, Deque<long[]>>>> sources =
+				pendingRealize.entrySet().iterator();
+		while (sources.hasNext())
+		{
+			Map.Entry<SuspensionSource, Map<Integer, Deque<long[]>>> sourceEntry = sources.next();
+			SuspensionSource source = sourceEntry.getKey();
+			if (flushRealizeSource(source, sourceEntry.getValue()))
+			{
+				changed = true;
+				geChanged |= source == SuspensionSource.SELL;
+			}
+
+			if (sourceEntry.getValue().isEmpty())
+				sources.remove();
+		}
+
+		if (changed)
+		{
+			host.persistTrackedItems();
+			host.refreshPanel();
+			if (geChanged)
+				scheduleGeStateSave();
+		}
+	}
+
+	/**
+	 * Drains one source's parked settlements against its now-landed suspensions, dropping emptied queues.
+	 *
+	 * @return whether any parked units were realized (a lot closed)
+	 */
+	private boolean flushRealizeSource(SuspensionSource source, Map<Integer, Deque<long[]>> queues)
+	{
+		boolean changed = false;
+		Iterator<Map.Entry<Integer, Deque<long[]>>> it = queues.entrySet().iterator();
 		while (it.hasNext())
 		{
 			Map.Entry<Integer, Deque<long[]>> entry = it.next();
@@ -242,12 +302,12 @@ class CostBasisLedger
 			}
 
 			Deque<long[]> queue = entry.getValue();
-			while (!queue.isEmpty() && tracked.getSuspended(SuspensionSource.SELL) > 0)
+			while (!queue.isEmpty() && tracked.getSuspended(source) > 0)
 			{
 				long[] chunk = queue.peekFirst();
-				int realize = (int) Math.min(chunk[0], tracked.getSuspended(SuspensionSource.SELL));
-				closeFifo(tracked, realize, chunk[1], AcquisitionSource.GE_TRADE);
-				tracked.reduceSuspended(SuspensionSource.SELL, realize);
+				int realize = (int) Math.min(chunk[0], tracked.getSuspended(source));
+				closeFifo(tracked, realize, chunk[1], source.realizeSource());
+				tracked.reduceSuspended(source, realize);
 				chunk[0] -= realize;
 				changed = true;
 				if (chunk[0] <= 0)
@@ -258,12 +318,7 @@ class CostBasisLedger
 				it.remove();
 		}
 
-		if (changed)
-		{
-			host.persistTrackedItems();
-			scheduleGeStateSave();
-			host.refreshPanel();
-		}
+		return changed;
 	}
 
 	/** Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. */
@@ -794,7 +849,7 @@ class CostBasisLedger
 
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
-		pendingSellRealize.clear();
+		pendingRealize.clear();
 		seedCancelledSellReturns(offers);
 		reconcileSuspendedFromOffers();
 	}
@@ -1241,7 +1296,7 @@ class CostBasisLedger
 		geOfferTracker.clear();
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
-		pendingSellRealize.clear();
+		pendingRealize.clear();
 		pendingGroundSuspend.clear();
 		pendingGroundUnsuspend.clear();
 		pendingTradeSuspend.clear();
@@ -1264,7 +1319,7 @@ class CostBasisLedger
 		geOfferTracker.clear();
 		pendingSellSuspend.clear();
 		pendingSellUnsuspend.clear();
-		pendingSellRealize.clear();
+		pendingRealize.clear();
 		pendingTradeSuspend.clear();
 		pendingTradeUnsuspend.clear();
 	}
