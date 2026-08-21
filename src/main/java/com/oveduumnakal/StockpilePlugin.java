@@ -24,6 +24,7 @@
  */
 package com.oveduumnakal;
 
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.time.Duration;
 import java.time.Instant;
@@ -279,6 +280,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private int currentGeItem = -1;
 	/** The native-style button injected onto the GE offer screen in Button mode, or null. */
 	private Widget geButton;
+	/** The Track/Untrack button injected beside the GE History button, or null when absent (#139). */
+	private Widget geTrackButton;
 	/** The raw GE item id the cached 5m high/low belong to, or -1 when unfetched or stale (#142). */
 	private int geLineItem = -1;
 	/** High and low market prices for {@link #geLineItem} from the resolved source; 0 when unavailable (#142). */
@@ -2374,10 +2377,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
 		boolean wantPrices = config.geShowMarketPrices();
+		boolean wantTrack = config.geShowTrackButton();
 		if (!wantButton)
 			hideGeButton();
 
-		if (mode == GeIntegrationMode.OFF && !wantPrices)
+		if (!wantTrack)
+			hideGeTrackButton();
+
+		if (mode == GeIntegrationMode.OFF && !wantPrices && !wantTrack)
 		{
 			currentGeItem = -1;
 			return;
@@ -2388,6 +2395,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			currentGeItem = item;
 			hideGeButton();
+			hideGeTrackButton();
 			geLineItem = -1;
 			geLineHigh = 0;
 			geLineLow = 0;
@@ -2403,6 +2411,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (wantButton && item > 0 && geButton == null)
 			injectGeButton();
 
+		if (wantTrack && item > 0 && geTrackButton == null)
+			injectGeTrackButton();
+
 		if (wantPrices && item > 0)
 			applyGeHighLowLine();
 	}
@@ -2417,12 +2428,25 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		geButton = null;
 	}
 
-	/** Forces the GE button to be re-injected against a freshly (re)built offer interface. */
+	/** Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). */
+	private void hideGeTrackButton()
+	{
+		if (geTrackButton == null)
+			return;
+
+		geTrackButton.setHidden(true);
+		geTrackButton = null;
+	}
+
+	/** Forces the GE buttons to be re-injected against a freshly (re)built offer interface. */
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
 		if (event.getGroupId() == InterfaceID.GE_OFFERS)
+		{
 			geButton = null;
+			geTrackButton = null;
+		}
 
 		if (event.getGroupId() == InterfaceID.SHOPMAIN)
 			shopOpen = true;
@@ -2436,6 +2460,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			currentGeItem = -1;
 			geButton = null;
+			geTrackButton = null;
 		}
 
 		if (event.getGroupId() == InterfaceID.SHOPMAIN)
@@ -2544,6 +2569,73 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		button.revalidate();
 
 		geButton = button;
+	}
+
+	/**
+	 * Injects a Track/Untrack button beside the game's History button on the GE interface, toggling
+	 * whether the open offer's item is tracked (#139). Anchored as a sibling to the right of History
+	 * so it rides the same bottom bar across the setup and details screens. The label and colour
+	 * reflect the current tracked state and are refreshed on toggle.
+	 */
+	private void injectGeTrackButton()
+	{
+		Widget history = client.getWidget(InterfaceID.GeOffers.HISTORY);
+		if (history == null || history.isHidden())
+			return;
+
+		Widget parent = history.getParent();
+		if (parent == null)
+			return;
+
+		Widget button = parent.createChild(-1, WidgetType.TEXT);
+		button.setFontId(495);
+		button.setTextShadowed(true);
+		button.setXPositionMode(history.getXPositionMode());
+		button.setYPositionMode(history.getYPositionMode());
+		button.setOriginalX(history.getOriginalX() + history.getOriginalWidth() + 8);
+		button.setOriginalY(history.getOriginalY());
+		button.setOriginalWidth(history.getOriginalWidth());
+		button.setOriginalHeight(history.getOriginalHeight());
+		button.setXTextAlignment(WidgetTextAlignment.CENTER);
+		button.setYTextAlignment(WidgetTextAlignment.CENTER);
+		button.setHasListener(true);
+		button.setOnOpListener((JavaScriptCallback) e -> toggleGeTracking());
+		button.setOnMouseOverListener((JavaScriptCallback) e -> button.setTextColor(0xffffff));
+		button.setOnMouseLeaveListener((JavaScriptCallback) e -> applyGeTrackLabel(button));
+		geTrackButton = button;
+		applyGeTrackLabel(button);
+		button.revalidate();
+	}
+
+	/** Sets the Track/Untrack button's text, action, and resting colour from the offer item's tracked state. */
+	private void applyGeTrackLabel(Widget button)
+	{
+		if (currentGeItem <= 0)
+			return;
+
+		int canonicalId = itemManager.canonicalize(currentGeItem);
+		boolean tracked = trackedItems.containsKey(canonicalId);
+		String label = tracked ? "Untrack" : "Track";
+		Color color = tracked ? config.stopTrackingColor() : config.trackItemColor();
+		button.setText(label);
+		button.setTextColor(color.getRGB() & 0xffffff);
+		button.setAction(0, label);
+	}
+
+	/** Toggles tracking of the open GE offer's item and refreshes the button label in place (#139). */
+	private void toggleGeTracking()
+	{
+		if (currentGeItem <= 0)
+			return;
+
+		int canonicalId = itemManager.canonicalize(currentGeItem);
+		if (trackedItems.containsKey(canonicalId))
+			removeTrackedItem(canonicalId);
+		else
+			addTrackedItem(canonicalId);
+
+		if (geTrackButton != null)
+			applyGeTrackLabel(geTrackButton);
 	}
 
 	/**
