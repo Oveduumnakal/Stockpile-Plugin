@@ -774,6 +774,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void setItemCompact(int itemId, boolean compact)
+					{
+						StockpilePlugin.this.setItemCompact(itemId, compact);
+					}
+
+					@Override
 					public void setGroupCollapsed(String group, boolean collapsed)
 					{
 						StockpilePlugin.this.setGroupCollapsed(group, collapsed);
@@ -982,18 +988,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			addTrackedItem(p.itemId, p.quantity, p.acquisitions, p.notifications,
 				p.notificationsInitialized, p.costBasisInitialized, false, false, TrackItemMode.TRACK);
-			applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay);
+			applyPersistedGrouping(p.itemId, p.favorite, p.category, p.onOverlay, p.compact);
 			applyPersistedDeathSuspension(p.itemId, p.deathSuspendedQuantity, p.deathSuspendedAt);
 			applyPersistedPouchSuspension(p.itemId, p.pouchSuspendedQuantity);
 		}
 	}
 
 	/**
-	 * Applies a persisted item's favorite/category/overlay grouping after it has been added.
+	 * Applies a persisted item's favorite/category/overlay/compact grouping after it has been added.
 	 * Enqueued on the client thread so it runs after the matching {@link #addTrackedItem}
 	 * body (which is itself client-thread-deferred), guaranteeing the item exists.
 	 */
-	private void applyPersistedGrouping(int itemId, boolean favorite, String category, boolean onOverlay)
+	private void applyPersistedGrouping(int itemId, boolean favorite, String category, boolean onOverlay,
+			boolean compact)
 	{
 		clientThread.invokeLater(() ->
 		{
@@ -1004,6 +1011,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			tracked.setFavorite(favorite);
 			tracked.setCategory(category);
 			tracked.setOnOverlay(onOverlay);
+			tracked.setCompact(compact);
 		});
 	}
 
@@ -1097,6 +1105,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			p.favorite = item.isFavorite();
 			p.category = item.getCategory();
 			p.onOverlay = item.isOnOverlay();
+			p.compact = item.isCompact();
 			p.deathSuspendedQuantity = item.getSuspended(SuspensionSource.DEATH);
 			p.deathSuspendedAt = item.getSuspendedAt(SuspensionSource.DEATH) == null
 					? null
@@ -1509,6 +1518,21 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				return;
 
 			tracked.setOnOverlay(on);
+			persistTrackedItems();
+			refreshPanel();
+		});
+	}
+
+	/** Toggles an item's per-item compact-row override (#210), then persists and refreshes. */
+	private void setItemCompact(int itemId, boolean on)
+	{
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null || tracked.isCompact() == on)
+				return;
+
+			tracked.setCompact(on);
 			persistTrackedItems();
 			refreshPanel();
 		});

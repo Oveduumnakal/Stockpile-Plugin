@@ -207,6 +207,8 @@ public class StockpilePanel extends PluginPanel
 	private final BiConsumer<Integer, Boolean> onSetFavorite;
 	/** Overlay toggle callback: (itemId, onOverlay) — adds/removes an item from the on-screen overlay. */
 	private final BiConsumer<Integer, Boolean> onSetOnOverlay;
+	/** Per-item compact toggle callback: (itemId, compact) — flips one row's compact override (#210). */
+	private final BiConsumer<Integer, Boolean> onSetItemCompact;
 	/** Group collapse callback: (groupKey, collapsed) — persists a group's accordion state. */
 	private final BiConsumer<String, Boolean> onSetGroupCollapsed;
 	/** Category create/rename/delete/reorder and per-item assignment operations. */
@@ -618,6 +620,7 @@ public class StockpilePanel extends PluginPanel
 		this.onToggleSortDirection = actions::toggleSortDirection;
 		this.onSetFavorite = actions::setFavorite;
 		this.onSetOnOverlay = actions::setOnOverlay;
+		this.onSetItemCompact = actions::setItemCompact;
 		this.onSetGroupCollapsed = actions::setGroupCollapsed;
 		this.categoryActions = categoryActions;
 		this.onExportList = actions::exportList;
@@ -3313,6 +3316,49 @@ public class StockpilePanel extends PluginPanel
 		return toggle;
 	}
 
+	/**
+	 * Builds the per-item compact toggle beneath the overlay button (#210): a painted "≣" glyph
+	 * that flips this row between the standard and compact two-row layouts, independent of the
+	 * global compact toggle. Gold when this row's compact override is on, grey otherwise.
+	 */
+	private JLabel buildRowCompactToggle(TrackedItem item)
+	{
+		final Color restColor = item.isCompact() ? COLOR_AVG : STAR_DIM;
+		final Color hoverColor = item.isCompact() ? STAR_DIM : COLOR_AVG;
+
+		JLabel toggle = new JLabel("≣", SwingConstants.CENTER);
+		toggle.setPreferredSize(new Dimension(20, 20));
+		toggle.setMaximumSize(new Dimension(20, 20));
+		toggle.setFont(FontManager.getRunescapeSmallFont());
+		toggle.setForeground(restColor);
+		toggle.setAlignmentX(Component.CENTER_ALIGNMENT);
+		toggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		toggle.setToolTipText(item.isCompact() ? "Expand to standard row" : "Compact this row");
+		toggle.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (onSetItemCompact != null)
+					onSetItemCompact.accept(item.getItemId(), !item.isCompact());
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				toggle.setForeground(hoverColor);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				toggle.setForeground(restColor);
+			}
+		});
+
+		return toggle;
+	}
+
 	/** @return how many currently tracked items are flagged for the on-screen overlay. */
 	private int overlayCount()
 	{
@@ -3377,25 +3423,44 @@ public class StockpilePanel extends PluginPanel
 		favStar.setAlignmentX(Component.CENTER_ALIGNMENT);
 
 		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
+		final JLabel compactBtn = config.compactView() ? null : buildRowCompactToggle(item);
+		final boolean rowCompact = config.compactView() || item.isCompact();
 
 		JPanel eastPanel = new JPanel()
 		{
 			/**
-			 * Reserves the hidden overlay button's height so revealing it on hover changes only
+			 * Reserves the hidden hover buttons' extent so revealing them on hover changes only
 			 * appearance, not layout size. Without this a short row (e.g. a non-tradeable item)
-			 * grows on hover and shifts the rows beneath it.
+			 * grows on hover and shifts the rows beneath it. A compact row stacks its controls
+			 * horizontally, so the reservation is along the width there and the height stays down
+			 * to the compact content — otherwise the taller button column would pad the row.
 			 */
 			@Override
 			public Dimension getPreferredSize()
 			{
 				Dimension d = super.getPreferredSize();
 				if (overlayBtn != null && !overlayBtn.isVisible())
-					d.height += overlayBtn.getPreferredSize().height;
+				{
+					Dimension o = overlayBtn.getPreferredSize();
+					if (rowCompact)
+						d.width += o.width;
+					else
+						d.height += o.height;
+				}
+
+				if (compactBtn != null && !compactBtn.isVisible())
+				{
+					Dimension cb = compactBtn.getPreferredSize();
+					if (rowCompact)
+						d.width += cb.width;
+					else
+						d.height += cb.height;
+				}
 
 				return d;
 			}
 		};
-		eastPanel.setLayout(new BoxLayout(eastPanel, BoxLayout.Y_AXIS));
+		eastPanel.setLayout(new BoxLayout(eastPanel, rowCompact ? BoxLayout.X_AXIS : BoxLayout.Y_AXIS));
 		eastPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		eastPanel.add(removeBtn);
 		eastPanel.add(favStar);
@@ -3406,7 +3471,23 @@ public class StockpilePanel extends PluginPanel
 			eastPanel.add(overlayBtn);
 		}
 
-		card.add(eastPanel, BorderLayout.EAST);
+		if (compactBtn != null)
+		{
+			compactBtn.setVisible(false);
+			eastPanel.add(compactBtn);
+		}
+
+		if (rowCompact)
+		{
+			JPanel eastWrapper = new JPanel(new BorderLayout());
+			eastWrapper.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			eastWrapper.add(eastPanel, BorderLayout.SOUTH);
+			card.add(eastWrapper, BorderLayout.EAST);
+		}
+		else
+		{
+			card.add(eastPanel, BorderLayout.EAST);
+		}
 
 		JPanel centerPanel = new JPanel();
 		centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
@@ -3433,11 +3514,11 @@ public class StockpilePanel extends PluginPanel
 
 		centerPanel.add(nameRow);
 
-		if (config.compactView())
+		if (config.compactView() || item.isCompact())
 		{
 			centerPanel.add(buildCompactValueRow(item));
 			card.add(centerPanel, BorderLayout.CENTER);
-			installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, STAR_HIDDEN);
+			installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, REMOVE_COLOR, STAR_HIDDEN);
 			return card;
 		}
 
@@ -3652,19 +3733,19 @@ public class StockpilePanel extends PluginPanel
 		}
 
 		card.add(centerPanel, BorderLayout.CENTER);
-		installRowHover(card, item, removeBtn, favStar, overlayBtn, REMOVE_COLOR, STAR_HIDDEN);
+		installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, REMOVE_COLOR, STAR_HIDDEN);
 
 		return card;
 	}
 
 	/**
 	 * Wires the shared row hover behaviour onto a tracked-item card: clicking the row
-	 * (other than the remove button, favorite star, or overlay button) opens the detail view,
-	 * and entering/leaving the card tracks {@link #hoveredItemId} and reveals/hides the remove
-	 * button, favorite star, and the (optional) overlay-select button.
+	 * (other than the remove button, favorite star, overlay button, or compact button) opens
+	 * the detail view, and entering/leaving the card tracks {@link #hoveredItemId} and reveals/hides
+	 * the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons.
 	 */
 	private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar,
-			JLabel overlayBtn, Color removeColor, Color removeHidden)
+			JLabel overlayBtn, JLabel compactBtn, Color removeColor, Color removeHidden)
 	{
 		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		MouseAdapter hoverListener = new MouseAdapter()
@@ -3672,7 +3753,8 @@ public class StockpilePanel extends PluginPanel
 			@Override
 			public void mouseClicked(MouseEvent e)
 			{
-				if (e.getSource() == removeBtn || e.getSource() == favStar || e.getSource() == overlayBtn)
+				if (e.getSource() == removeBtn || e.getSource() == favStar
+						|| e.getSource() == overlayBtn || e.getSource() == compactBtn)
 					return;
 
 				showDetail(item.getItemId());
@@ -3687,6 +3769,9 @@ public class StockpilePanel extends PluginPanel
 				refreshFavoriteStar(favStar, item.isFavorite());
 				if (overlayBtn != null)
 					overlayBtn.setVisible(true);
+
+				if (compactBtn != null)
+					compactBtn.setVisible(true);
 			}
 
 			@Override
@@ -3704,6 +3789,9 @@ public class StockpilePanel extends PluginPanel
 					refreshFavoriteStar(favStar, item.isFavorite());
 					if (overlayBtn != null)
 						overlayBtn.setVisible(false);
+
+					if (compactBtn != null)
+						compactBtn.setVisible(false);
 				}
 			}
 		};

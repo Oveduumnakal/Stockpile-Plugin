@@ -56,6 +56,8 @@ public interface PanelActions
 
 	void setOnOverlay(int itemId, boolean onOverlay);
 
+	void setItemCompact(int itemId, boolean compact);
+
 	void setGroupCollapsed(String group, boolean collapsed);
 
 	/** Builds the share token for the tracked list and hands it back through {@code callback}. */

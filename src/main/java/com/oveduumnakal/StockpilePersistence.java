@@ -73,6 +73,7 @@ class StockpilePersistence
 		boolean favorite;
 		String category;
 		boolean onOverlay;
+		boolean compact;
 		int deathSuspendedQuantity;
 		Long deathSuspendedAt;
 		int pouchSuspendedQuantity;
