@@ -690,6 +690,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void untrackToPreview(int itemId)
+					{
+						StockpilePlugin.this.untrackToPreview(itemId);
+					}
+
+					@Override
 					public void acquisitionsEdited(int itemId)
 					{
 						onAcquisitionsEdited(itemId);
@@ -1239,6 +1245,39 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			persistTrackedItems();
 			persistPortfolioHistory();
 			refreshPanel();
+		});
+	}
+
+	/**
+	 * Stops tracking an item but leaves it open in the detail view as a read-only preview (#138),
+	 * so untracking from the detail header does not bounce the user back to the main list. Removes
+	 * and persists exactly as {@link #removeTrackedItem}, then builds a transient preview and shows
+	 * it: the preview is opened (posting {@code showPreview} to the EDT) before the list rebuild is
+	 * queued, so the rebuild finds the panel already backed by the preview and keeps the detail card
+	 * up instead of returning to the list. Runs on the client thread.
+	 */
+	private void untrackToPreview(int itemId)
+	{
+		clientThread.invokeLater(() ->
+		{
+			trackedItems.remove(itemId);
+			portfolioHistory.removeItem(itemId);
+			SwingUtilities.invokeLater(() -> panel.removeSessionBaseline(itemId));
+			persistTrackedItems();
+			persistPortfolioHistory();
+
+			var composition = itemManager.getItemComposition(itemId);
+			TrackedItem preview = new TrackedItem(itemId, composition.getName());
+			preview.setTradeable(composition.isTradeable());
+			preview.setMode(TrackItemMode.VIEW);
+			applyItemMetadata(preview);
+			previewItem = preview;
+
+			final TrackedItem shown = preview;
+			SwingUtilities.invokeLater(() -> panel.showPreview(shown));
+			refreshPanel();
+			requestDetailData(itemId);
+			refreshGePrices();
 		});
 	}
 

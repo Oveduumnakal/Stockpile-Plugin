@@ -22,6 +22,12 @@ public interface PanelActions
 
 	void removeItem(int itemId);
 
+	/**
+	 * Stops tracking {@code itemId} but keeps it open in the detail view as a read-only preview
+	 * (#138), so untracking from the detail header does not bounce back to the main list.
+	 */
+	void untrackToPreview(int itemId);
+
 	void acquisitionsEdited(int itemId);
 
 	void requestDetailData(int itemId);

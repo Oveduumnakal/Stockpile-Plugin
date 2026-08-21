@@ -186,6 +186,8 @@ public class StockpilePanel extends PluginPanel
 	private final StockpileConfig config;
 	private final BiConsumer<Integer, TrackItemMode> onAddItem;
 	private final Consumer<Integer> onRemoveItem;
+	/** Untracks the shown item but keeps the detail view open as a preview (#138). */
+	private final Consumer<Integer> onUntrackToPreview;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
@@ -347,6 +349,10 @@ public class StockpilePanel extends PluginPanel
 	private final JLabel detailIconLabel = new JLabel();
 	private final JLabel detailNameLabel = new JLabel();
 	private final JLabel detailQtyLabel = new JLabel();
+	/** Header Track/Untrack button in the detail view; label and colour track the shown item's state (#138). */
+	private final JButton detailTrackBtn = new JButton();
+	/** Whether the item currently shown in the detail view is tracked (vs a read-only preview) (#138). */
+	private boolean detailItemTracked;
 	/**
 	 * Examine text renderer. A line-wrapping {@link JTextArea} rather than an HTML {@link JLabel}:
 	 * Swing ignores CSS width with the RuneScape font, so HTML labels render one clipped line, while
@@ -598,6 +604,7 @@ public class StockpilePanel extends PluginPanel
 		this.config = config;
 		this.onAddItem = actions::addItem;
 		this.onRemoveItem = actions::removeItem;
+		this.onUntrackToPreview = actions::untrackToPreview;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
@@ -2269,7 +2276,9 @@ public class StockpilePanel extends PluginPanel
 		if (detailItemId > 0)
 		{
 			TrackedItem detail = currentItems.get(detailItemId);
-			if (detail == null && previewItem != null && previewItem.getItemId() == detailItemId)
+			if (detail != null)
+				previewItem = null;
+			else if (previewItem != null && previewItem.getItemId() == detailItemId)
 				detail = previewItem;
 
 			if (detail != null)
@@ -4289,6 +4298,12 @@ public class StockpilePanel extends PluginPanel
 		headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		headerRow.add(backBtn, BorderLayout.WEST);
 
+		detailTrackBtn.setFocusPainted(false);
+		detailTrackBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		detailTrackBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		detailTrackBtn.addActionListener(e -> toggleDetailTracking());
+		headerRow.add(detailTrackBtn, BorderLayout.EAST);
+
 		detailIconLabel.setPreferredSize(new Dimension(32, 32));
 		detailIconLabel.setVerticalAlignment(SwingConstants.CENTER);
 		detailNameLabel.setForeground(Color.WHITE);
@@ -6143,6 +6158,24 @@ public class StockpilePanel extends PluginPanel
 		applyDetailCard();
 	}
 
+	/**
+	 * Toggles tracking of the item shown in the detail view (#138), driven by the header button.
+	 * A read-only preview is added to the tracked list (the next rebuild swaps the preview for the
+	 * real tracked detail); a tracked item is untracked but stays open as a preview so the detail
+	 * view does not bounce back to the main list.
+	 */
+	private void toggleDetailTracking()
+	{
+		final int itemId = detailItemId;
+		if (itemId <= 0)
+			return;
+
+		if (detailItemTracked)
+			onUntrackToPreview.accept(itemId);
+		else
+			onAddItem.accept(itemId, TrackItemMode.TRACK);
+	}
+
 	/** Returns to the main item list, closing any open pop-outs. */
 	private void showMain()
 	{
@@ -6268,6 +6301,10 @@ public class StockpilePanel extends PluginPanel
 	private void populateDetail(TrackedItem item)
 	{
 		final boolean viewOnly = item.getMode() == TrackItemMode.VIEW;
+
+		detailItemTracked = !viewOnly;
+		detailTrackBtn.setText(viewOnly ? "Track" : "Untrack");
+		detailTrackBtn.setForeground(viewOnly ? config.trackItemColor() : config.stopTrackingColor());
 
 		rebuildOverviewGrid();
 		applyDetailSectionLayout();
