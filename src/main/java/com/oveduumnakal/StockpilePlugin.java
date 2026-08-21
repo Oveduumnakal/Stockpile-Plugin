@@ -69,6 +69,7 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Skill;
+import net.runelite.api.SpritePixels;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.coords.WorldPoint;
@@ -297,6 +298,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private static final int GE_TRACK_BORDER = 0xcc7d1a;
 	/** The GE offer title/heading orange used for the Track button text, same for both states (#139). */
 	private static final int GE_TITLE_ORANGE = 0xff981f;
+	/** Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). */
+	private static final int STOCKPILE_GE_SPRITE_ID = -21140;
+	/** Rendered size, in pixels, of the Stockpile icon on the GE button (#140). */
+	private static final int GE_ICON_SIZE = 25;
 
 	private final Map<Integer, Map<Integer, Integer>> containerCounts = new HashMap<>();
 
@@ -812,6 +817,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				.build();
 
 		clientToolbar.addNavigation(navButton);
+		clientThread.invokeLater(() -> registerGeButtonSprite(icon));
 		overlayManager.add(highlightOverlay);
 		overlayManager.add(groundOverlay);
 		for (int slot = 0; slot < OVERLAY_MAX; slot++)
@@ -921,6 +927,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		tickGroundDespawns.clear();
 		tickGroundQuantityChanges.clear();
 		clientThread.invokeLater(this::hideGeButton);
+		clientThread.invokeLater(this::unregisterGeButtonSprite);
 		currentGeItem = -1;
 		persistPriceCache();
 		if (priceRefreshTask != null)
@@ -2553,7 +2560,35 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			SwingUtilities.invokeLater(() -> clientToolbar.openPanel(navButton));
 	}
 
-	/** Injects a native-style "View in Stockpile" button onto the visible GE offer container. */
+	/**
+	 * Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the
+	 * injected GE button (#140). Scaled to {@link #GE_ICON_SIZE} for a crisp render at button size.
+	 * A no-op when sprite overrides are unavailable (e.g. before the client is ready).
+	 */
+	private void registerGeButtonSprite(BufferedImage icon)
+	{
+		Map<Integer, SpritePixels> overrides = client.getSpriteOverrides();
+		if (overrides == null || icon == null)
+			return;
+
+		BufferedImage scaled = ImageUtil.resizeImage(icon, GE_ICON_SIZE, GE_ICON_SIZE);
+		overrides.put(STOCKPILE_GE_SPRITE_ID, ImageUtil.getImageSpritePixels(scaled, client));
+	}
+
+	/** Removes the Stockpile GE-button sprite override on shutdown (#140). */
+	private void unregisterGeButtonSprite()
+	{
+		Map<Integer, SpritePixels> overrides = client.getSpriteOverrides();
+		if (overrides != null)
+			overrides.remove(STOCKPILE_GE_SPRITE_ID);
+	}
+
+	/**
+	 * Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container
+	 * (#140). The icon-only graphic sits where the old text link did; the "View in Stockpile" text now
+	 * lives on the hover action/tooltip. Clicking opens the offer's item in Stockpile's detail view;
+	 * hover brightens the icon to full opacity.
+	 */
 	private void injectGeButton()
 	{
 		Widget container = client.getWidget(InterfaceID.GeOffers.SETUP);
@@ -2563,22 +2598,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (container == null || container.isHidden())
 			return;
 
-		Widget button = container.createChild(-1, WidgetType.TEXT);
-		button.setText("View in Stockpile");
-		button.setFontId(495);
-		button.setTextColor(0xff981f);
-		button.setTextShadowed(true);
+		Widget button = container.createChild(-1, WidgetType.GRAPHIC);
+		button.setSpriteId(STOCKPILE_GE_SPRITE_ID);
+		button.setOpacity(60);
 		button.setXPositionMode(WidgetPositionMode.ABSOLUTE_RIGHT);
-		button.setXTextAlignment(WidgetTextAlignment.RIGHT);
 		button.setOriginalX(10);
-		button.setOriginalY(10);
-		button.setOriginalWidth(120);
-		button.setOriginalHeight(18);
+		button.setOriginalY(8);
+		button.setOriginalWidth(GE_ICON_SIZE);
+		button.setOriginalHeight(GE_ICON_SIZE);
 		button.setHasListener(true);
 		button.setAction(0, "View in Stockpile");
 		button.setOnOpListener((JavaScriptCallback) e -> openGeItemInStockpile(currentGeItem));
-		button.setOnMouseOverListener((JavaScriptCallback) e -> button.setTextColor(0xffffff));
-		button.setOnMouseLeaveListener((JavaScriptCallback) e -> button.setTextColor(0xff981f));
+		button.setOnMouseOverListener((JavaScriptCallback) e -> button.setOpacity(0));
+		button.setOnMouseLeaveListener((JavaScriptCallback) e -> button.setOpacity(60));
 		button.revalidate();
 
 		geButton = button;
