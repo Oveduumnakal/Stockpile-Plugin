@@ -108,6 +108,7 @@ public interface StockpileConfig extends Config
 	String KEY_SHOW_SESSION = "showSession";
 
 	String KEY_ADD_CONTEXT_MENU_OPTION = "addContextMenuOption";
+	String KEY_PROMPT_CATEGORY_ON_TRACK = "promptCategoryOnTrack";
 	String KEY_TRACK_ITEM_COLOR = "trackItemColor";
 	String KEY_STOP_TRACKING_COLOR = "stopTrackingColor";
 	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
@@ -666,6 +667,20 @@ public interface StockpileConfig extends Config
 			position = 0
 	)
 	default boolean addContextMenuOption()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_PROMPT_CATEGORY_ON_TRACK,
+			name = "Prompt Category on Track",
+			description = "When you track an item, ask which category to put it in (choose an existing one, "
+					+ "create a new one, or skip to Uncategorized). Applies only to explicit tracking, not "
+					+ "auto-added or view-only items.",
+			section = trackingSection,
+			position = 8
+	)
+	default boolean promptCategoryOnTrack()
 	{
 		return true;
 	}

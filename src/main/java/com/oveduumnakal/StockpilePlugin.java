@@ -1132,7 +1132,25 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			return;
 		}
 
+		boolean isNew = !trackedItems.containsKey(itemId);
 		addTrackedItem(itemId, 0, null, null, false, false, true, true, mode);
+
+		if (isNew && config.promptCategoryOnTrack())
+			promptCategoryForTrackedItem(itemId);
+	}
+
+	/**
+	 * After an item is explicitly tracked (#211), asks the panel to prompt for its category. Enqueued
+	 * on the client thread so it runs after the deferred add body, then hops to the EDT once the item
+	 * is confirmed present. Only reached from explicit tracking — never from load, import, or auto-add.
+	 */
+	private void promptCategoryForTrackedItem(int itemId)
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (trackedItems.containsKey(itemId))
+				SwingUtilities.invokeLater(() -> panel.promptCategoryForItem(itemId));
+		});
 	}
 
 	/**
