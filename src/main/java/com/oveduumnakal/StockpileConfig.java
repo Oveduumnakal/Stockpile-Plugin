@@ -115,6 +115,7 @@ public interface StockpileConfig extends Config
 	String KEY_GLOW_EFFECT = "glowEffect";
 	String KEY_GE_INTEGRATION = "geIntegration";
 	String KEY_GE_FOCUS_PANEL = "geFocusPanel";
+	String KEY_GE_SHOW_MARKET_PRICES = "geShowMarketPrices";
 
 	/** Top-level panel behavior: price refresh, change indicator, and global toggles. */
 	@ConfigSection(
@@ -802,6 +803,19 @@ public interface StockpileConfig extends Config
 			position = 1
 	)
 	default boolean geFocusPanel()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_SHOW_MARKET_PRICES,
+			name = "Show 5m Prices",
+			description = "Show the item's latest 5-minute High/Low market prices as a line on the open "
+					+ "Grand Exchange offer window. Independent of the Interaction mode above.",
+			section = geIntegrationSection,
+			position = 2
+	)
+	default boolean geShowMarketPrices()
 	{
 		return true;
 	}
