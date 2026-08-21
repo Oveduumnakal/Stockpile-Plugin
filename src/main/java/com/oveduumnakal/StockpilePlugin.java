@@ -46,6 +46,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -278,6 +279,15 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private int currentGeItem = -1;
 	/** The native-style button injected onto the GE offer screen in Button mode, or null. */
 	private Widget geButton;
+	/** The raw GE item id the cached 5m high/low belong to, or -1 when unfetched or stale (#142). */
+	private int geLineItem = -1;
+	/** High and low market prices for {@link #geLineItem} from the resolved source; 0 when unavailable (#142). */
+	private long geLineHigh;
+	private long geLineLow;
+	/** Which source {@link #geLineHigh}/{@link #geLineLow} came from, as a row-label prefix (5m/1h/Latest) (#142). */
+	private String geLineSource;
+	/** Height the GE info-block text widget is grown to so its fourth row is not self-clipped (#142). */
+	private static final int GE_DESC_HEIGHT = 80;
 
 	private final Map<Integer, Map<Integer, Integer>> containerCounts = new HashMap<>();
 
@@ -2363,10 +2373,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
+		boolean wantPrices = config.geShowMarketPrices();
 		if (!wantButton)
 			hideGeButton();
 
-		if (mode == GeIntegrationMode.OFF)
+		if (mode == GeIntegrationMode.OFF && !wantPrices)
 		{
 			currentGeItem = -1;
 			return;
@@ -2377,6 +2388,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			currentGeItem = item;
 			hideGeButton();
+			geLineItem = -1;
+			geLineHigh = 0;
+			geLineLow = 0;
+			geLineSource = null;
+
+			if (item > 0 && wantPrices)
+				requestGeLinePrices(item);
 
 			if (item > 0 && (mode == GeIntegrationMode.AUTO || mode == GeIntegrationMode.BOTH))
 				openGeItemInStockpile(item);
@@ -2384,6 +2402,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		if (wantButton && item > 0 && geButton == null)
 			injectGeButton();
+
+		if (wantPrices && item > 0)
+			applyGeHighLowLine();
 	}
 
 	/** Hides and forgets the injected GE button, if one is currently on the offer interface. */
@@ -2523,6 +2544,150 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		button.revalidate();
 
 		geButton = button;
+	}
+
+	/**
+	 * Swaps the "Actively traded price" text inside the open GE offer's info block (the single
+	 * {@code SETUP_DESC}/{@code DETAILS_DESC} text widget) for one compact market line — High, Low
+	 * and Avg together — in place, so the line count never changes and nothing else moves (#142).
+	 * Re-applied each tick so the game's own redraw does not win; idempotent because once the native
+	 * text is gone the rewrite is skipped. No-op until the shown item's data has been fetched and priced.
+	 */
+	private void applyGeHighLowLine()
+	{
+		if (geLineItem != currentGeItem || (geLineHigh <= 0 && geLineLow <= 0))
+			return;
+
+		Widget desc = client.getWidget(InterfaceID.GeOffers.SETUP_DESC);
+		if (desc == null || desc.isHidden())
+			desc = client.getWidget(InterfaceID.GeOffers.DETAILS_DESC);
+
+		if (desc == null || desc.isHidden())
+			return;
+
+		String text = desc.getText();
+		String rebuilt = injectPriceLines(text);
+		if (rebuilt.equals(text))
+			return;
+
+		desc.setText(rebuilt);
+		desc.setOriginalHeight(GE_DESC_HEIGHT);
+		desc.revalidate();
+	}
+
+	/**
+	 * Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines,
+	 * always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is
+	 * split off onto its own line, and any trailing convenience-fee line is kept. Returns the text
+	 * unchanged when there is no native segment to replace, leaving an already-rewritten block
+	 * alone (#142).
+	 *
+	 * @param desc the current info-block text (may be null)
+	 * @return the rewritten text, or the original when nothing was replaced
+	 */
+	private String injectPriceLines(String desc)
+	{
+		if (desc == null || !desc.contains("Actively traded price"))
+			return desc;
+
+		String replacement = Matcher.quoteReplacement("<br>" + priceLines());
+		return desc.replaceAll("(?: / |<br>)?Actively traded price:[^<]*", replacement);
+	}
+
+	/**
+	 * @return one market row — High and Low together — coloured per side and prefixed with the
+	 *         resolved source ({@code 5m}/{@code 1h}/{@code Latest}) (#142).
+	 */
+	private String priceLines()
+	{
+		String prefix = geLineSource == null ? "" : geLineSource + " ";
+		return prefix + "High: " + colourGp(geLineHigh, "64dc64")
+				+ "  Low: " + colourGp(geLineLow, "dc6464");
+	}
+
+	/**
+	 * Resolves the open GE offer item's market prices in the background and caches them for the
+	 * info-block line, overwriting it in place once they arrive (#142). Falls back down a chain:
+	 * the latest priced 5m sample, then the latest priced 1h sample, then the item's latest instant
+	 * high/low; whichever lands first sets the row-label prefix (5m / 1h / Latest).
+	 */
+	private void requestGeLinePrices(int itemId)
+	{
+		int canonical = itemManager.canonicalize(itemId);
+		executor.execute(() ->
+		{
+			String source = "5m";
+			long[] highLow = latestSeriesHighLow(wikiPriceClient.fetchTimeseries(canonical, "5m"));
+			if (highLow[0] <= 0 && highLow[1] <= 0)
+			{
+				source = "1h";
+				highLow = latestSeriesHighLow(wikiPriceClient.fetchTimeseries(canonical, "1h"));
+			}
+
+			final String seriesSource = source;
+			final long[] seriesHighLow = highLow;
+			clientThread.invokeLater(() ->
+			{
+				if (itemId != currentGeItem)
+					return;
+
+				long high = seriesHighLow[0];
+				long low = seriesHighLow[1];
+				String label = seriesSource;
+				if (high <= 0 && low <= 0)
+				{
+					TrackedItem item = lookupItem(canonical);
+					if (item != null)
+					{
+						high = item.getHighPrice();
+						low = item.getLowPrice();
+						label = "Latest";
+					}
+				}
+
+				geLineItem = itemId;
+				geLineHigh = high;
+				geLineLow = low;
+				geLineSource = label;
+				applyGeHighLowLine();
+			});
+		});
+	}
+
+	/**
+	 * Scans a price series newest-first for the most recent priced average high and low,
+	 * returned as {@code [high, low]} (each 0 when the series holds no priced sample) (#142).
+	 *
+	 * @param series the price points, oldest first (may be null or empty)
+	 * @return a two-element array of the latest non-zero high and low
+	 */
+	static long[] latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)
+	{
+		long high = 0;
+		long low = 0;
+		if (series != null)
+		{
+			for (int i = series.size() - 1; i >= 0 && (high == 0 || low == 0); i--)
+			{
+				WikiRealtimePriceClient.PricePoint point = series.get(i);
+				if (high == 0 && point.getAvgHighPrice() > 0)
+					high = point.getAvgHighPrice();
+
+				if (low == 0 && point.getAvgLowPrice() > 0)
+					low = point.getAvgLowPrice();
+			}
+		}
+
+		return new long[]{high, low};
+	}
+
+	/** @return a full grouped {@code "1,234 gp"} in the given colour, or a muted dash when unpriced (#142). */
+	private static String colourGp(long value, String colour)
+	{
+		if (value <= 0)
+			return "<col=969696>—</col>";
+
+		return "<col=" + colour + ">" + GpFormat.grouped(value) + " gp</col>";
 	}
 
 	/** Records a ground item and its tile so the ground overlay can outline it, buffering it for #65. */
