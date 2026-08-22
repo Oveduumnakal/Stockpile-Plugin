@@ -116,6 +116,7 @@ public interface StockpileConfig extends Config
 	String KEY_GE_INTEGRATION = "geIntegration";
 	String KEY_GE_FOCUS_PANEL = "geFocusPanel";
 	String KEY_GE_SHOW_MARKET_PRICES = "geShowMarketPrices";
+	String KEY_GE_SHOW_TRACK_BUTTON = "geShowTrackButton";
 
 	/** Top-level panel behavior: price refresh, change indicator, and global toggles. */
 	@ConfigSection(
@@ -816,6 +817,19 @@ public interface StockpileConfig extends Config
 			position = 2
 	)
 	default boolean geShowMarketPrices()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = KEY_GE_SHOW_TRACK_BUTTON,
+			name = "Track Button",
+			description = "Show a Track/Untrack button beside the History button on the open Grand Exchange "
+					+ "offer window, toggling tracking of the offer's item. Independent of the Interaction mode above.",
+			section = geIntegrationSection,
+			position = 3
+	)
+	default boolean geShowTrackButton()
 	{
 		return true;
 	}
