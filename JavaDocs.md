@@ -1141,7 +1141,7 @@ smoke-test — unit-testable in isolation.
 | `void` | `clearProcessingOutput()` | Drops the queued processing outputs before a detection pass recomputes them (#69). |
 | `void` | `closeAllGroundSuspensions()` | Closes every remaining ground suspension as lost — floor items rarely survive a logout — and drops the pending ground routing maps. |
 | `void` | `closeFifo(TrackedItem tracked, int amount, long soldAtPrice, AcquisitionSource sellSource)` | Closes `amount` units of held inventory at `soldAtPrice`, oldest lot first (FIFO), recording `sellSource` as the sale's provenance — `AcquisitionSource#UNKNOWN` marks the price as an estimate rather than an observed sale. |
-| `void` | `closeGroundLost(int itemId, int qty)` | Closes a ground pile's units as lost at 0 (#234): the floor items were never recovered, so their suspended lots close under `AcquisitionSource#GROUND`. |
+| `boolean` | `closeGroundLost(int itemId, int qty)` | Closes a ground pile's units as lost at 0 (#234): the floor items were never recovered, so their suspended lots close under `AcquisitionSource#GROUND`. |
 | `void` | `closeVanishedGraveLosses()` | Once an expired gravestone has been gone for `#GRAVE_RECOVERY_GRACE_TICKS`, closes any death suspension it left standing as lost at 0 (#70). |
 | `private int` | `consumeBuyLedger(TrackedItem tracked, int qty)` | Consumes up to `qty` from the item's GE buy ledger into priced lots, returning the unconsumed remainder. |
 | `int` | `consumeCarriedOutput(TrackedItem tracked, int qty, Map<Integer,Long> carried, AcquisitionSource source)` | Opens `qty` newly-produced units carrying the basis queued in `carried` for this item, tagged with `source`. |
@@ -1453,7 +1453,8 @@ Drops the queued processing outputs before a detection pass recomputes them (#69
 `void closeAllGroundSuspensions()`
 
 Closes every remaining ground suspension as lost — floor items rarely survive a logout — and
-drops the pending ground routing maps. The caller clears its own drop tracking.
+drops the pending ground routing maps. Persists and refreshes once after the sweep (#185). The
+caller clears its own drop tracking.
 
 #### closeFifo
 
@@ -1471,10 +1472,14 @@ sold and merging into matching closed lots where possible.
 
 #### closeGroundLost
 
-`void closeGroundLost(int itemId, int qty)`
+`boolean closeGroundLost(int itemId, int qty)`
 
 Closes a ground pile's units as lost at 0 (#234): the floor items were never recovered, so their
 suspended lots close under `AcquisitionSource#GROUND`. Bounded to what is actually suspended.
+Mutates only &mdash; the caller persists and refreshes once (#185), so several piles expiring in one
+tick don't each re-serialize the whole item list.
+
+- **Returns:** whether any units were closed
 
 #### closeVanishedGraveLosses
 
@@ -12459,6 +12464,7 @@ executor.
 | `float` | `breathingAlpha()` |  |
 | `void` | `buildAcquisitionsCsv(Consumer<String> onResult)` | Builds the acquisitions log of all tracked items as CSV (see `AcquisitionCsvExporter`) on the client thread — the items and their acquisition lists are client-thread state — and hands it to `onResult` on the EDT. |
 | `void` | `buildShareToken(Consumer<String> onResult)` | Builds a shareable code for the current tracked list (ids, modes, categories, favorites) — "" when empty — and hands it to `onResult` on the EDT. |
+| `private int` | `canonicalCountId(int itemId)` | Resolves a container slot's item id to the canonical (unnoted, non-placeholder) id it should count as, using a single `ItemComposition` lookup instead of a separate placeholder-check + `canonicalize` pair (#185) — a bank event covers ~800 slots. |
 | `private void` | `captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
 | `private String` | `categoryValue(TrackedItem item, NotificationMetric metric)` | Resolves the current categorical rating of a metric for an item (volatility, liquidity, or 30-day range position) via `MarketClassifier`. |
 | `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
@@ -12474,7 +12480,7 @@ executor.
 | `private void` | `correlateGathering()` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#GATHER` at 0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores, fish, logs, harvested herbs. |
 | `private void` | `correlateGroundActivity()` | Correlates this tick's ground-item activity with the pending inventory deltas (#65): a spawn (or stack increase) on the player's tile matching a pending removal is our drop — its units queue for ground suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. |
 | `private void` | `correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)` | Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. |
-| `private void` | `correlateGroundTaken(TileItem item, int taken)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
+| `private boolean` | `correlateGroundTaken(TileItem item, int taken)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
 | `private void` | `correlateProcessing()` | Pairs this tick's consumed inputs with the produced output when a processing-skill XP gain identifies a recipe action (#69), transferring the summed input cost: tracked inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their fallback market value, and the total is carried onto the output's new lot(s) by `CostBasisLedger` so their basis sums exactly to it. |
 | `private void` | `correlateReward()` | Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0 when a reward-loot signal fired on the same tick (`#rewardContainerTick`) — a reward/loot container change (`#REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some loot" chat line — i.e. |
 | `private void` | `correlateThieving()` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at 0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall produce, chest hauls. |
@@ -12508,7 +12514,6 @@ executor.
 | `private boolean` | `isDestroyedProduct(int itemId)` |  |
 | `private boolean` | `isDosePotion(int itemId)` |  |
 | `public boolean` | `isEmptyContainer(int itemId)` | Returns whether the given item id is a known empty-container placeholder. |
-| `private boolean` | `isPlaceholder(int itemId)` |  |
 | `private static boolean` | `isPouchDepositMessage(String message)` |  |
 | `private static boolean` | `isPouchTarget(String target)` |  |
 | `private boolean` | `isRealItem(int itemId)` |  |
@@ -13370,6 +13375,18 @@ favorites) — "" when empty — and hands it to `onResult` on the EDT.
 rather than on the EDT the panel's button handler runs on, where a concurrent
 mutation (login replay, auto-add, GE fill) could tear the iteration.
 
+#### canonicalCountId
+
+`private int canonicalCountId(int itemId)`
+
+Resolves a container slot's item id to the canonical (unnoted, non-placeholder) id it should count
+as, using a single `ItemComposition` lookup instead of a separate placeholder-check +
+`canonicalize` pair (#185) — a bank event covers ~800 slots. Mirrors
+`net.runelite.client.game.ItemManager#canonicalize(int)`; a bank placeholder variant returns
+-1 because a placeholder must never count as held quantity.
+
+- **Returns:** the canonical id to count, or -1 for an empty slot or a placeholder. Client thread only.
+
 #### captureTradeOffer
 
 `private void captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)`
@@ -13528,7 +13545,7 @@ the toggle was on still resolve through the un-suspend/lost paths.
 
 #### correlateGroundTaken
 
-`private void correlateGroundTaken(TileItem item, int taken)`
+`private boolean correlateGroundTaken(TileItem item, int taken)`
 
 Handles a ground pile losing units: a remembered drop with a matching pending
 addition is a re-pickup (the greedy un-suspend consumes it during the sync);
@@ -13833,14 +13850,6 @@ Returns whether the given item id is a known empty-container placeholder.
 
 - **Parameter** `itemId` — the item id
 - **Returns:** `true` if the id is an empty container (e.g. an empty vial)
-
-#### isPlaceholder
-
-`private boolean isPlaceholder(int itemId)`
-
-- **Returns:** whether `itemId` is a bank placeholder variant, which
-        `canonicalize` would map to the real item — placeholders must
-        never count as held quantity. Client thread only.
 
 #### isPouchDepositMessage
 

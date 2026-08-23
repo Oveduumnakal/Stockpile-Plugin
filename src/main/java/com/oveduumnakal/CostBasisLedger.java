@@ -1139,33 +1139,44 @@ class CostBasisLedger
 	/**
 	 * Closes a ground pile's units as lost at 0 (#234): the floor items were never recovered, so their
 	 * suspended lots close under {@link AcquisitionSource#GROUND}. Bounded to what is actually suspended.
+	 * Mutates only &mdash; the caller persists and refreshes once (#185), so several piles expiring in one
+	 * tick don't each re-serialize the whole item list.
+	 *
+	 * @return whether any units were closed
 	 */
-	void closeGroundLost(int itemId, int qty)
+	boolean closeGroundLost(int itemId, int qty)
 	{
 		TrackedItem tracked = host.trackedItem(itemId);
 		if (tracked == null)
-			return;
+			return false;
 
 		int lost = Math.min(qty, tracked.getSuspended(SuspensionSource.GROUND));
 		if (lost <= 0)
-			return;
+			return false;
 
 		tracked.reduceSuspended(SuspensionSource.GROUND, lost);
 		closeFifo(tracked, lost, 0, AcquisitionSource.GROUND);
-		host.persistTrackedItems();
-		host.refreshPanel();
+		return true;
 	}
 
 	/**
 	 * Closes every remaining ground suspension as lost — floor items rarely survive a logout — and
-	 * drops the pending ground routing maps. The caller clears its own drop tracking.
+	 * drops the pending ground routing maps. Persists and refreshes once after the sweep (#185). The
+	 * caller clears its own drop tracking.
 	 */
 	void closeAllGroundSuspensions()
 	{
+		boolean changed = false;
 		for (TrackedItem tracked : host.trackedItems())
 		{
 			if (tracked.getSuspended(SuspensionSource.GROUND) > 0)
-				closeGroundLost(tracked.getItemId(), tracked.getSuspended(SuspensionSource.GROUND));
+				changed |= closeGroundLost(tracked.getItemId(), tracked.getSuspended(SuspensionSource.GROUND));
+		}
+
+		if (changed)
+		{
+			host.persistTrackedItems();
+			host.refreshPanel();
 		}
 
 		pendingGroundSuspend.clear();
