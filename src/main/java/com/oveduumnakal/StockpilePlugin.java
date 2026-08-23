@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -522,10 +523,34 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			persistPortfolioHistory();
 	}
 
-	/** Serializes the per-item portfolio history to per-profile config. */
+	/** Monotonic submit counter that coalesces overlapping async portfolio saves so only the newest snapshot wins. */
+	private final AtomicLong portfolioSaveSeq = new AtomicLong();
+
+	/**
+	 * Persists the per-item portfolio history to per-profile config (#184). The snapshot
+	 * ({@link PortfolioHistory#seriesByItem()}, a deep copy) is taken here on the client thread, but the
+	 * gson serialization (~48k numbers at 50 items) and the config write are handed to the shared
+	 * executor so they don't stall the game thread each save interval or on every item removal. A submit
+	 * sequence guard drops a snapshot already superseded by a newer submission, so out-of-order pool
+	 * execution can't write stale history.
+	 */
 	private void persistPortfolioHistory()
 	{
 		lastPortfolioSave = Instant.now();
+		Map<Integer, List<long[]>> snapshot = portfolioHistory.seriesByItem();
+		long seq = portfolioSaveSeq.incrementAndGet();
+		executor.execute(() ->
+		{
+			if (seq == portfolioSaveSeq.get())
+				persistence.savePortfolioHistory(snapshot);
+		});
+	}
+
+	/** Serializes the portfolio history synchronously (shutdown only), when the executor may not run queued tasks. */
+	private void persistPortfolioHistorySync()
+	{
+		lastPortfolioSave = Instant.now();
+		portfolioSaveSeq.incrementAndGet();
 		persistence.savePortfolioHistory(portfolioHistory.seriesByItem());
 	}
 
@@ -811,6 +836,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public int portfolioPointCount()
+					{
+						return portfolioHistory.pointCount();
+					}
+
+					@Override
 					public void whatsNewSeen()
 					{
 						markWhatsNewSeen();
@@ -950,7 +981,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		}
 
 		ledger.persist();
-		persistPortfolioHistory();
+		persistPortfolioHistorySync();
 		trackedItems.clear();
 		containerCounts.clear();
 		runePouchCounts.clear();

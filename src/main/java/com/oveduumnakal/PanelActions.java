@@ -86,6 +86,12 @@ public interface PanelActions
 	/** @return the portfolio value-history points the chart plots. */
 	List<long[]> portfolioHistory();
 
+	/**
+	 * @return the number of aggregate portfolio-history points, for the chart button's cheap
+	 *         "enough to plot?" check without pulling the whole series each rebuild (#184).
+	 */
+	int portfolioPointCount();
+
 	/** Marks the current release's "What's New" notice as seen so it stops showing. */
 	void whatsNewSeen();
 }

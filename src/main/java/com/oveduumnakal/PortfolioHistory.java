@@ -45,10 +45,15 @@ public final class PortfolioHistory
 	/** itemId → that item's thinned series of {@code {epochSeconds, value, costBasis}}. */
 	private final Map<Integer, List<long[]>> series = new LinkedHashMap<>();
 
+	/** Memoized {@link #aggregate()} result, rebuilt only when {@link #aggregateDirty} is set (#184). */
+	private List<long[]> aggregateCache;
+	private boolean aggregateDirty = true;
+
 	/** Replaces all series with {@code stored} (as loaded from config); ignores malformed entries. */
 	public void load(Map<Integer, List<long[]>> stored)
 	{
 		series.clear();
+		aggregateDirty = true;
 		if (stored == null)
 			return;
 
@@ -75,6 +80,9 @@ public final class PortfolioHistory
 	 */
 	public void record(long epochSeconds, Map<Integer, long[]> perItem)
 	{
+		if (!perItem.isEmpty())
+			aggregateDirty = true;
+
 		perItem.forEach((id, valueCost) ->
 		{
 			List<long[]> points = series.computeIfAbsent(id, k -> new ArrayList<>());
@@ -99,7 +107,8 @@ public final class PortfolioHistory
 	/** Drops the series for {@code itemId} (e.g. when it is untracked) so it leaves the aggregate. */
 	public void removeItem(int itemId)
 	{
-		series.remove(itemId);
+		if (series.remove(itemId) != null)
+			aggregateDirty = true;
 	}
 
 	/**
@@ -141,6 +150,9 @@ public final class PortfolioHistory
 	 */
 	public List<long[]> aggregate()
 	{
+		if (!aggregateDirty && aggregateCache != null)
+			return aggregateCache;
+
 		Map<Long, long[]> byEpoch = new TreeMap<>();
 		for (List<long[]> points : series.values())
 			for (long[] p : points)
@@ -150,7 +162,19 @@ public final class PortfolioHistory
 				agg[2] += p[2];
 			}
 
-		return new ArrayList<>(byEpoch.values());
+		aggregateCache = new ArrayList<>(byEpoch.values());
+		aggregateDirty = false;
+		return aggregateCache;
+	}
+
+	/**
+	 * @return the number of aggregate chart points (distinct recorded timestamps). Backed by the same
+	 *         memoized aggregate as {@link #aggregate()} (#184), so the panel's per-rebuild
+	 *         "enough to plot?" check does not rebuild the series each event.
+	 */
+	public int pointCount()
+	{
+		return aggregate().size();
 	}
 
 	/** @return the per-item series for persistence (defensive copy). */
@@ -177,5 +201,6 @@ public final class PortfolioHistory
 	public void clear()
 	{
 		series.clear();
+		aggregateDirty = true;
 	}
 }

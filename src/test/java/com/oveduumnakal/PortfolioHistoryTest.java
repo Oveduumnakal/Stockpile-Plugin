@@ -150,6 +150,38 @@ public class PortfolioHistoryTest
 	}
 
 	@Test
+	public void memoizedAggregateInvalidatesAfterMutation()
+	{
+		PortfolioHistory history = new PortfolioHistory();
+		long base = 10 * DAY;
+		history.record(base, item(560, 100, 40));
+
+		assertEquals("first aggregate populates the memoized cache", 1, history.aggregate().size());
+		assertEquals(100, history.aggregate().get(0)[1]);
+		assertEquals("pointCount shares the memoized aggregate", 1, history.pointCount());
+
+		history.record(base + HOUR, item(560, 250, 40));
+		List<long[]> afterRecord = history.aggregate();
+		assertEquals("a later record invalidates the stale one-point cache", 2, afterRecord.size());
+		assertEquals(250, afterRecord.get(1)[1]);
+		assertEquals(2, history.pointCount());
+
+		Map<Integer, long[]> both = new HashMap<>();
+		both.put(560, new long[]{250, 40});
+		both.put(561, new long[]{300, 90});
+		history.record(base + HOUR, both);
+		assertEquals("both items summed at the shared timestamp", 550, history.aggregate().get(1)[1]);
+
+		history.removeItem(561);
+		assertEquals("removeItem rebuilds the cache without the removed item", 250,
+				history.aggregate().get(1)[1]);
+
+		history.clear();
+		assertEquals("clear invalidates to an empty aggregate", 0, history.pointCount());
+		assertTrue(history.aggregate().isEmpty());
+	}
+
+	@Test
 	public void loadRestoresSortedPerItemHistory()
 	{
 		PortfolioHistory history = new PortfolioHistory();
