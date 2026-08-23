@@ -42,6 +42,15 @@ final class StockpileColors
 	/** Hover-tint background behind volume values. */
 	static final Color TINT_VOLUME = new Color(55, 55, 55);
 
+	/** Translucent gridline colour shared by the price and portfolio charts. */
+	static final Color CHART_GRID = new Color(70, 70, 70, 90);
+
+	/** Translucent white hover-crosshair colour shared by the price and portfolio charts. */
+	static final Color CHART_CROSSHAIR = new Color(255, 255, 255, 120);
+
+	/** Near-opaque dark background behind the charts' hover tooltip box. */
+	static final Color CHART_TOOLTIP_BG = new Color(20, 20, 20, 220);
+
 	/** @return the colour as a {@code #rrggbb} hex string for inline HTML styling. */
 	static String toHex(Color c)
 	{

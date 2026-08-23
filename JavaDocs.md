@@ -15,6 +15,7 @@
 - [com.oveduumnakal.CategoryState](#comoveduumnakalcategorystate)
 - [com.oveduumnakal.Changelog](#comoveduumnakalchangelog)
 - [com.oveduumnakal.Changelog.Release](#comoveduumnakalchangelogrelease)
+- [com.oveduumnakal.ChartUtil](#comoveduumnakalchartutil)
 - [com.oveduumnakal.CostBasisLedger](#comoveduumnakalcostbasisledger)
 - [com.oveduumnakal.DecantBasis](#comoveduumnakaldecantbasis)
 - [com.oveduumnakal.DestroyedOutputSources](#comoveduumnakaldestroyedoutputsources)
@@ -1067,6 +1068,85 @@ One release: its version, written-out date, and the raw markdown body beneath it
 #### version
 
 `String version`
+
+---
+
+## com.oveduumnakal.ChartUtil
+
+_class_
+
+`final class ChartUtil`
+
+Shared plotting maths and hover-overlay drawing for the plugin's line charts, hoisted so
+`PriceGraphPanel` and `PortfolioChartPanel` share one copy instead of near-identical
+duplicates (#177) — a tick-selection, tooltip-clamping, or DPI fix now lives in one place rather
+than drifting between the two. Colours come from `StockpileColors`.
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `ChartUtil()` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static int` | `clampedY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)` | Maps `value` to its y pixel within the plot, clamped to `[top, bottom]`. |
+| `static int` | `closestIndex(int hoverX, int count, IntToLongFunction timeAt, int plotLeft, int plotW, long startSec, double span)` |  |
+| `static int[]` | `drawTooltipBox(Graphics2D g2, int hoverX, int plotLeft, int plotTop, int plotRight, int contentWidth, int lineCount, FontMetrics fm)` | Positions and paints the hover-tooltip background box: sized to `contentWidth` (the widest line) and `lineCount`, anchored right of `hoverX` but flipped left when it would overflow `plotRight` and clamped to `plotLeft`. |
+| `static void` | `drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)` | Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`. |
+| `static double[]` | `niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)` | Picks a human-friendly value axis covering `[dataMin, dataMax]` using a 1/2/2.5/5 step progression so labels land on round numbers. |
+
+### Constructor Detail
+
+#### ChartUtil
+
+`private ChartUtil()`
+
+### Method Detail
+
+#### clampedY
+
+`static int clampedY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)`
+
+Maps `value` to its y pixel within the plot, clamped to `[top, bottom]`.
+
+#### closestIndex
+
+`static int closestIndex(int hoverX, int count, IntToLongFunction timeAt, int plotLeft, int plotW, long startSec, double span)`
+
+- **Returns:** the index in `[0, count)` whose plotted x pixel is nearest `hoverX`, or -1
+        when `count` is 0. `timeAt` yields the epoch-second timestamp of each index;
+        points map to x via `plotLeft + (t - startSec) / span * plotW`.
+
+#### drawTooltipBox
+
+`static int[] drawTooltipBox(Graphics2D g2, int hoverX, int plotLeft, int plotTop, int plotRight, int contentWidth, int lineCount, FontMetrics fm)`
+
+Positions and paints the hover-tooltip background box: sized to `contentWidth` (the widest
+line) and `lineCount`, anchored right of `hoverX` but flipped left when it would
+overflow `plotRight` and clamped to `plotLeft`. The caller draws its own lines.
+
+- **Returns:** `[textX, firstBaselineY]` — the left text origin and the baseline of the first line;
+        successive lines advance by `fm.getHeight() + 1`
+
+#### drawVerticalLabel
+
+`static void drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)`
+
+Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`.
+
+#### niceAxis
+
+`static double[] niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)`
+
+Picks a human-friendly value axis covering `[dataMin, dataMax]` using a 1/2/2.5/5 step
+progression so labels land on round numbers.
+
+- **Parameter** `minTicks` — minimum number of gridlines to aim for
+- **Parameter** `maxTicks` — maximum number of gridlines to allow
+- **Returns:** `[axisMin, axisMax, ticks]`
 
 ---
 
@@ -6126,8 +6206,6 @@ so an offline gap reads as one connecting segment between the two known values.
 | `private static final long` | `HOUR` |  |
 | `private static final DateTimeFormatter` | `HOUR_LABEL` |  |
 | `private static final int` | `LEFT_PAD` |  |
-| `private static final Color` | `PROFIT_DOWN` |  |
-| `private static final Color` | `PROFIT_UP` |  |
 | `private static final Color` | `TOOLTIP_LABEL` |  |
 | `private static final DateTimeFormatter` | `TOOLTIP_TIME` |  |
 | `private static final Color` | `TOOLTIP_VALUE` |  |
@@ -6153,7 +6231,6 @@ so an offline gap reads as one connecting segment between the two known values.
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `private List<Long>` | `buildTimeTicks(long minTime, long maxTime, int target)` | Builds evenly spaced time ticks snapped to natural boundaries: whole days for a span of two days or more (else whole hours), with the step widened so at most `target` ticks fall in the visible range. |
-| `private int` | `closestIndex(int plotLeft, int plotW, long minTime, long maxTime)` |  |
 | `private static Color` | `diffColor(long diff)` |  |
 | `private void` | `drawCentered(Graphics2D g2, String text, int width, int height)` |  |
 | `private void` | `drawCostLine(Graphics2D g2, int left, int top, int bottom, int plotW, int plotH, long minTime, long maxTime, double axisMin, double axisRange)` | Draws the grey cost-basis line, joining consecutive points and breaking where cost basis is absent. |
@@ -6162,14 +6239,11 @@ so an offline gap reads as one connecting segment between the two known values.
 | `private int` | `drawLegendEntry(Graphics2D g2, FontMetrics fm, int x, int y, Color color, String label)` | Draws one legend swatch + label starting at `x`; returns the x just past it. |
 | `private void` | `drawTooltip(Graphics2D g2, FontMetrics fm, List<TipLine> lines, int plotLeft, int plotTop, int plotRight)` | Draws the hover tooltip box, flipping to the cursor's left near the right edge. |
 | `private void` | `drawValueLine(Graphics2D g2, int left, int top, int bottom, int plotW, int plotH, long minTime, long maxTime, double axisMin, double axisRange)` | Draws the value line, colouring each segment by the value's position relative to cost basis — green above (profit), red below (loss), grey when equal or when no cost basis exists — and splitting a segment at the point where the two lines cross. |
-| `private void` | `drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)` | Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`. |
 | `private void` | `drawXAxis(Graphics2D g2, FontMetrics fm, int left, int bottom, int plotW, long minTime, long maxTime)` | Draws faint vertical gridlines and rotated date labels at "nice" time ticks along the bottom. |
 | `private void` | `drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom, int plotH, double axisMin, double axisRange, int ticks)` | Draws the horizontal gridlines and their right-side value labels for the "nice" value axis. |
-| `private static double[]` | `niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)` | Picks a human-friendly value axis covering `[dataMin, dataMax]` using a 1/2/2.5/5 step progression so labels land on round numbers. |
 | `protected void` | `paintComponent(Graphics g)` | Paints the chart: the expensive static plot (grid, axes, legend, series) is rasterized once into `#plotCache` and reused, while only the lightweight hover crosshair is redrawn over it on mouse moves. |
 | `private static boolean` | `samePoints(List<long[]> a, List<long[]> b)` |  |
 | `public void` | `setData(List<long[]> data)` | Sets the points to plot (`{epochSeconds, value, costBasis`}) and repaints. |
-| `private static int` | `valueY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)` | Maps a value to its y pixel within the plot, clamped to the plot bounds. |
 
 ### Field Detail
 
@@ -6208,14 +6282,6 @@ so an offline gap reads as one connecting segment between the two known values.
 #### LEFT_PAD
 
 `private static final int LEFT_PAD`
-
-#### PROFIT_DOWN
-
-`private static final Color PROFIT_DOWN`
-
-#### PROFIT_UP
-
-`private static final Color PROFIT_UP`
 
 #### TOOLTIP_LABEL
 
@@ -6291,12 +6357,6 @@ span of two days or more (else whole hours), with the step widened so at most
 
 - **Returns:** tick timestamps in epoch seconds within `[minTime, maxTime]`
 
-#### closestIndex
-
-`private int closestIndex(int plotLeft, int plotW, long minTime, long maxTime)`
-
-- **Returns:** the index of the point whose x pixel is nearest `#hoverX`, or -1 if none.
-
 #### diffColor
 
 `private static Color diffColor(long diff)`
@@ -6350,12 +6410,6 @@ Draws the value line, colouring each segment by the value's position relative to
 basis — green above (profit), red below (loss), grey when equal or when no cost basis
 exists — and splitting a segment at the point where the two lines cross.
 
-#### drawVerticalLabel
-
-`private void drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)`
-
-Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`.
-
 #### drawXAxis
 
 `private void drawXAxis(Graphics2D g2, FontMetrics fm, int left, int bottom, int plotW, long minTime, long maxTime)`
@@ -6367,15 +6421,6 @@ Draws faint vertical gridlines and rotated date labels at "nice" time ticks alon
 `private void drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom, int plotH, double axisMin, double axisRange, int ticks)`
 
 Draws the horizontal gridlines and their right-side value labels for the "nice" value axis.
-
-#### niceAxis
-
-`private static double[] niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)`
-
-Picks a human-friendly value axis covering `[dataMin, dataMax]` using a
-1/2/2.5/5 step progression so labels land on round numbers.
-
-- **Returns:** `[axisMin, axisMax, ticks]`
 
 #### paintComponent
 
@@ -6398,12 +6443,6 @@ each paint so the hover overlay maps correctly onto the cached pixels.
 `public void setData(List<long[]> data)`
 
 Sets the points to plot (`{epochSeconds, value, costBasis`}) and repaints.
-
-#### valueY
-
-`private static int valueY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)`
-
-Maps a value to its y pixel within the plot, clamped to the plot bounds.
 
 ---
 
@@ -7018,12 +7057,10 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 | `private Path2D` | `buildSeriesPath(int[] xs, int[] ys, int n)` | Builds the connecting path for a series of `n` screen points: a smooth monotone cubic when `#smooth` is set, otherwise straight segments. |
 | `private List<long[]>` | `buildXTicks(long startSec, long endSec)` | Builds the x-axis tick timestamps for the active window, snapped to natural boundaries (months for a year, days/weeks for a month, days for a week, rounded hours for a day) and denser in the expanded pop-out. |
 | `private static void` | `clipMarker(Graphics2D g2, int cx, long value, double axisMin, double axisMax, int plotTop, int plotBottom, Color color)` | Draws a small triangle at the top or bottom plot edge marking a data point that falls outside the visible value axis (so off-scale spikes are still visible). |
-| `private int` | `closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW, long startSec, long span)` |  |
 | `private List<WikiRealtimePriceClient.PricePoint>` | `collectVisible(long startSec, long endSec)` |  |
 | `private void` | `cycleLineSet()` | Advances the line set to the next option in the cycle and notifies the listener. |
 | `private void` | `drawHover(Graphics2D g2, FontMetrics fm, List<WikiRealtimePriceClient.PricePoint> visible, int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, long startSec, long span)` | Draws the hover overlay: a vertical crosshair at the cursor and a tooltip describing the data point nearest the cursor's x position. |
 | `private void` | `drawTooltip(Graphics2D g2, FontMetrics fm, String[] lines, int plotLeft, int plotTop, int plotRight)` | Draws the hover tooltip box of text lines, flipping to the cursor's left near the right edge. |
-| `private void` | `drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)` | Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`. |
 | `private void` | `drawXAxis(Graphics2D g2, FontMetrics fm, int plotLeft, int plotBottom, int plotW, long startSec, long endSec)` | Draws the x-axis date/time labels at the tick positions for the active window. |
 | `private static double[]` | `ema(double[] values, int period)` | Computes an exponential moving average over `values`. |
 | `public TimeWindow` | `getActiveWindow()` | Returns the time window currently charted. |
@@ -7031,13 +7068,11 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 | `private static long` | `midpoint(WikiRealtimePriceClient.PricePoint p)` |  |
 | `private static Path2D` | `monotoneCubic(int[] xsIn, int[] ysIn)` | Builds a Fritsch–Carlson monotone cubic Hermite spline through the points. |
 | `private static double[]` | `movingAverage(int[] ys, int n, int window)` | Computes a centered simple moving average of the first `n` y-values. |
-| `private static double[]` | `niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)` | Picks a human-friendly value axis covering `[dataMin, dataMax]` using a 1/2/2.5/5/10 step progression so labels land on round numbers. |
 | `private static long` | `niceVolumeStep(long target, int intervals)` |  |
 | `protected void` | `paintComponent(Graphics g)` | Paints the chart: computes the plot rectangle and visible window, lazily (re)rasterizes the static plot into `#plotCache` when size or data changed, blits the cache, then draws the hover crosshair overlay on top. |
 | `private void` | `paintPrice(Graphics2D g2, FontMetrics fm, List<WikiRealtimePriceClient.PricePoint> visible, int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH, long startSec, long span)` | Draws the price chart: computes a "nice" value axis from the visible range, paints the horizontal grid and y-axis labels, the current-price reference line, and the selected high/low/average series (raw, smoothed, or with a moving average per `#smooth` and `#lineSet`). |
 | `private void` | `paintVolume(Graphics2D g2, FontMetrics fm, List<WikiRealtimePriceClient.PricePoint> visible, int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH, long startSec, long span)` | Draws the volume chart: combined high+low traded volume as filled bars/area with a "nice" volume axis and labels. |
 | `private static long` | `percentile(List<Long> values, double p)` |  |
-| `private static int` | `priceY(long value, double axisMin, double axisRange, int plotTop, int plotBottom, int plotH)` | Maps a price to its y pixel within the plot, clamped to the plot bounds. |
 | `private void` | `rebuildLinesToggle()` | Rebuilds the line-set toggle as a row of per-letter labels coloured to match the lines they represent (High green, Low red, Avg gold), so the active set is obvious at a glance: ALL = green/gold/red, H/L = green/red, AVG = gold. |
 | `private void` | `renderStatic(Graphics2D g2, FontMetrics fm, int w, List<WikiRealtimePriceClient.PricePoint> visible, int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, int plotH, long startSec, long endSec, long span)` | Renders the full static plot into the cache image: the tab separator, then either a "No data" message or the price/volume series with its axes. |
 | `private List<WikiRealtimePriceClient.PricePoint>` | `seriesForActiveWindow()` |  |
@@ -7272,12 +7307,6 @@ Draws a small triangle at the top or bottom plot edge marking a data point
 that falls outside the visible value axis (so off-scale spikes are still
 visible). No-op for in-range or non-positive values.
 
-#### closestIndex
-
-`private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW, long startSec, long span)`
-
-- **Returns:** the index of the point whose x pixel is nearest `#hoverX`, or -1 if none.
-
 #### collectVisible
 
 `private List<WikiRealtimePriceClient.PricePoint> collectVisible(long startSec, long endSec)`
@@ -7303,12 +7332,6 @@ every paint (not cached) so it stays cheap during mouse movement.
 `private void drawTooltip(Graphics2D g2, FontMetrics fm, String[] lines, int plotLeft, int plotTop, int plotRight)`
 
 Draws the hover tooltip box of text lines, flipping to the cursor's left near the right edge.
-
-#### drawVerticalLabel
-
-`private void drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)`
-
-Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at `cx`.
 
 #### drawXAxis
 
@@ -7362,17 +7385,6 @@ Computes a centered simple moving average of the first `n` y-values.
 - **Parameter** `window` — the averaging width in samples
 - **Returns:** a length-`n` array of averaged values
 
-#### niceAxis
-
-`private static double[] niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)`
-
-Picks a human-friendly value axis covering `[dataMin, dataMax]` using
-a 1/2/2.5/5/10 step progression so labels land on round numbers.
-
-- **Parameter** `minTicks` — minimum number of gridlines to aim for
-- **Parameter** `maxTicks` — maximum number of gridlines to allow
-- **Returns:** `[axisMin, axisMax, step]`
-
 #### niceVolumeStep
 
 `private static long niceVolumeStep(long target, int intervals)`
@@ -7411,12 +7423,6 @@ uses the full range in the expanded pop-out; over-cap bars are tinted.
 
 - **Parameter** `p` — the percentile in `[0, 1]`
 - **Returns:** the `p`-th percentile of `values` (the list is sorted in place), or 0 if empty
-
-#### priceY
-
-`private static int priceY(long value, double axisMin, double axisRange, int plotTop, int plotBottom, int plotH)`
-
-Maps a price to its y pixel within the plot, clamped to the plot bounds.
 
 #### rebuildLinesToggle
 
@@ -8758,6 +8764,9 @@ charts stay visually consistent and theme tweaks are one-line changes.
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `static final Color` | `AVG` | Gold used for average prices and active/selected accents. |
+| `static final Color` | `CHART_CROSSHAIR` | Translucent white hover-crosshair colour shared by the price and portfolio charts. |
+| `static final Color` | `CHART_GRID` | Translucent gridline colour shared by the price and portfolio charts. |
+| `static final Color` | `CHART_TOOLTIP_BG` | Near-opaque dark background behind the charts' hover tooltip box. |
 | `static final Color` | `DIVIDER` | Grey rule used for section dividers and separators. |
 | `static final Color` | `HIGH` | Green used for high / instant-buy prices and positive profit. |
 | `static final Color` | `LOW` | Red used for low / instant-sell prices and negative profit. |
@@ -8787,6 +8796,24 @@ charts stay visually consistent and theme tweaks are one-line changes.
 `static final Color AVG`
 
 Gold used for average prices and active/selected accents.
+
+#### CHART_CROSSHAIR
+
+`static final Color CHART_CROSSHAIR`
+
+Translucent white hover-crosshair colour shared by the price and portfolio charts.
+
+#### CHART_GRID
+
+`static final Color CHART_GRID`
+
+Translucent gridline colour shared by the price and portfolio charts.
+
+#### CHART_TOOLTIP_BG
+
+`static final Color CHART_TOOLTIP_BG`
+
+Near-opaque dark background behind the charts' hover tooltip box.
 
 #### DIVIDER
 

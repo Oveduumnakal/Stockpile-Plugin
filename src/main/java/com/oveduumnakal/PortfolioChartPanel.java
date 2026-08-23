@@ -51,21 +51,17 @@ public final class PortfolioChartPanel extends JPanel
 
 	private static final Color VALUE_FLAT = new Color(180, 180, 180);
 
-	private static final Color COST_LINE = new Color(150, 150, 150);
+	private static final Color COST_LINE = StockpileColors.MUTED;
 
-	private static final Color GRID = new Color(70, 70, 70, 90);
+	private static final Color GRID = StockpileColors.CHART_GRID;
 
 	private static final Color AXIS_TEXT = Color.GRAY;
 
-	private static final Color CROSSHAIR = new Color(255, 255, 255, 120);
+	private static final Color CROSSHAIR = StockpileColors.CHART_CROSSHAIR;
 
 	private static final Color TOOLTIP_LABEL = new Color(160, 160, 160);
 
 	private static final Color TOOLTIP_VALUE = Color.WHITE;
-
-	private static final Color PROFIT_UP = StockpileColors.HIGH;
-
-	private static final Color PROFIT_DOWN = StockpileColors.LOW;
 
 	private static final DateTimeFormatter DAY_LABEL =
 			DateTimeFormatter.ofPattern("d MMM", Locale.US).withZone(ZoneId.systemDefault());
@@ -215,7 +211,7 @@ public final class PortfolioChartPanel extends JPanel
 			}
 		}
 
-		double[] axis = niceAxis(dataMin, dataMax, 5, 9);
+		double[] axis = ChartUtil.niceAxis(dataMin, dataMax, 5, 9);
 		double axisMin = axis[0];
 		double axisMax = axis[1];
 		int ticks = (int) axis[2];
@@ -297,7 +293,7 @@ public final class PortfolioChartPanel extends JPanel
 			g2.setColor(GRID);
 			g2.drawLine(x, bottom, x, bottom - 3);
 			g2.setColor(AXIS_TEXT);
-			drawVerticalLabel(g2, fmt.format(Instant.ofEpochSecond(ts)), x, bottom + X_LABEL_GAP, fm);
+			ChartUtil.drawVerticalLabel(g2, fmt.format(Instant.ofEpochSecond(ts)), x, bottom + X_LABEL_GAP, fm);
 		}
 	}
 
@@ -354,7 +350,7 @@ public final class PortfolioChartPanel extends JPanel
 			}
 
 			int x = left + (int) ((p[0] - minTime) / timeSpan * plotW);
-			int y = valueY(p[2], axisMin, axisRange, top, bottom, plotH);
+			int y = ChartUtil.clampedY(p[2], axisMin, axisRange, top, bottom, plotH);
 			if (have)
 				g2.drawLine(prevX, prevY, x, y);
 
@@ -381,9 +377,9 @@ public final class PortfolioChartPanel extends JPanel
 			long[] b = points.get(i + 1);
 
 			int ax = left + (int) ((a[0] - minTime) / timeSpan * plotW);
-			int ay = valueY(a[1], axisMin, axisRange, top, bottom, plotH);
+			int ay = ChartUtil.clampedY(a[1], axisMin, axisRange, top, bottom, plotH);
 			int bx = left + (int) ((b[0] - minTime) / timeSpan * plotW);
-			int by = valueY(b[1], axisMin, axisRange, top, bottom, plotH);
+			int by = ChartUtil.clampedY(b[1], axisMin, axisRange, top, bottom, plotH);
 
 			boolean noBasis = a[2] <= 0 || b[2] <= 0;
 			long da = a[1] - a[2];
@@ -421,19 +417,20 @@ public final class PortfolioChartPanel extends JPanel
 	private void drawHover(Graphics2D g2, FontMetrics fm, int plotLeft, int plotTop, int plotBottom,
 			int plotW, int plotH, long minTime, long maxTime, double axisMin, double axisRange)
 	{
-		int idx = closestIndex(plotLeft, plotW, minTime, maxTime);
+		double timeSpan = Math.max(1, maxTime - minTime);
+		int idx = ChartUtil.closestIndex(hoverX, points.size(), i -> points.get(i)[0],
+				plotLeft, plotW, minTime, timeSpan);
 		if (idx < 0)
 			return;
 
 		long[] p = points.get(idx);
-		double timeSpan = Math.max(1, maxTime - minTime);
 		int x = plotLeft + (int) ((p[0] - minTime) / timeSpan * plotW);
 
 		g2.setStroke(new BasicStroke(1));
 		g2.setColor(CROSSHAIR);
 		g2.drawLine(x, plotTop, x, plotBottom);
 
-		int valueY = valueY(p[1], axisMin, axisRange, plotTop, plotBottom, plotH);
+		int valueY = ChartUtil.clampedY(p[1], axisMin, axisRange, plotTop, plotBottom, plotH);
 		g2.setColor(p[2] > 0 ? diffColor(p[1] - p[2]) : VALUE_FLAT);
 		g2.fillOval(x - 3, valueY - 3, 6, 6);
 
@@ -442,14 +439,14 @@ public final class PortfolioChartPanel extends JPanel
 		lines.add(new TipLine("Value:  ", GpFormat.grouped(p[1]), TOOLTIP_VALUE));
 		if (p[2] > 0)
 		{
-			int costY = valueY(p[2], axisMin, axisRange, plotTop, plotBottom, plotH);
+			int costY = ChartUtil.clampedY(p[2], axisMin, axisRange, plotTop, plotBottom, plotH);
 			g2.setColor(COST_LINE);
 			g2.fillOval(x - 3, costY - 3, 6, 6);
 
 			lines.add(new TipLine("Cost:   ", GpFormat.grouped(p[2]), TOOLTIP_VALUE));
 			long profit = p[1] - p[2];
 			lines.add(new TipLine("Profit: ", GpFormat.signedGrouped(profit),
-					profit >= 0 ? PROFIT_UP : PROFIT_DOWN));
+					profit >= 0 ? VALUE_UP : VALUE_DOWN));
 		}
 
 		drawTooltip(g2, fm, lines, plotLeft, plotTop, plotLeft + plotW);
@@ -467,28 +464,18 @@ public final class PortfolioChartPanel extends JPanel
 		for (TipLine l : lines)
 			boxW = Math.max(boxW, fm.stringWidth(l.label + l.value));
 
-		boxW += 8;
-		int boxH = lines.size() * (fm.getHeight() + 1) + 4;
-		int bx = hoverX + 8;
-		if (bx + boxW > plotRight)
-			bx = hoverX - 8 - boxW;
-
-		if (bx < plotLeft)
-			bx = plotLeft;
-
-		int by = plotTop + 4;
-		g2.setColor(new Color(20, 20, 20, 220));
-		g2.fillRoundRect(bx, by, boxW, boxH, 6, 6);
-
-		int ty = by + fm.getAscent() + 2;
+		int[] origin = ChartUtil.drawTooltipBox(g2, hoverX, plotLeft, plotTop, plotRight, boxW,
+				lines.size(), fm);
+		int tx = origin[0];
+		int ty = origin[1];
 		for (TipLine l : lines)
 		{
 			g2.setColor(l.valueColor == null ? Color.WHITE : TOOLTIP_LABEL);
-			g2.drawString(l.label, bx + 4, ty);
+			g2.drawString(l.label, tx, ty);
 			if (l.valueColor != null)
 			{
 				g2.setColor(l.valueColor);
-				g2.drawString(l.value, bx + 4 + fm.stringWidth(l.label), ty);
+				g2.drawString(l.value, tx + fm.stringWidth(l.label), ty);
 			}
 
 			ty += fm.getHeight() + 1;
@@ -510,39 +497,6 @@ public final class PortfolioChartPanel extends JPanel
 			this.value = value;
 			this.valueColor = valueColor;
 		}
-	}
-
-	/** Maps a value to its y pixel within the plot, clamped to the plot bounds. */
-	private static int valueY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)
-	{
-		int y = bottom - (int) ((value - axisMin) / axisRange * plotH);
-		if (y < top)
-			return top;
-
-		if (y > bottom)
-			return bottom;
-
-		return y;
-	}
-
-	/** @return the index of the point whose x pixel is nearest {@link #hoverX}, or -1 if none. */
-	private int closestIndex(int plotLeft, int plotW, long minTime, long maxTime)
-	{
-		double span = Math.max(1, maxTime - minTime);
-		int best = -1;
-		int bestDx = Integer.MAX_VALUE;
-		for (int i = 0; i < points.size(); i++)
-		{
-			int x = plotLeft + (int) ((points.get(i)[0] - minTime) / span * plotW);
-			int dx = Math.abs(x - hoverX);
-			if (dx < bestDx)
-			{
-				bestDx = dx;
-				best = i;
-			}
-		}
-
-		return best;
 	}
 
 	/**
@@ -609,70 +563,10 @@ public final class PortfolioChartPanel extends JPanel
 		return ticks;
 	}
 
-	/** Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at {@code cx}. */
-	private void drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)
-	{
-		Graphics2D gg = (Graphics2D) g2.create();
-		try
-		{
-			gg.translate(cx, topY);
-			gg.rotate(-Math.PI / 2);
-			gg.drawString(s, -fm.stringWidth(s), fm.getAscent() / 2);
-		}
-		finally
-		{
-			gg.dispose();
-		}
-	}
-
 	private void drawCentered(Graphics2D g2, String text, int width, int height)
 	{
 		g2.setColor(ColorScheme.LIGHT_GRAY_COLOR);
 		int textWidth = g2.getFontMetrics().stringWidth(text);
 		g2.drawString(text, (width - textWidth) / 2, height / 2);
-	}
-
-	/**
-	 * Picks a human-friendly value axis covering {@code [dataMin, dataMax]} using a
-	 * 1/2/2.5/5 step progression so labels land on round numbers.
-	 *
-	 * @return {@code [axisMin, axisMax, ticks]}
-	 */
-	private static double[] niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)
-	{
-		if (dataMax <= dataMin)
-			dataMax = dataMin + 1;
-
-		double range = dataMax - dataMin;
-		double[] niceMults = {1, 2, 2.5, 5};
-		double bestStep = range / minTicks;
-		double chosenStep = -1;
-		for (int k = -2; k <= 12 && chosenStep < 0; k++)
-		{
-			double pow = Math.pow(10, k);
-			for (double m : niceMults)
-			{
-				double step = m * pow;
-				if (step <= 0)
-					continue;
-
-				double aMin = Math.floor(dataMin / step) * step;
-				double aMax = Math.ceil(dataMax / step) * step;
-				int count = (int) Math.round((aMax - aMin) / step);
-				if (count >= minTicks && count <= maxTicks)
-				{
-					chosenStep = step;
-					break;
-				}
-			}
-		}
-
-		if (chosenStep < 0)
-			chosenStep = bestStep;
-
-		double axisMin = Math.floor(dataMin / chosenStep) * chosenStep;
-		double axisMax = Math.ceil(dataMax / chosenStep) * chosenStep;
-		int ticks = Math.max(1, (int) Math.round((axisMax - axisMin) / chosenStep));
-		return new double[]{axisMin, axisMax, ticks};
 	}
 }

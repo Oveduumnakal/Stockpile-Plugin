@@ -88,7 +88,7 @@ public class PriceGraphPanel extends JPanel
 	private static final Color COLOR_LOW = StockpileColors.LOW;
 	private static final Color COLOR_AVG = StockpileColors.AVG;
 	private static final Color COLOR_NEUTRAL = Color.LIGHT_GRAY;
-	private static final Color GRID_COLOR = new Color(70, 70, 70, 90);
+	private static final Color GRID_COLOR = StockpileColors.CHART_GRID;
 	private static final Color SEPARATOR_COLOR = StockpileColors.DIVIDER;
 
 	private static final Color VOLUME_COLOR = new Color(120, 140, 180, 110);
@@ -574,13 +574,14 @@ public class PriceGraphPanel extends JPanel
 			List<WikiRealtimePriceClient.PricePoint> visible,
 			int plotLeft, int plotTop, int plotRight, int plotBottom, int plotW, long startSec, long span)
 	{
-		int idx = closestIndex(visible, plotLeft, plotW, startSec, span);
+		int idx = ChartUtil.closestIndex(hoverX, visible.size(), i -> visible.get(i).getTimestamp(),
+				plotLeft, plotW, startSec, span);
 		if (idx < 0)
 			return;
 
 		WikiRealtimePriceClient.PricePoint closest = visible.get(idx);
 		g2.setStroke(new BasicStroke(1));
-		g2.setColor(new Color(255, 255, 255, 120));
+		g2.setColor(StockpileColors.CHART_CROSSHAIR);
 		g2.drawLine(hoverX, plotTop, hoverX, plotBottom);
 
 		String[] lines;
@@ -657,7 +658,7 @@ public class PriceGraphPanel extends JPanel
 			}
 		}
 
-		double[] axis = niceAxis(min, max, expanded ? 7 : 4, expanded ? 12 : 6);
+		double[] axis = ChartUtil.niceAxis(min, max, expanded ? 7 : 4, expanded ? 12 : 6);
 		double axisMin = axis[0], axisMax = axis[1];
 		int ticks = (int) axis[2];
 		double axisRange = Math.max(1, axisMax - axisMin);
@@ -683,14 +684,14 @@ public class PriceGraphPanel extends JPanel
 			if (p.getAvgHighPrice() > 0)
 			{
 				hx[hc] = x;
-				hy[hc] = priceY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				hy[hc] = ChartUtil.clampedY(p.getAvgHighPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
 				hc++;
 			}
 
 			if (p.getAvgLowPrice() > 0)
 			{
 				lx[lc] = x;
-				ly[lc] = priceY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
+				ly[lc] = ChartUtil.clampedY(p.getAvgLowPrice(), axisMin, axisRange, plotTop, plotBottom, plotH);
 				lc++;
 			}
 
@@ -698,7 +699,7 @@ public class PriceGraphPanel extends JPanel
 			if (avg > 0)
 			{
 				ax[ac] = x;
-				ay[ac] = priceY(avg, axisMin, axisRange, plotTop, plotBottom, plotH);
+				ay[ac] = ChartUtil.clampedY(avg, axisMin, axisRange, plotTop, plotBottom, plotH);
 				ac++;
 			}
 		}
@@ -735,26 +736,12 @@ public class PriceGraphPanel extends JPanel
 
 		if (currentPrice > 0)
 		{
-			int cy = priceY(currentPrice, axisMin, axisRange, plotTop, plotBottom, plotH);
+			int cy = ChartUtil.clampedY(currentPrice, axisMin, axisRange, plotTop, plotBottom, plotH);
 			g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
 					10f, new float[]{4f, 4f}, 0f));
 			g2.setColor(CURRENT_LINE_COLOR);
 			g2.drawLine(plotLeft, cy, plotRight, cy);
 		}
-	}
-
-	/** Maps a price to its y pixel within the plot, clamped to the plot bounds. */
-	private static int priceY(long value, double axisMin, double axisRange,
-			int plotTop, int plotBottom, int plotH)
-	{
-		int y = plotBottom - (int) ((value - axisMin) / axisRange * plotH);
-		if (y < plotTop)
-			return plotTop;
-
-		if (y > plotBottom)
-			return plotBottom;
-
-		return y;
 	}
 
 	/**
@@ -873,23 +860,14 @@ public class PriceGraphPanel extends JPanel
 		for (String s : lines)
 			boxW = Math.max(boxW, fm.stringWidth(s));
 
-		boxW += 8;
-		int boxH = lines.length * (fm.getHeight() + 1) + 4;
-		int bx = hoverX + 8;
-		if (bx + boxW > plotRight)
-			bx = hoverX - 8 - boxW;
-
-		if (bx < plotLeft)
-			bx = plotLeft;
-
-		int by = plotTop + 4;
-		g2.setColor(new Color(20, 20, 20, 220));
-		g2.fillRoundRect(bx, by, boxW, boxH, 6, 6);
+		int[] origin = ChartUtil.drawTooltipBox(g2, hoverX, plotLeft, plotTop, plotRight, boxW,
+				lines.length, fm);
+		int tx = origin[0];
+		int ty = origin[1];
 		g2.setColor(Color.WHITE);
-		int ty = by + fm.getAscent() + 2;
 		for (String s : lines)
 		{
-			g2.drawString(s, bx + 4, ty);
+			g2.drawString(s, tx, ty);
 			ty += fm.getHeight() + 1;
 		}
 	}
@@ -908,24 +886,7 @@ public class PriceGraphPanel extends JPanel
 
 			int x = plotLeft + (int) ((double) (ts - startSec) / span * plotW);
 			String label = labelForTick(ts);
-			drawVerticalLabel(g2, label, x, plotBottom + X_AXIS_LABEL_GAP, fm);
-		}
-	}
-
-	/** Draws a string rotated 90° (reading bottom-to-top) hanging below the axis at {@code cx}. */
-	private void drawVerticalLabel(Graphics2D g2, String s, int cx, int topY, FontMetrics fm)
-	{
-		Graphics2D gg = (Graphics2D) g2.create();
-		try
-		{
-			gg.translate(cx, topY);
-			gg.rotate(-Math.PI / 2);
-
-			gg.drawString(s, -fm.stringWidth(s), fm.getAscent() / 2);
-		}
-		finally
-		{
-			gg.dispose();
+			ChartUtil.drawVerticalLabel(g2, label, x, plotBottom + X_AXIS_LABEL_GAP, fm);
 		}
 	}
 
@@ -1204,26 +1165,6 @@ public class PriceGraphPanel extends JPanel
 		return path;
 	}
 
-	/** @return the index of the point whose x pixel is nearest {@link #hoverX}, or -1 if none. */
-	private int closestIndex(List<WikiRealtimePriceClient.PricePoint> points, int plotLeft, int plotW,
-			long startSec, long span)
-	{
-		int best = -1;
-		int bestDx = Integer.MAX_VALUE;
-		for (int i = 0; i < points.size(); i++)
-		{
-			int x = plotLeft + (int) ((double) (points.get(i).getTimestamp() - startSec) / span * plotW);
-			int dx = Math.abs(x - hoverX);
-			if (dx < bestDx)
-			{
-				bestDx = dx;
-				best = i;
-			}
-		}
-
-		return best;
-	}
-
 	/** @return the high/low midpoint of a point, or whichever side is present if only one is. */
 	private static long midpoint(WikiRealtimePriceClient.PricePoint p)
 	{
@@ -1233,52 +1174,6 @@ public class PriceGraphPanel extends JPanel
 			return (h + l) / 2;
 
 		return Math.max(h, l);
-	}
-
-	/**
-	 * Picks a human-friendly value axis covering {@code [dataMin, dataMax]} using
-	 * a 1/2/2.5/5/10 step progression so labels land on round numbers.
-	 *
-	 * @param minTicks minimum number of gridlines to aim for
-	 * @param maxTicks maximum number of gridlines to allow
-	 * @return {@code [axisMin, axisMax, step]}
-	 */
-	private static double[] niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)
-	{
-		if (dataMax <= dataMin)
-			dataMax = dataMin + 1;
-
-		double range = dataMax - dataMin;
-		double[] niceMults = {1, 2, 2.5, 5};
-		double bestStep = range / minTicks;
-		double chosenStep = -1;
-		for (int k = -2; k <= 12 && chosenStep < 0; k++)
-		{
-			double pow = Math.pow(10, k);
-			for (double m : niceMults)
-			{
-				double step = m * pow;
-				if (step <= 0)
-					continue;
-
-				double aMin = Math.floor(dataMin / step) * step;
-				double aMax = Math.ceil(dataMax / step) * step;
-				int count = (int) Math.round((aMax - aMin) / step);
-				if (count >= minTicks && count <= maxTicks)
-				{
-					chosenStep = step;
-					break;
-				}
-			}
-		}
-
-		if (chosenStep < 0)
-			chosenStep = bestStep;
-
-		double axisMin = Math.floor(dataMin / chosenStep) * chosenStep;
-		double axisMax = Math.ceil(dataMax / chosenStep) * chosenStep;
-		int ticks = Math.max(1, (int) Math.round((axisMax - axisMin) / chosenStep));
-		return new double[]{axisMin, axisMax, ticks};
 	}
 
 	/** @return a rounded gridline step near {@code target/intervals} (1/2/5 × power of ten) for the volume axis. */
