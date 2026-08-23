@@ -5,7 +5,7 @@
 package com.oveduumnakal;
 
 import java.awt.Component;
-import java.util.Map;
+import java.util.function.IntFunction;
 import java.util.function.IntSupplier;
 import javax.swing.AbstractCellEditor;
 import javax.swing.JComboBox;
@@ -24,15 +24,15 @@ import net.runelite.client.ui.FontManager;
  */
 class NotificationValueEditor extends AbstractCellEditor implements TableCellEditor
 {
-	private final Map<Integer, TrackedItem> currentItems;
+	private final IntFunction<TrackedItem> itemLookup;
 	private final IntSupplier detailItemId;
 	private final JComboBox<String> combo = new JComboBox<>();
 	private final JTextField field = new JTextField();
 	private JComponent active;
 
-	NotificationValueEditor(Map<Integer, TrackedItem> currentItems, IntSupplier detailItemId)
+	NotificationValueEditor(IntFunction<TrackedItem> itemLookup, IntSupplier detailItemId)
 	{
-		this.currentItems = currentItems;
+		this.itemLookup = itemLookup;
 		this.detailItemId = detailItemId;
 		combo.setFont(FontManager.getRunescapeSmallFont());
 		field.setFont(FontManager.getRunescapeSmallFont());
@@ -44,7 +44,7 @@ class NotificationValueEditor extends AbstractCellEditor implements TableCellEdi
 			boolean isSelected, int row, int column)
 	{
 		NotificationMetric metric = null;
-		TrackedItem t = currentItems.get(detailItemId.getAsInt());
+		TrackedItem t = itemLookup.apply(detailItemId.getAsInt());
 		if (t != null && row >= 0 && row < t.getNotifications().size())
 			metric = t.getNotifications()
 					.get(row)
