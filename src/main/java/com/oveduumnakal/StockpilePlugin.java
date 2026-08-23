@@ -65,6 +65,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.Item;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
@@ -2378,8 +2379,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0 && !isPlaceholder(item.getId()))
-					newCounts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
+				int canonical = canonicalCountId(item.getId());
+				if (canonical > 0)
+					newCounts.merge(canonical, item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -3043,21 +3045,28 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		for (ItemSpawned spawn : tickGroundSpawns)
 			correlateGroundGain(spawn.getItem(), spawn.getTile(), spawn.getItem().getQuantity(), myLocation);
 
+		boolean groundLossClosed = false;
 		for (ItemQuantityChanged change : tickGroundQuantityChanges)
 		{
 			int delta = change.getNewQuantity() - change.getOldQuantity();
 			if (delta > 0)
 				correlateGroundGain(change.getItem(), change.getTile(), delta, myLocation);
 			else
-				correlateGroundTaken(change.getItem(), -delta);
+				groundLossClosed |= correlateGroundTaken(change.getItem(), -delta);
 		}
 
 		for (ItemDespawned despawn : tickGroundDespawns)
-			correlateGroundTaken(despawn.getItem(), despawn.getItem().getQuantity());
+			groundLossClosed |= correlateGroundTaken(despawn.getItem(), despawn.getItem().getQuantity());
 
 		tickGroundSpawns.clear();
 		tickGroundDespawns.clear();
 		tickGroundQuantityChanges.clear();
+
+		if (groundLossClosed)
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
 	}
 
 	/**
@@ -3094,7 +3103,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * with no matching addition its units close as lost at 0. An unfamiliar pile
 	 * matching a pending addition is a loot pickup, claimed as {@code GROUND} at 0.
 	 */
-	private void correlateGroundTaken(TileItem item, int taken)
+	private boolean correlateGroundTaken(TileItem item, int taken)
 	{
 		int canonicalId = itemManager.canonicalize(item.getId());
 		Integer ours = myDrops.get(item);
@@ -3103,22 +3112,25 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (ours != null)
 		{
 			int resolved = Math.min(ours, taken);
+			boolean lossClosed = false;
 			if (pendingAddition > 0)
 				ledger.queueGroundUnsuspend(canonicalId, Math.min(resolved, pendingAddition));
 			else
-				ledger.closeGroundLost(canonicalId, resolved);
+				lossClosed = ledger.closeGroundLost(canonicalId, resolved);
 
 			if (resolved >= ours)
 				myDrops.remove(item);
 			else
 				myDrops.put(item, ours - resolved);
 
-			return;
+			return lossClosed;
 		}
 
 		if (pendingAddition > 0 && isTracked(canonicalId))
 			ledger.claim(AcquisitionSource.GROUND, canonicalId, Math.min(taken, pendingAddition), 0,
 					client.getTickCount());
+
+		return false;
 	}
 
 	/** Marks the local player's death, opening the death-loss suspension window (#70). */
@@ -4036,8 +4048,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			counts.clear();
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0 && !isPlaceholder(item.getId()))
-					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
+				int canonical = canonicalCountId(item.getId());
+				if (canonical > 0)
+					counts.merge(canonical, item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -4094,8 +4107,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			counts.clear();
 			for (Item item : container.getItems())
 			{
-				if (item.getId() > 0 && !isPlaceholder(item.getId()))
-					counts.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
+				int canonical = canonicalCountId(item.getId());
+				if (canonical > 0)
+					counts.merge(canonical, item.getQuantity(), Integer::sum);
 			}
 		}
 
@@ -4203,13 +4217,27 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * @return whether {@code itemId} is a bank placeholder variant, which
-	 *         {@code canonicalize} would map to the real item — placeholders must
-	 *         never count as held quantity. Client thread only.
+	 * Resolves a container slot's item id to the canonical (unnoted, non-placeholder) id it should count
+	 * as, using a single {@link ItemComposition} lookup instead of a separate placeholder-check +
+	 * {@code canonicalize} pair (#185) — a bank event covers ~800 slots. Mirrors
+	 * {@link net.runelite.client.game.ItemManager#canonicalize(int)}; a bank placeholder variant returns
+	 * -1 because a placeholder must never count as held quantity.
+	 *
+	 * @return the canonical id to count, or -1 for an empty slot or a placeholder. Client thread only.
 	 */
-	private boolean isPlaceholder(int itemId)
+	private int canonicalCountId(int itemId)
 	{
-		return itemManager.getItemComposition(itemId).getPlaceholderTemplateId() != -1;
+		if (itemId <= 0)
+			return -1;
+
+		ItemComposition composition = itemManager.getItemComposition(itemId);
+		if (composition.getPlaceholderTemplateId() != -1)
+			return -1;
+
+		if (composition.getNote() != -1)
+			return composition.getLinkedNoteId();
+
+		return itemId;
 	}
 
 	/**
