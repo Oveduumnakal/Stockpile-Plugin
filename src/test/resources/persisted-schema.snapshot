@@ -34,6 +34,7 @@ class NotificationRule {
 class PersistedItem {
   acquisitions: List<AcquisitionRecord>
   category: String
+  compact: boolean
   costBasisInitialized: boolean
   deathSuspendedAt: Long
   deathSuspendedQuantity: int
