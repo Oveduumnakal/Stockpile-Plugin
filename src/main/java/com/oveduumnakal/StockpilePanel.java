@@ -2914,6 +2914,51 @@ public class StockpilePanel extends PluginPanel
 	}
 
 	/**
+	 * Category prompt shown at track time (#211): a modal dropdown of the existing categories plus
+	 * Uncategorized and a create-new option. Choosing a category (or a freshly created one) assigns it
+	 * to the just-tracked item; Uncategorized or cancel leaves it uncategorized. A no-op if the item
+	 * is gone by the time this runs.
+	 */
+	public void promptCategoryForItem(int itemId)
+	{
+		TrackedItem item = currentItems.get(itemId);
+		if (item == null)
+			return;
+
+		List<String> options = new ArrayList<>();
+		options.add(UNCATEGORIZED_LABEL);
+		for (CategoryState cat : categories)
+			options.add(cat.getName());
+
+		options.add(NEW_CATEGORY_LABEL);
+
+		String choice = (String) JOptionPane.showInputDialog(this,
+				"Category for " + item.getName() + ":",
+				"Track in category",
+				JOptionPane.QUESTION_MESSAGE,
+				null,
+				options.toArray(),
+				UNCATEGORIZED_LABEL);
+		if (choice == null || UNCATEGORIZED_LABEL.equals(choice))
+			return;
+
+		if (NEW_CATEGORY_LABEL.equals(choice))
+		{
+			String name = JOptionPane.showInputDialog(this, "New category name:",
+					"New Category", JOptionPane.PLAIN_MESSAGE);
+			if (name != null && !name.trim().isEmpty())
+			{
+				categoryActions.create(name.trim());
+				categoryActions.setItemCategory(itemId, name.trim());
+			}
+
+			return;
+		}
+
+		categoryActions.setItemCategory(itemId, choice);
+	}
+
+	/**
 	 * Opens the modal Manage Categories dialog: create, rename, delete, and reorder categories.
 	 * Each action updates the dialog's list immediately and forwards to the plugin via
 	 * {@link #categoryActions}, which persists and rebuilds the panel.
