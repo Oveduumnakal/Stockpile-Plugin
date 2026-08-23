@@ -54,6 +54,23 @@ javadoc {
 
 check.dependsOn javadoc
 
+tasks.register('generateJavaDocs', docs.GenerateJavaDocsTask) {
+	group = 'documentation'
+	description = 'Generates JavaDocs.md at the repo root from the source Javadoc.'
+	sourceRoot.set(layout.projectDirectory.dir('src/main/java'))
+	outputFile.set(layout.projectDirectory.file('JavaDocs.md'))
+}
+
+tasks.register('checkJavaDocs', docs.CheckJavaDocsTask) {
+	group = 'verification'
+	description = 'Fails if JavaDocs.md is stale or a public/protected member lacks Javadoc.'
+	sourceRoot.set(layout.projectDirectory.dir('src/main/java'))
+	outputFile.set(layout.projectDirectory.file('JavaDocs.md'))
+	excludeOverrides.set(project.hasProperty('excludeOverrideDocs'))
+}
+
+check.dependsOn checkJavaDocs
+
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass

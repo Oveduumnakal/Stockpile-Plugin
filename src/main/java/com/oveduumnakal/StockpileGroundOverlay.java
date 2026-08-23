@@ -66,6 +66,12 @@ public class StockpileGroundOverlay extends Overlay
 		setLayer(OverlayLayer.ABOVE_SCENE);
 	}
 
+	/**
+	 * Draws the ground-item highlights for tracked items on the game scene.
+	 *
+	 * @param graphics the overlay graphics context
+	 * @return {@code null} (this overlay has no fixed bounds)
+	 */
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{

@@ -47,76 +47,140 @@ import net.runelite.client.config.Range;
 @ConfigGroup(StockpileConfig.GROUP)
 public interface StockpileConfig extends Config
 {
+	/** RuneLite config group name ({@code "stockpile"}). */
 	String GROUP = "stockpile";
 
+	/** Persisted config key {@code "trackedItemIds"}. */
 	String KEY_TRACKED_ITEMS = "trackedItemIds";
+	/** Persisted config key {@code "priceCache"}. */
 	String KEY_PRICE_CACHE = "priceCache";
+	/** Persisted config key {@code "sourcePricing"}. */
 	String KEY_SOURCE_PRICING = "sourcePricing";
+	/** Persisted config key {@code "geBuyLedger"}. */
 	String KEY_GE_BUY_LEDGER = "geBuyLedger";
+	/** Persisted config key {@code "geBuyLimits"}. */
 	String KEY_GE_BUY_LIMITS = "geBuyLimits";
+	/** Persisted config key {@code "trackedCategories"}. */
 	String KEY_CATEGORIES = "trackedCategories";
 
+	/** Persisted config key {@code "priceRefreshSeconds"}. */
 	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";
+	/** Persisted config key {@code "priceChangeIndicator"}. */
 	String KEY_PRICE_CHANGE_INDICATOR = "priceChangeIndicator";
 
+	/** Persisted config key {@code "showColHigh"}. */
 	String KEY_SHOW_COL_HIGH = "showColHigh";
+	/** Persisted config key {@code "showColLow"}. */
 	String KEY_SHOW_COL_LOW = "showColLow";
+	/** Persisted config key {@code "showColAvg"}. */
 	String KEY_SHOW_COL_AVG = "showColAvg";
+	/** Persisted config key {@code "showColVolume"}. */
 	String KEY_SHOW_COL_VOLUME = "showColVolume";
+	/** Persisted config key {@code "showQuantityValue"}. */
 	String KEY_SHOW_QUANTITY_VALUE = "showQuantityValue";
+	/** Persisted config key {@code "row1Data"}. */
 	String KEY_ROW_1_DATA = "row1Data";
+	/** Persisted config key {@code "row2Data"}. */
 	String KEY_ROW_2_DATA = "row2Data";
+	/** Persisted config key {@code "row3Data"}. */
 	String KEY_ROW_3_DATA = "row3Data";
+	/** Persisted config key {@code "showItemProfitRow"}. */
 	String KEY_SHOW_ITEM_PROFIT_ROW = "showItemProfitRow";
+	/** Persisted config key {@code "stalePriceThresholdMinutes"}. */
 	String KEY_STALE_PRICE_THRESHOLD = "stalePriceThresholdMinutes";
+	/** Persisted config key {@code "compactView"}. */
 	String KEY_COMPACT_VIEW = "compactView";
+	/** Persisted config key {@code "sortMode"}. */
 	String KEY_SORT_MODE = "sortMode";
+	/** Persisted config key {@code "sortReversed"}. */
 	String KEY_SORT_REVERSED = "sortReversed";
+	/** Persisted config key {@code "portfolioHistory"}. */
 	String KEY_PORTFOLIO_HISTORY = "portfolioHistory";
 
+	/** Persisted config key {@code "lastSeenVersion"}. */
 	String KEY_LAST_SEEN_VERSION = "lastSeenVersion";
+	/** Persisted config key {@code "versionFirstSeen"}. */
 	String KEY_VERSION_FIRST_SEEN = "versionFirstSeen";
+	/** Persisted config key {@code "whatsNewDismissed"}. */
 	String KEY_WHATS_NEW_DISMISSED = "whatsNewDismissed";
+	/** Persisted config key {@code "showScreenOverlay"}. */
 	String KEY_SHOW_SCREEN_OVERLAY = "showScreenOverlay";
+	/** Persisted config key {@code "screenOverlayLayout"}. */
 	String KEY_SCREEN_OVERLAY_LAYOUT = "screenOverlayLayout";
+	/** Persisted config key {@code "screenOverlayOnTop"}. */
 	String KEY_SCREEN_OVERLAY_ON_TOP = "screenOverlayOnTop";
 
+	/** Persisted config key {@code "showItemValues"}. */
 	String KEY_SHOW_ITEM_VALUES = "showItemValues";
+	/** Persisted config key {@code "showCollectionValues"}. */
 	String KEY_SHOW_COLLECTION_VALUES = "showCollectionValues";
+	/** Persisted config key {@code "showMarketInfo"}. */
 	String KEY_SHOW_MARKET_INFO = "showMarketInfo";
+	/** Persisted config key {@code "showPriceOverview"}. */
 	String KEY_SHOW_PRICE_OVERVIEW = "showPriceOverview";
+	/** Persisted config key {@code "showPriceGraph"}. */
 	String KEY_SHOW_PRICE_GRAPH = "showPriceGraph";
+	/** Persisted config key {@code "showVolumeGraph"}. */
 	String KEY_SHOW_VOLUME_GRAPH = "showVolumeGraph";
+	/** Persisted config key {@code "showAlchInfo"}. */
 	String KEY_SHOW_ALCH_INFO = "showAlchInfo";
+	/** Persisted config key {@code "showNotifications"}. */
 	String KEY_SHOW_NOTIFICATIONS = "showNotifications";
+	/** Persisted config key {@code "showItemLog"}. */
 	String KEY_SHOW_ITEM_LOG = "showItemLog";
+	/** Persisted config key {@code "showLinks"}. */
 	String KEY_SHOW_LINKS = "showLinks";
+	/** Persisted config key {@code "buySellPressureWindow"}. */
 	String KEY_PRESSURE_WINDOW = "buySellPressureWindow";
+	/** Persisted config key {@code "priceOverviewPreset"}. */
 	String KEY_PRICE_OVERVIEW_ROWS = "priceOverviewPreset";
+	/** Persisted config key {@code "autoAddItems"}. */
 	String KEY_AUTO_ADD_ITEMS = "autoAddItems";
+	/** Persisted config key {@code "fallbackPricing"}. */
 	String KEY_FALLBACK_PRICING = "fallbackPricing";
+	/** Persisted config key {@code "notificationStyle"}. */
 	String KEY_NOTIFICATION_STYLE = "notificationStyle";
 
+	/** Persisted config key {@code "showGeEstimates"}. */
 	String KEY_SHOW_GE_ESTIMATES = "showGeEstimates";
+	/** Persisted config key {@code "geEstimatesPosition"}. */
 	String KEY_GE_ESTIMATES_POSITION = "geEstimatesPosition";
+	/** Persisted config key {@code "geEstimatesFormat"}. */
 	String KEY_GE_ESTIMATES_FORMAT = "geEstimatesFormat";
+	/** Persisted config key {@code "geEstimatesSpacing"}. */
 	String KEY_GE_ESTIMATES_SPACING = "geEstimatesSpacing";
+	/** Persisted config key {@code "showEstHigh"}. */
 	String KEY_SHOW_EST_HIGH = "showEstHigh";
+	/** Persisted config key {@code "showEstLow"}. */
 	String KEY_SHOW_EST_LOW = "showEstLow";
+	/** Persisted config key {@code "showEstAvg"}. */
 	String KEY_SHOW_EST_AVG = "showEstAvg";
+	/** Persisted config key {@code "showEstProfit"}. */
 	String KEY_SHOW_EST_PROFIT = "showEstProfit";
+	/** Persisted config key {@code "showSession"}. */
 	String KEY_SHOW_SESSION = "showSession";
 
+	/** Persisted config key {@code "addContextMenuOption"}. */
 	String KEY_ADD_CONTEXT_MENU_OPTION = "addContextMenuOption";
+	/** Persisted config key {@code "promptCategoryOnTrack"}. */
 	String KEY_PROMPT_CATEGORY_ON_TRACK = "promptCategoryOnTrack";
+	/** Persisted config key {@code "trackItemColor"}. */
 	String KEY_TRACK_ITEM_COLOR = "trackItemColor";
+	/** Persisted config key {@code "stopTrackingColor"}. */
 	String KEY_STOP_TRACKING_COLOR = "stopTrackingColor";
+	/** Persisted config key {@code "highlightTrackedItems"}. */
 	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
+	/** Persisted config key {@code "highlightColor"}. */
 	String KEY_HIGHLIGHT_COLOR = "highlightColor";
+	/** Persisted config key {@code "glowEffect"}. */
 	String KEY_GLOW_EFFECT = "glowEffect";
+	/** Persisted config key {@code "geIntegration"}. */
 	String KEY_GE_INTEGRATION = "geIntegration";
+	/** Persisted config key {@code "geFocusPanel"}. */
 	String KEY_GE_FOCUS_PANEL = "geFocusPanel";
+	/** Persisted config key {@code "geShowMarketPrices"}. */
 	String KEY_GE_SHOW_MARKET_PRICES = "geShowMarketPrices";
+	/** Persisted config key {@code "geShowTrackButton"}. */
 	String KEY_GE_SHOW_TRACK_BUTTON = "geShowTrackButton";
 
 	/** Top-level panel behavior: price refresh, change indicator, and global toggles. */
@@ -175,6 +239,9 @@ public interface StockpileConfig extends Config
 	)
 	String geIntegrationSection = "geIntegration";
 
+	/**
+	 * How often to refresh GE prices from the API. Minimum 30 seconds.
+	 */
 	@Range(min = 30)
 	@ConfigItem(
 			keyName = KEY_PRICE_REFRESH_SECONDS,
@@ -188,6 +255,9 @@ public interface StockpileConfig extends Config
 		return 60;
 	}
 
+	/**
+	 * How to display the pulse indicator for price changes.
+	 */
 	@ConfigItem(
 			keyName = KEY_PRICE_CHANGE_INDICATOR,
 			name = "Price Change Indicator",
@@ -200,6 +270,9 @@ public interface StockpileConfig extends Config
 		return PriceIndicatorMode.CHANGE;
 	}
 
+	/**
+	 * Show the High column in the tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_COL_HIGH,
 			name = "Show High Value",
@@ -212,6 +285,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the Low column in the tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_COL_LOW,
 			name = "Show Low Value",
@@ -224,6 +300,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the Avg column in the tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_COL_AVG,
 			name = "Show Avg Value",
@@ -236,6 +315,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the Volume column in the tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_COL_VOLUME,
 			name = "Show Volume",
@@ -248,6 +330,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the quantity value next to the item name.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_QUANTITY_VALUE,
 			name = "Show Quantity Value",
@@ -260,6 +345,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Price data shown on the first row. None hides the row.
+	 */
 	@ConfigItem(
 			keyName = KEY_ROW_1_DATA,
 			name = "Row 1 Data",
@@ -272,6 +360,9 @@ public interface StockpileConfig extends Config
 		return TimeWindow.LIVE;
 	}
 
+	/**
+	 * Price data shown on the second row. None hides the row.
+	 */
 	@ConfigItem(
 			keyName = KEY_ROW_2_DATA,
 			name = "Row 2 Data",
@@ -284,6 +375,9 @@ public interface StockpileConfig extends Config
 		return TimeWindow.H24;
 	}
 
+	/**
+	 * Price data shown on the third row. None hides the row.
+	 */
 	@ConfigItem(
 			keyName = KEY_ROW_3_DATA,
 			name = "Row 3 Data",
@@ -296,6 +390,9 @@ public interface StockpileConfig extends Config
 		return TimeWindow.WEEK;
 	}
 
+	/**
+	 * Show the Est. Profit row below each tracked item using only that item's cost basis.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_ITEM_PROFIT_ROW,
 			name = "Show Profit",
@@ -308,6 +405,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Dim the Ltst high or low when its last trade is older than this many minutes.
+	 */
 	@Range(min = 1)
 	@ConfigItem(
 			keyName = KEY_STALE_PRICE_THRESHOLD,
@@ -321,6 +421,9 @@ public interface StockpileConfig extends Config
 		return 60;
 	}
 
+	/**
+	 * Show tracked items as compact two-row entries. Toggleable from the tracked list header.
+	 */
 	@ConfigItem(
 			keyName = KEY_COMPACT_VIEW,
 			name = "Compact View",
@@ -333,6 +436,10 @@ public interface StockpileConfig extends Config
 		return false;
 	}
 
+	/**
+	 * Order of the tracked items list. Any mode except Manual sorts for display only and disables drag reordering.
+	 * Also toggleable from the tracked list header.
+	 */
 	@ConfigItem(
 			keyName = KEY_SORT_MODE,
 			name = "Sort By",
@@ -346,6 +453,10 @@ public interface StockpileConfig extends Config
 		return SortMode.MANUAL;
 	}
 
+	/**
+	 * Reverses the sort direction of the tracked items list (flips each mode's default ascending/descending order).
+	 * Also toggleable from the tracked list header.
+	 */
 	@ConfigItem(
 			keyName = KEY_SORT_REVERSED,
 			name = "Reverse Sort",
@@ -359,6 +470,9 @@ public interface StockpileConfig extends Config
 		return false;
 	}
 
+	/**
+	 * Position of the Item Current Values section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_ITEM_VALUES,
 			name = "Show Item Values",
@@ -371,6 +485,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.FIRST;
 	}
 
+	/**
+	 * Position of the Collection Current Values section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_COLLECTION_VALUES,
 			name = "Show Collection Values",
@@ -383,6 +500,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.SECOND;
 	}
 
+	/**
+	 * Position of the Market Info section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_MARKET_INFO,
 			name = "Show Market Info",
@@ -395,6 +515,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.THIRD;
 	}
 
+	/**
+	 * Position of the Price Overview section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_PRICE_OVERVIEW,
 			name = "Show Price Overview",
@@ -407,6 +530,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.FOURTH;
 	}
 
+	/**
+	 * Position of the Price Graph section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_PRICE_GRAPH,
 			name = "Show Price Graph",
@@ -419,6 +545,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.FIFTH;
 	}
 
+	/**
+	 * Position of the Volume Graph section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_VOLUME_GRAPH,
 			name = "Show Volume Graph",
@@ -431,6 +560,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.SIXTH;
 	}
 
+	/**
+	 * Position of the Alchemy Info section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_ALCH_INFO,
 			name = "Show Alch Info",
@@ -443,6 +575,10 @@ public interface StockpileConfig extends Config
 		return SectionSlot.SEVENTH;
 	}
 
+	/**
+	 * Position of the per-item notification rule editor, or None to hide it. Does not enable or disable notifications
+	 * — use the "Notifications" setting for that.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_NOTIFICATIONS,
 			name = "Show Notifications",
@@ -456,6 +592,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.NINTH;
 	}
 
+	/**
+	 * Position of the Item Collection Log section, or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_ITEM_LOG,
 			name = "Show Item Log",
@@ -468,6 +607,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.TENTH;
 	}
 
+	/**
+	 * Position of the Links section (Wiki / Live Prices), or None to hide it.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_LINKS,
 			name = "Show Links",
@@ -480,6 +622,9 @@ public interface StockpileConfig extends Config
 		return SectionSlot.EIGHTH;
 	}
 
+	/**
+	 * Look-back period for the Buy/Sell Pressure bar in the Market Info section.
+	 */
 	@ConfigItem(
 			keyName = KEY_PRESSURE_WINDOW,
 			name = "Buy/Sell Pressure Window",
@@ -492,6 +637,10 @@ public interface StockpileConfig extends Config
 		return PressureWindow.DAY;
 	}
 
+	/**
+	 * How many time-window rows the Price Overview shows. Recent: 5m, 1h, 12h, 24hr. Standard: 5m, 1h, 24hr, 1wk, 1mo.
+	 * Detailed: all windows.
+	 */
 	@ConfigItem(
 			keyName = KEY_PRICE_OVERVIEW_ROWS,
 			name = "Price Overview Rows",
@@ -505,6 +654,11 @@ public interface StockpileConfig extends Config
 		return OverviewPreset.DETAILED;
 	}
 
+	/**
+	 * Automatically add collection-log entries from inventory/bank changes. When off, items are only tracked once you
+	 * add them yourself (manual edits still work). The price a change with no observed source buys in at is set
+	 * separately by "Fallback Pricing".
+	 */
 	@ConfigItem(
 			keyName = KEY_AUTO_ADD_ITEMS,
 			name = "Auto Add Items",
@@ -519,6 +673,11 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * The price an unknown-source change buys in at — mobile/offline sessions and anything no detector observed
+	 * (observed sources like GE offers price themselves). High/Low/Avg use the latest matching price, Zero buys in at
+	 * 0.
+	 */
 	@ConfigItem(
 			keyName = KEY_FALLBACK_PRICING,
 			name = "Fallback Pricing",
@@ -533,6 +692,11 @@ public interface StockpileConfig extends Config
 		return FallbackPricing.AVG;
 	}
 
+	/**
+	 * Master switch and delivery style for per-item notifications. Set to Off to disable all item notifications;
+	 * otherwise use the gear to choose how they are delivered. Independent of "Show Notifications", which only
+	 * controls where the rule editor appears.
+	 */
 	@ConfigItem(
 			keyName = KEY_NOTIFICATION_STYLE,
 			name = "Notifications",
@@ -547,6 +711,9 @@ public interface StockpileConfig extends Config
 		return Notification.ON;
 	}
 
+	/**
+	 * Show the Estimated GE Sell Value section.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_GE_ESTIMATES,
 			name = "Show GE Estimates Section",
@@ -559,6 +726,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Top: under the search bar above the tracked items list. Bottom: below the tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_ESTIMATES_POSITION,
 			name = "Position",
@@ -572,6 +742,9 @@ public interface StockpileConfig extends Config
 		return EstimatesPosition.BOTTOM;
 	}
 
+	/**
+	 * How GE Estimate prices are formatted. Short abbreviates with k/m/b and shows a full-value tooltip on hover.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_ESTIMATES_FORMAT,
 			name = "Price Format",
@@ -585,6 +758,10 @@ public interface StockpileConfig extends Config
 		return ValueFormat.FULL;
 	}
 
+	/**
+	 * Vertical spacing of the estimate rows. Default keeps the roomier layout; Compact tightens the rows to match the
+	 * tracked items list.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_ESTIMATES_SPACING,
 			name = "Spacing",
@@ -598,6 +775,9 @@ public interface StockpileConfig extends Config
 		return EstimatesSpacing.DEFAULT;
 	}
 
+	/**
+	 * Show the row containing the estimated high value.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_EST_HIGH,
 			name = "Show High Estimate",
@@ -610,6 +790,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the row containing the estimated low value.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_EST_LOW,
 			name = "Show Low Estimate",
@@ -622,6 +805,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the row containing the estimated average value.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_EST_AVG,
 			name = "Show Avg Estimate",
@@ -634,6 +820,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the row containing the estimated profit.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_EST_PROFIT,
 			name = "Show Profit",
@@ -646,6 +835,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the row containing the value gained/lost since login.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_SESSION,
 			name = "Show Session",
@@ -658,6 +850,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Add a "Track Item" / "Stop Tracking" entry to right-click menus on the ground, in the bank, or in the inventory.
+	 */
 	@ConfigItem(
 			keyName = KEY_ADD_CONTEXT_MENU_OPTION,
 			name = "Add Context Menu Option",
@@ -671,6 +866,10 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * When you track an item, ask which category to put it in (choose an existing one, create a new one, or skip to
+	 * Uncategorized). Applies only to explicit tracking, not auto-added or view-only items.
+	 */
 	@ConfigItem(
 			keyName = KEY_PROMPT_CATEGORY_ON_TRACK,
 			name = "Prompt Category on Track",
@@ -685,6 +884,11 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Price quantity changes by how they occurred (GE offers, pickups, shops, alchemy...) as those detectors arrive.
+	 * Off restores classic pricing: the Auto Add price for additions and the average price for removals. Activity
+	 * already in flight when switched off (an open GE offer, an unrecovered death) still settles as detected.
+	 */
 	@ConfigItem(
 			keyName = KEY_SOURCE_PRICING,
 			name = "Source-Based Pricing",
@@ -700,6 +904,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Color of the "Track Item" context menu entry.
+	 */
 	@ConfigItem(
 			keyName = KEY_TRACK_ITEM_COLOR,
 			name = "\"Track Item\" Color",
@@ -712,6 +919,9 @@ public interface StockpileConfig extends Config
 		return new Color(0xd8, 0xfb, 0xd4);
 	}
 
+	/**
+	 * Color of the "Stop Tracking" context menu entry.
+	 */
 	@ConfigItem(
 			keyName = KEY_STOP_TRACKING_COLOR,
 			name = "\"Stop Tracking\" Color",
@@ -724,6 +934,9 @@ public interface StockpileConfig extends Config
 		return new Color(0xfb, 0xd4, 0xd4);
 	}
 
+	/**
+	 * Where to outline tracked items.
+	 */
 	@ConfigItem(
 			keyName = KEY_HIGHLIGHT_TRACKED_ITEMS,
 			name = "Highlight Tracked Items",
@@ -736,6 +949,9 @@ public interface StockpileConfig extends Config
 		return HighlightMode.GROUND;
 	}
 
+	/**
+	 * Color used to outline the highlighted tracked item.
+	 */
 	@ConfigItem(
 			keyName = KEY_HIGHLIGHT_COLOR,
 			name = "Highlight Color",
@@ -748,6 +964,9 @@ public interface StockpileConfig extends Config
 		return new Color(0xfb, 0xcd, 0x2b);
 	}
 
+	/**
+	 * Speed of the highlight's breathing/glow effect. Off results in a solid color.
+	 */
 	@ConfigItem(
 			keyName = KEY_GLOW_EFFECT,
 			name = "Glow Effect",
@@ -760,6 +979,9 @@ public interface StockpileConfig extends Config
 		return GlowSpeed.MEDIUM;
 	}
 
+	/**
+	 * Show the items selected (via the manage view) as a draggable in-game overlay.
+	 */
 	@ConfigItem(
 			keyName = KEY_SHOW_SCREEN_OVERLAY,
 			name = "Show on Screen",
@@ -772,6 +994,9 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Compact two-row entries, or a replica of the standard tracked-item row.
+	 */
 	@ConfigItem(
 			keyName = KEY_SCREEN_OVERLAY_LAYOUT,
 			name = "Overlay Layout",
@@ -784,6 +1009,9 @@ public interface StockpileConfig extends Config
 		return OverlayLayout.STANDARD;
 	}
 
+	/**
+	 * Keep the overlay above open interfaces. When off, it renders behind windows like the bank or Grand Exchange.
+	 */
 	@ConfigItem(
 			keyName = KEY_SCREEN_OVERLAY_ON_TOP,
 			name = "Overlay Always On Top",
@@ -797,6 +1025,10 @@ public interface StockpileConfig extends Config
 		return false;
 	}
 
+	/**
+	 * Open the current Grand Exchange offer item in Stockpile's view-only mode: via an injected button, automatically,
+	 * both, or off.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_INTEGRATION,
 			name = "Interaction",
@@ -810,6 +1042,10 @@ public interface StockpileConfig extends Config
 		return GeIntegrationMode.BOTH;
 	}
 
+	/**
+	 * When a GE offer opens the item in Stockpile, switch to and focus the Stockpile panel. When off, the item is
+	 * loaded silently (shown next time you open Stockpile).
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_FOCUS_PANEL,
 			name = "Force Focus",
@@ -823,6 +1059,10 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show the item's latest 5-minute High/Low market prices as a line on the open Grand Exchange offer window.
+	 * Independent of the Interaction mode above.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_SHOW_MARKET_PRICES,
 			name = "Show 5m Prices",
@@ -836,6 +1076,10 @@ public interface StockpileConfig extends Config
 		return true;
 	}
 
+	/**
+	 * Show a Track/Untrack button beside the History button on the open Grand Exchange offer window, toggling tracking
+	 * of the offer's item. Independent of the Interaction mode above.
+	 */
 	@ConfigItem(
 			keyName = KEY_GE_SHOW_TRACK_BUTTON,
 			name = "Track Button",

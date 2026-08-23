@@ -11,7 +11,9 @@ package com.oveduumnakal;
  */
 public enum EstimatesSpacing
 {
+	/** The {@code "Default"} option. */
 	DEFAULT("Default"),
+	/** The {@code "Compact"} option. */
 	COMPACT("Compact");
 
 	private final String label;
@@ -21,6 +23,11 @@ public enum EstimatesSpacing
 		this.label = label;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

@@ -37,6 +37,11 @@ public final class PortfolioShareCodec
 
 	private final Gson gson;
 
+	/**
+	 * Creates a codec that (de)serializes share tokens with the given Gson instance.
+	 *
+	 * @param gson the Gson instance used for JSON encoding
+	 */
 	public PortfolioShareCodec(Gson gson)
 	{
 		this.gson = gson;

@@ -106,6 +106,12 @@ public class WikiRealtimePriceClient
 	private final OkHttpClient httpClient;
 	private final Gson gson;
 
+	/**
+	 * Creates a client for the OSRS Wiki real-time prices API.
+	 *
+	 * @param httpClient the shared HTTP client
+	 * @param gson the Gson instance used to parse API responses
+	 */
 	@Inject
 	public WikiRealtimePriceClient(OkHttpClient httpClient, Gson gson)
 	{

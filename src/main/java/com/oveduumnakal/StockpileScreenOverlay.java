@@ -97,6 +97,12 @@ public class StockpileScreenOverlay extends Overlay
 		return "stockpileScreenOverlay" + slot;
 	}
 
+	/**
+	 * Draws the on-screen overlay of selected tracked items.
+	 *
+	 * @param graphics the overlay graphics context
+	 * @return the rendered overlay's dimensions
+	 */
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{

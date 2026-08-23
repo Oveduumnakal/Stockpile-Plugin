@@ -11,10 +11,15 @@ package com.oveduumnakal;
  */
 public enum NotificationOperation
 {
+	/** Greater than: fires when the reading exceeds the threshold. */
 	GT(">"),
+	/** Greater than or equal: fires when the reading meets or exceeds the threshold. */
 	GTE(">="),
+	/** Less than: fires when the reading is below the threshold. */
 	LT("<"),
+	/** Less than or equal: fires when the reading is at or below the threshold. */
 	LTE("<="),
+	/** Equal: fires when the reading equals the threshold. */
 	EQ("=");
 
 	private final String symbol;
@@ -24,6 +29,11 @@ public enum NotificationOperation
 		this.symbol = symbol;
 	}
 
+	/**
+	 * Returns the comparison symbol shown in the UI.
+	 *
+	 * @return the operator symbol (e.g. {@code ">="})
+	 */
 	public String getSymbol()
 	{
 		return symbol;
@@ -49,6 +59,11 @@ public enum NotificationOperation
 		}
 	}
 
+	/**
+	 * Returns the comparison symbol.
+	 *
+	 * @return the operator symbol
+	 */
 	@Override
 	public String toString()
 	{

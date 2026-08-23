@@ -96,6 +96,7 @@ public final class PortfolioChartPanel extends JPanel
 
 	private boolean plotCacheDirty = true;
 
+	/** Creates an empty portfolio chart panel. */
 	public PortfolioChartPanel()
 	{
 		setPreferredSize(new Dimension(520, 320));

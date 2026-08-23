@@ -11,7 +11,9 @@ package com.oveduumnakal;
  */
 public enum EstimatesPosition
 {
+	/** The {@code "Top"} option. */
 	TOP("Top"),
+	/** The {@code "Bottom"} option. */
 	BOTTOM("Bottom");
 
 	private final String label;
@@ -21,6 +23,11 @@ public enum EstimatesPosition
 		this.label = label;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

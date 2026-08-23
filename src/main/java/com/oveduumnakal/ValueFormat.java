@@ -32,7 +32,9 @@ package com.oveduumnakal;
  */
 public enum ValueFormat
 {
+	/** The {@code "Short (k,m,b)"} option. */
 	ABBREVIATED("Short (k,m,b)"),
+	/** The {@code "Full (x,xxx)"} option. */
 	FULL("Full (x,xxx)");
 
 	private final String displayName;
@@ -42,6 +44,11 @@ public enum ValueFormat
 		this.displayName = displayName;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{
