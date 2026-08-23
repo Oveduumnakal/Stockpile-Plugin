@@ -18,6 +18,9 @@
 - [com.oveduumnakal.CostBasisLedger](#comoveduumnakalcostbasisledger)
 - [com.oveduumnakal.DecantBasis](#comoveduumnakaldecantbasis)
 - [com.oveduumnakal.DestroyedOutputSources](#comoveduumnakaldestroyedoutputsources)
+- [com.oveduumnakal.DetailView](#comoveduumnakaldetailview)
+- [com.oveduumnakal.DetailView.Layout](#comoveduumnakaldetailviewlayout)
+- [com.oveduumnakal.DetailViewHost](#comoveduumnakaldetailviewhost)
 - [com.oveduumnakal.DoseFamily](#comoveduumnakaldosefamily)
 - [com.oveduumnakal.DoseFamily.Parsed](#comoveduumnakaldosefamilyparsed)
 - [com.oveduumnakal.EllipsisText](#comoveduumnakalellipsistext)
@@ -2031,6 +2034,1357 @@ Output ids with a distinct loss flavour; anything absent falls back to `Acquisit
 - **Parameter** `outputId` — the item id of the single destroyed product a recipe emitted
 - **Returns:** the loss source that product's inputs should be tagged with, defaulting to
         `AcquisitionSource#BURNED` for any output not in the table
+
+---
+
+## com.oveduumnakal.DetailView
+
+_class_
+
+`public class DetailView`
+
+The item detail view, extracted from `StockpilePanel` so a second live instance can exist
+(the #109 dashboard window) (#110). Owns every detail widget, the build/populate/apply methods, and
+the section pop-outs; reaches its host for shared services, edit callbacks, and Back navigation
+through `DetailViewHost`. The component itself is a `CardLayout` flipping between the
+populated detail card and a loading placeholder.
+
+### Nested Type Summary
+
+| Type | Description |
+|---|---|
+| _enum_ [`Layout`](#comoveduumnakaldetailviewlayout) | Section arrangement: the sidebar's vertical stack, or the #109 dashboard's two-column layout. |
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final String` | `CARD_CONTENT` |  |
+| `private static final String` | `CARD_LOADING` |  |
+| `private static final Color` | `COLOR_VOLUME` |  |
+| `private static final int` | `DEFAULT_NOTIFICATION_ROWS` |  |
+| `private static final Color` | `DESCRIPTION_COLOR` |  |
+| `private static final NumberFormat` | `NUMBER_FORMAT` |  |
+| `private static final Color` | `OVERVIEW_ROW_DIVIDER` |  |
+| `private static final TimeWindow[]` | `OVERVIEW_WINDOWS` |  |
+| `private static final int` | `PRESSURE_BALANCED_HIGH` |  |
+| `private static final int` | `PRESSURE_BALANCED_LOW` |  |
+| `private static final String` | `PRICES_BASE` |  |
+| `private static final String` | `WIKI_BASE` |  |
+| `private int` | `acqHoverCol` |  |
+| `private int` | `acqHoverRow` |  |
+| `private JButton` | `acqPopoutButton` |  |
+| `private AcquisitionsTableModel` | `acqPopoutModel` |  |
+| `private JScrollPane` | `acqPopoutScroll` |  |
+| `private JTable` | `acqPopoutTable` |  |
+| `private AcquisitionsTableModel` | `acquisitionsModel` |  |
+| `private JScrollPane` | `acquisitionsScroll` |  |
+| `private JPanel` | `acquisitionsSection` |  |
+| `private JTable` | `acquisitionsTable` |  |
+| `private final JLabel` | `alchEstProfit` |  |
+| `private JPanel` | `alchEstProfitRow` |  |
+| `private JPanel` | `alchInfoSection` |  |
+| `private Set<TimeWindow>` | `appliedOverviewRows` |  |
+| `private String` | `appliedSectionLayout` |  |
+| `private int` | `boundItemId` |  |
+| `private final PressureVolumeLabel` | `buyPressureLabel` |  |
+| `private BuySellBar` | `buySellBar` |  |
+| `private final CardLayout` | `cardLayout` |  |
+| `private final JLabel` | `ccvAvg` |  |
+| `private final JLabel` | `ccvHigh` |  |
+| `private final JLabel` | `ccvLow` |  |
+| `private final JLabel` | `ccvProfit` |  |
+| `private final JLabel` | `ccvQuantity` |  |
+| `private JPanel` | `ccvSection` |  |
+| `private final StockpileConfig` | `config` |  |
+| `private final JPanel` | `detailCard` |  |
+| `private final JTextArea` | `detailDescriptionArea` |  |
+| `private String` | `detailExamineText` |  |
+| `private final JLabel` | `detailIconLabel` |  |
+| `private boolean` | `detailItemTracked` |  |
+| `private boolean` | `detailLoadTimedOut` |  |
+| `private Timer` | `detailLoadTimeout` |  |
+| `private final JPanel` | `detailLoadingCard` |  |
+| `private final JLabel` | `detailNameLabel` |  |
+| `private final JLabel` | `detailQtyLabel` |  |
+| `private JPanel` | `detailSectionsHost` |  |
+| `private final Spinner` | `detailSpinner` |  |
+| `private final JButton` | `detailTrackBtn` |  |
+| `private volatile boolean` | `editingNotifications` |  |
+| `private PriceGraphPanel.LineSet` | `graphLineSet` |  |
+| `private boolean` | `graphSmooth` |  |
+| `private final JLabel` | `haProfit` |  |
+| `private final JLabel` | `haValue` |  |
+| `private final DetailViewHost` | `host` |  |
+| `private final JLabel` | `icvAvg` |  |
+| `private final JLabel` | `icvHigh` |  |
+| `private final JLabel` | `icvLow` |  |
+| `private final JLabel` | `icvVolume` |  |
+| `private final ItemManager` | `itemManager` |  |
+| `private JPanel` | `itemValuesSection` |  |
+| `private final JLabel` | `laProfit` |  |
+| `private final JLabel` | `laValue` |  |
+| `private JPanel` | `linksSection` |  |
+| `private JPanel` | `marketInfoSection` |  |
+| `private final JLabel` | `miBuyLimit` |  |
+| `private final JLabel` | `miGeTax` |  |
+| `private final JLabel` | `miLastBought` |  |
+| `private final JLabel` | `miLastSold` |  |
+| `private final JLabel` | `miLiquidity` |  |
+| `private final JLabel` | `miVolatility` |  |
+| `private NotificationsTableModel` | `notificationsModel` |  |
+| `private JPanel` | `notificationsSection` |  |
+| `private JTable` | `notificationsTable` |  |
+| `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
+| `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
+| `private final Consumer<Integer>` | `onClearAcquisitions` |  |
+| `private final Consumer<Integer>` | `onNotificationsEdited` |  |
+| `private final Consumer<Integer>` | `onRequestDetailData` |  |
+| `private final Consumer<Integer>` | `onUntrackToPreview` |  |
+| `private final List<PopoutHandle>` | `openPopouts` |  |
+| `private JPanel` | `overviewGrid` |  |
+| `private final Map<TimeWindow,JLabel[]>` | `overviewLabels` |  |
+| `private final List<JLabel>` | `overviewWindowLabels` |  |
+| `private final JLabel` | `pressureMarketLabel` |  |
+| `private TrackedItem` | `previewItem` |  |
+| `private PriceGraphPanel` | `priceGraph` |  |
+| `private JPanel` | `priceGraphSection` |  |
+| `private JPanel` | `priceOverviewSection` |  |
+| `private PriceGraphPanel` | `pricePopoutGraph` |  |
+| `private PriceRangeBar` | `priceRangeBar` |  |
+| `private final JLabel` | `rangePositionLabel` |  |
+| `private final PressureVolumeLabel` | `sellPressureLabel` |  |
+| `private JPanel` | `topStack` |  |
+| `private final Layout` | `viewLayout` |  |
+| `private PriceGraphPanel` | `volumeGraph` |  |
+| `private JPanel` | `volumeGraphSection` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `DetailView(DetailViewHost host, Layout viewLayout)` | Builds a detail view bound to a host. |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `private void` | `acqAddRow(JTable table, AcquisitionsTableModel model)` | Appends a new empty acquisition row to the table and scrolls it into view. |
+| `private void` | `acqClean(AcquisitionsTableModel model)` | Consolidates the acquisitions log, merging like rows and dropping empty ones. |
+| `private void` | `acqClear()` | Clears all acquisitions for the current item after confirmation, via the plugin callback. |
+| `private void` | `acqRemoveSelected(JTable table, AcquisitionsTableModel model)` | Removes the selected acquisition rows and commits the change. |
+| `private JButton` | `acqTextButton(String text, Color fg)` | Builds a small flat text button used by the acquisitions pop-out toolbar. |
+| `private static String` | `acqTooltipLabel(int col)` |  |
+| `private String` | `alchProfitTooltip(String label, long alchValue, long itemAvg, int fireQty)` | Builds the tooltip breaking down an alch-profit figure: alch value minus item cost and rune cost. |
+| `private void` | `applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)` | Wires an acquisitions table's fonts, row height, per-column renderers/editors, and headers for either the compact sidebar table or the expanded pop-out table. |
+| `private void` | `applyBuyLimit(TrackedItem item)` | Shows the Buy Limit cell as `used / total` when purchases have been tracked in the current window (with a reset-countdown tooltip), the plain total when untouched, or `N/A` when the item has no GE limit. |
+| `private void` | `applyBuySellPressure(TrackedItem item)` | Computes the buy/sell volume split over the configured window and updates the pressure bar + labels. |
+| `private void` | `applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)` | Sets a label to the signed percent change of the current price vs. |
+| `private void` | `applyDetailCard()` | Shows either the spinner placeholder or the populated detail view for the currently open item, depending on whether its prices are still loading. |
+| `private void` | `applyDetailSectionLayout()` | Reorders and shows/hides the detail sections to match the configured slot assignments. |
+| `private void` | `applyExamineWrap()` | Sets the current examine text on the description area. |
+| `private void` | `applyLiquidity(long vol24)` | Sets the market-info liquidity rating from the last 24h volume via `MarketClassifier`. |
+| `private void` | `applyNotificationRenderers()` | Wires the per-column cell editors/renderers on the notifications table to the current metric's input type. |
+| `private void` | `applyProfitLabel(JLabel label, long profit, boolean known)` | Sets a profit label to a signed, colored gp figure, or a placeholder when the profit is unknown. |
+| `private void` | `applyRangePosition(long min, long max, long live)` | Sets the market-info "30-day range position" rating for where the live price sits within its month range. |
+| `private void` | `applyTableRenderers()` | Applies the acquisitions renderers to the sidebar (compact) table. |
+| `private void` | `applyTradeTime(JLabel label, long epochSeconds)` | Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip. |
+| `private void` | `applyVolatility(TrackedItem item)` | Sets the market-info volatility rating from the item's week series via `MarketClassifier`. |
+| `private JPanel` | `buildAlchBlock()` | Builds the alch-info section (high/low alch values and the high-alch profit estimate). |
+| `private Icon` | `buildBrushIcon()` | Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions button. |
+| `private JPanel` | `buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)` | Builds the stacked current-values block (high/low/avg plus a fourth metric row), colouring each label by metric and appending a divider-topped profit row when a profit label is supplied. |
+| `private void` | `buildDetailCard()` | Constructs the detail-view card once: the header, the scrollable body, and every detail section (current values, market info, charts, overview grid, alch, notifications, acquisitions log). |
+| `private void` | `buildDetailLoadingCard()` | Fills `#detailLoadingCard` with a centered spinner and caption. |
+| `private JPanel` | `buildDetailSection(String title, Component... contents)` | Builds a titled detail-view section containing the given components. |
+| `private JLabel` | `buildDetailSectionTitle(String text, boolean withDivider)` | Builds a centred bold section title, optionally topped with a divider rule. |
+| `private JComponent` | `buildDetailSectionTitleRow(String title, JButton popBtn)` | Builds a divider-topped section title row with the title centred between a strut matching the pop-out button's width (so the title stays optically centred) and the button itself. |
+| `private JComponent` | `buildDetailSectionTitleRow(String title, Runnable onPopout)` | Builds a section title row with a pop-out button wired to the given action. |
+| `private JPanel` | `buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)` | Builds a titled detail-view section whose title row carries a pop-out button. |
+| `private Icon` | `buildEyeIcon(int size)` | Loads the bundled `eye.png` scaled to a square icon for the view-only button. |
+| `private Icon` | `buildLeftArrowIcon()` | Paints the small left-pointing triangle used by the detail view's Back button. |
+| `private JButton` | `buildLinkButton(String text, String tooltip, Runnable onClick)` | Builds a detail-view link button that runs the given action when clicked. |
+| `private JPanel` | `buildLinksBlock()` | Builds the Links detail section's content: Wiki and Live Prices buttons for the current item. |
+| `private JPanel` | `buildMarketInfoBlock()` | Builds the market-info section (buy limit, GE value, volatility, liquidity, 30-day range, etc.). |
+| `private JPanel` | `buildMarketInfoPair(String leftLabel, JLabel leftValue, String rightLabel, JLabel rightValue)` | Builds a two-column grid pairing two captioned values side by side (Market Info / alch rows). |
+| `private void` | `buildNotificationsSection()` | Builds the notifications section: the rules table and its add/remove/edit controls. |
+| `private JPanel` | `buildOverviewGrid()` | Builds (and remembers) the sidebar overview grid. |
+| `private JButton` | `buildPopoutButton(Runnable onClick)` | Builds a borderless pop-out button that runs the given action when clicked. |
+| `private Icon` | `buildPopoutIcon()` | Paints the small box-with-arrow "open in new window" icon used by pop-out buttons. |
+| `private void` | `clearItemValue(JLabel label, String text)` | Resets a value label to plain text, dropping its tooltip and any hover-tint listener. |
+| `private void` | `closePopouts()` | Disposes all open pop-out windows (e.g. |
+| `private JPanel` | `createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)` | Creates an overview grid panel that custom-paints its own dividers: a vertical rule after the window-label column and a horizontal rule between consecutive rows, both derived from the live label positions so they track layout changes. |
+| `private TrackedItem` | `currentDetailItem()` |  |
+| `private static String` | `expandedAcqHeader(String compact)` |  |
+| `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
+| `private static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
+| `private static String` | `fullWindowLabel(TimeWindow w)` |  |
+| `private long` | `geTax(long avgPrice)` |  |
+| `public int` | `getBoundItemId()` |  |
+| `private void` | `installVolumeValue(JLabel label, long vol, boolean full)` | Sets a volume cell's compact/full text with a full-number tooltip and hover tint, or a placeholder. |
+| `private boolean` | `isDetailLoading(TrackedItem item)` |  |
+| `public boolean` | `isEditingNotifications()` |  |
+| `public boolean` | `isLoadingVisible()` |  |
+| `public boolean` | `isPreview()` |  |
+| `private JPanel` | `newSectionWrapper()` |  |
+| `private void` | `notifyNotificationsEdited()` | Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. |
+| `public void` | `onLeaveDetail()` | Clears the bound item and stops any in-flight loading/pop-outs when the host leaves the detail view. |
+| `public boolean` | `onRebuild()` | Refreshes the bound item from the host's current tracked state on a list rebuild: clears a stale preview once the item is tracked, repopulates in place, and reports whether an item is still shown so the host can fall back to the main list when it has gone. |
+| `private void` | `openCollectionLogPopout()` | Opens the editable acquisitions (collection log) table in a standalone pop-out window. |
+| `private void` | `openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)` | Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph. |
+| `private void` | `openOverviewPopout()` | Opens the price overview grid in a standalone pop-out window. |
+| `private void` | `openPricesLink()` | Opens the wiki realtime prices page for the item currently shown in the detail view. |
+| `private void` | `openWikiLink()` | Opens the OSRS Wiki page for the item currently shown in the detail view. |
+| `private static long` | `overviewMidpoint(WikiRealtimePriceClient.PricePoint p)` |  |
+| `private void` | `populateDetail(TrackedItem item)` | Fills every detail section from an item's current state: header name/icon/quantity, item and collection values, overview grid, charts, market info (times, volatility, liquidity, range, pressure), alch figures, notifications, and the acquisitions log. |
+| `private void` | `populateOverviewGrid(Set<TimeWindow> rows)` | (Re)creates the overview grid panels (sidebar and pop-out) for the given set of time-window rows. |
+| `private void` | `populateOverviewLabels(Map<TimeWindow,JLabel[]> labels, TrackedItem item, boolean full)` | Fills the overview grid's cells with an item's per-window high/low/avg/volume/Δ% values. |
+| `private void` | `preserveDetailScroll(Runnable refresh)` | Runs a refresh-in-place of the open detail card, keeping the enclosing scroll pane's vertical position. |
+| `private void` | `rebuildOverviewGrid()` | Rebuilds the price overview grid to match the configured preset of time-window rows. |
+| `public void` | `refreshDetailData(int itemId)` | Re-populates the open detail view with fresh data for `itemId` (no-op if a different item is shown). |
+| `private void` | `refreshPopouts(TrackedItem item)` | Pushes fresh data for `item` into every open pop-out window. |
+| `private void` | `scrollAcquisitionsToBottom()` | Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. |
+| `private void` | `setOverviewPlaceholder(JLabel label)` | Resets an overview cell to the `"-"` placeholder. |
+| `private void` | `setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)` | Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset. |
+| `public void` | `show(int itemId)` | Switches to the detail card for an item, requesting its full data and populating the view. |
+| `private void` | `showPopout(String title, JComponent content, Consumer<TrackedItem> refresher, Runnable onClose)` | Opens a non-modal pop-out window hosting `content`, registering its refresher so live updates reach it and running `onClose` when dismissed. |
+| `public void` | `showPreview(TrackedItem item)` | Opens a read-only preview of an untracked item. |
+| `private TrackedItem` | `shownDetailItem()` |  |
+| `public TrackedItem` | `shownItem()` |  |
+| `private static String` | `spelledInterval(TimeWindow window)` |  |
+| `private void` | `stopDetailLoading()` | Stops the spinner animation and cancels the pending load-timeout, if any. |
+| `public void` | `stopLoading()` | Stops the loading spinner and its safety timeout (used when the host is disposed). |
+| `private void` | `styleNotifButton(JButton btn, Color fg)` | Applies the shared small-button styling to a notifications-section button. |
+| `private long[]` | `thirtyDayRange(TrackedItem item)` |  |
+| `private void` | `toggleDetailTracking()` | Toggles tracking of the item shown in the detail view (#138), driven by the header button. |
+| `private void` | `updateAcqPopoutButton()` | Hides the acquisitions pop-out button while its pop-out window is already open. |
+| `public void` | `updateMarketInfoTimes()` | Live-updates the Market Info last-bought / last-sold relative times for the shown detail item. |
+| `private long` | `windowVolume(TrackedItem item, TimeWindow window)` |  |
+
+### Field Detail
+
+#### CARD_CONTENT
+
+`private static final String CARD_CONTENT`
+
+#### CARD_LOADING
+
+`private static final String CARD_LOADING`
+
+#### COLOR_VOLUME
+
+`private static final Color COLOR_VOLUME`
+
+#### DEFAULT_NOTIFICATION_ROWS
+
+`private static final int DEFAULT_NOTIFICATION_ROWS`
+
+#### DESCRIPTION_COLOR
+
+`private static final Color DESCRIPTION_COLOR`
+
+#### NUMBER_FORMAT
+
+`private static final NumberFormat NUMBER_FORMAT`
+
+#### OVERVIEW_ROW_DIVIDER
+
+`private static final Color OVERVIEW_ROW_DIVIDER`
+
+#### OVERVIEW_WINDOWS
+
+`private static final TimeWindow[] OVERVIEW_WINDOWS`
+
+#### PRESSURE_BALANCED_HIGH
+
+`private static final int PRESSURE_BALANCED_HIGH`
+
+#### PRESSURE_BALANCED_LOW
+
+`private static final int PRESSURE_BALANCED_LOW`
+
+#### PRICES_BASE
+
+`private static final String PRICES_BASE`
+
+#### WIKI_BASE
+
+`private static final String WIKI_BASE`
+
+#### acqHoverCol
+
+`private int acqHoverCol`
+
+#### acqHoverRow
+
+`private int acqHoverRow`
+
+#### acqPopoutButton
+
+`private JButton acqPopoutButton`
+
+#### acqPopoutModel
+
+`private AcquisitionsTableModel acqPopoutModel`
+
+#### acqPopoutScroll
+
+`private JScrollPane acqPopoutScroll`
+
+#### acqPopoutTable
+
+`private JTable acqPopoutTable`
+
+#### acquisitionsModel
+
+`private AcquisitionsTableModel acquisitionsModel`
+
+#### acquisitionsScroll
+
+`private JScrollPane acquisitionsScroll`
+
+#### acquisitionsSection
+
+`private JPanel acquisitionsSection`
+
+#### acquisitionsTable
+
+`private JTable acquisitionsTable`
+
+#### alchEstProfit
+
+`private final JLabel alchEstProfit`
+
+#### alchEstProfitRow
+
+`private JPanel alchEstProfitRow`
+
+#### alchInfoSection
+
+`private JPanel alchInfoSection`
+
+#### appliedOverviewRows
+
+`private Set<TimeWindow> appliedOverviewRows`
+
+#### appliedSectionLayout
+
+`private String appliedSectionLayout`
+
+#### boundItemId
+
+`private int boundItemId`
+
+#### buyPressureLabel
+
+`private final PressureVolumeLabel buyPressureLabel`
+
+#### buySellBar
+
+`private BuySellBar buySellBar`
+
+#### cardLayout
+
+`private final CardLayout cardLayout`
+
+#### ccvAvg
+
+`private final JLabel ccvAvg`
+
+#### ccvHigh
+
+`private final JLabel ccvHigh`
+
+#### ccvLow
+
+`private final JLabel ccvLow`
+
+#### ccvProfit
+
+`private final JLabel ccvProfit`
+
+#### ccvQuantity
+
+`private final JLabel ccvQuantity`
+
+#### ccvSection
+
+`private JPanel ccvSection`
+
+#### config
+
+`private final StockpileConfig config`
+
+#### detailCard
+
+`private final JPanel detailCard`
+
+#### detailDescriptionArea
+
+`private final JTextArea detailDescriptionArea`
+
+#### detailExamineText
+
+`private String detailExamineText`
+
+#### detailIconLabel
+
+`private final JLabel detailIconLabel`
+
+#### detailItemTracked
+
+`private boolean detailItemTracked`
+
+#### detailLoadTimedOut
+
+`private boolean detailLoadTimedOut`
+
+#### detailLoadTimeout
+
+`private Timer detailLoadTimeout`
+
+#### detailLoadingCard
+
+`private final JPanel detailLoadingCard`
+
+#### detailNameLabel
+
+`private final JLabel detailNameLabel`
+
+#### detailQtyLabel
+
+`private final JLabel detailQtyLabel`
+
+#### detailSectionsHost
+
+`private JPanel detailSectionsHost`
+
+#### detailSpinner
+
+`private final Spinner detailSpinner`
+
+#### detailTrackBtn
+
+`private final JButton detailTrackBtn`
+
+#### editingNotifications
+
+`private volatile boolean editingNotifications`
+
+#### graphLineSet
+
+`private PriceGraphPanel.LineSet graphLineSet`
+
+#### graphSmooth
+
+`private boolean graphSmooth`
+
+#### haProfit
+
+`private final JLabel haProfit`
+
+#### haValue
+
+`private final JLabel haValue`
+
+#### host
+
+`private final DetailViewHost host`
+
+#### icvAvg
+
+`private final JLabel icvAvg`
+
+#### icvHigh
+
+`private final JLabel icvHigh`
+
+#### icvLow
+
+`private final JLabel icvLow`
+
+#### icvVolume
+
+`private final JLabel icvVolume`
+
+#### itemManager
+
+`private final ItemManager itemManager`
+
+#### itemValuesSection
+
+`private JPanel itemValuesSection`
+
+#### laProfit
+
+`private final JLabel laProfit`
+
+#### laValue
+
+`private final JLabel laValue`
+
+#### linksSection
+
+`private JPanel linksSection`
+
+#### marketInfoSection
+
+`private JPanel marketInfoSection`
+
+#### miBuyLimit
+
+`private final JLabel miBuyLimit`
+
+#### miGeTax
+
+`private final JLabel miGeTax`
+
+#### miLastBought
+
+`private final JLabel miLastBought`
+
+#### miLastSold
+
+`private final JLabel miLastSold`
+
+#### miLiquidity
+
+`private final JLabel miLiquidity`
+
+#### miVolatility
+
+`private final JLabel miVolatility`
+
+#### notificationsModel
+
+`private NotificationsTableModel notificationsModel`
+
+#### notificationsSection
+
+`private JPanel notificationsSection`
+
+#### notificationsTable
+
+`private JTable notificationsTable`
+
+#### onAcquisitionsEdited
+
+`private final Consumer<Integer> onAcquisitionsEdited`
+
+#### onAddItem
+
+`private final BiConsumer<Integer,TrackItemMode> onAddItem`
+
+#### onClearAcquisitions
+
+`private final Consumer<Integer> onClearAcquisitions`
+
+#### onNotificationsEdited
+
+`private final Consumer<Integer> onNotificationsEdited`
+
+#### onRequestDetailData
+
+`private final Consumer<Integer> onRequestDetailData`
+
+#### onUntrackToPreview
+
+`private final Consumer<Integer> onUntrackToPreview`
+
+#### openPopouts
+
+`private final List<PopoutHandle> openPopouts`
+
+#### overviewGrid
+
+`private JPanel overviewGrid`
+
+#### overviewLabels
+
+`private final Map<TimeWindow,JLabel[]> overviewLabels`
+
+#### overviewWindowLabels
+
+`private final List<JLabel> overviewWindowLabels`
+
+#### pressureMarketLabel
+
+`private final JLabel pressureMarketLabel`
+
+#### previewItem
+
+`private TrackedItem previewItem`
+
+#### priceGraph
+
+`private PriceGraphPanel priceGraph`
+
+#### priceGraphSection
+
+`private JPanel priceGraphSection`
+
+#### priceOverviewSection
+
+`private JPanel priceOverviewSection`
+
+#### pricePopoutGraph
+
+`private PriceGraphPanel pricePopoutGraph`
+
+#### priceRangeBar
+
+`private PriceRangeBar priceRangeBar`
+
+#### rangePositionLabel
+
+`private final JLabel rangePositionLabel`
+
+#### sellPressureLabel
+
+`private final PressureVolumeLabel sellPressureLabel`
+
+#### topStack
+
+`private JPanel topStack`
+
+#### viewLayout
+
+`private final Layout viewLayout`
+
+#### volumeGraph
+
+`private PriceGraphPanel volumeGraph`
+
+#### volumeGraphSection
+
+`private JPanel volumeGraphSection`
+
+### Constructor Detail
+
+#### DetailView
+
+`DetailView(DetailViewHost host, Layout viewLayout)`
+
+Builds a detail view bound to a host. Constructs the detail and loading cards and installs them
+in this component's own `CardLayout`; the host mounts this component where the detail view
+should appear.
+
+### Method Detail
+
+#### acqAddRow
+
+`private void acqAddRow(JTable table, AcquisitionsTableModel model)`
+
+Appends a new empty acquisition row to the table and scrolls it into view.
+
+#### acqClean
+
+`private void acqClean(AcquisitionsTableModel model)`
+
+Consolidates the acquisitions log, merging like rows and dropping empty ones.
+
+#### acqClear
+
+`private void acqClear()`
+
+Clears all acquisitions for the current item after confirmation, via the plugin callback.
+
+#### acqRemoveSelected
+
+`private void acqRemoveSelected(JTable table, AcquisitionsTableModel model)`
+
+Removes the selected acquisition rows and commits the change.
+
+#### acqTextButton
+
+`private JButton acqTextButton(String text, Color fg)`
+
+Builds a small flat text button used by the acquisitions pop-out toolbar.
+
+#### acqTooltipLabel
+
+`private static String acqTooltipLabel(int col)`
+
+- **Returns:** the tooltip caption for an acquisitions-table column.
+
+#### alchProfitTooltip
+
+`private String alchProfitTooltip(String label, long alchValue, long itemAvg, int fireQty)`
+
+Builds the tooltip breaking down an alch-profit figure: alch value minus item cost and rune cost.
+
+#### applyAcqRenderers
+
+`private void applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)`
+
+Wires an acquisitions table's fonts, row height, per-column renderers/editors, and
+headers for either the compact sidebar table or the expanded pop-out table.
+
+#### applyBuyLimit
+
+`private void applyBuyLimit(TrackedItem item)`
+
+Shows the Buy Limit cell as `used / total` when purchases have been tracked in
+the current window (with a reset-countdown tooltip), the plain total when untouched,
+or `N/A` when the item has no GE limit.
+
+#### applyBuySellPressure
+
+`private void applyBuySellPressure(TrackedItem item)`
+
+Computes the buy/sell volume split over the configured window and updates the pressure bar + labels.
+
+#### applyDeltaPct
+
+`private void applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)`
+
+Sets a label to the signed percent change of the current price vs. the window average, colored up/down.
+
+#### applyDetailCard
+
+`private void applyDetailCard()`
+
+Shows either the spinner placeholder or the populated detail view for the
+currently open item, depending on whether its prices are still loading.
+A view-only preview shows the spinner until its prices arrive, its load
+fails, or the safety timeout fires; everything else shows immediately.
+
+#### applyDetailSectionLayout
+
+`private void applyDetailSectionLayout()`
+
+Reorders and shows/hides the detail sections to match the configured slot assignments.
+
+#### applyExamineWrap
+
+`private void applyExamineWrap()`
+
+Sets the current examine text on the description area. The `JTextArea` line-wraps to its
+own laid-out width, so no width measurement is needed and it re-wraps responsively on resize.
+
+#### applyLiquidity
+
+`private void applyLiquidity(long vol24)`
+
+Sets the market-info liquidity rating from the last 24h volume via `MarketClassifier`.
+
+#### applyNotificationRenderers
+
+`private void applyNotificationRenderers()`
+
+Wires the per-column cell editors/renderers on the notifications table to the current metric's input type.
+
+#### applyProfitLabel
+
+`private void applyProfitLabel(JLabel label, long profit, boolean known)`
+
+Sets a profit label to a signed, colored gp figure, or a placeholder when the profit is unknown.
+
+#### applyRangePosition
+
+`private void applyRangePosition(long min, long max, long live)`
+
+Sets the market-info "30-day range position" rating for where the live price sits within its month range.
+
+#### applyTableRenderers
+
+`private void applyTableRenderers()`
+
+Applies the acquisitions renderers to the sidebar (compact) table.
+
+#### applyTradeTime
+
+`private void applyTradeTime(JLabel label, long epochSeconds)`
+
+Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip.
+
+#### applyVolatility
+
+`private void applyVolatility(TrackedItem item)`
+
+Sets the market-info volatility rating from the item's week series via `MarketClassifier`.
+
+#### buildAlchBlock
+
+`private JPanel buildAlchBlock()`
+
+Builds the alch-info section (high/low alch values and the high-alch profit estimate).
+
+#### buildBrushIcon
+
+`private Icon buildBrushIcon()`
+
+Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions button.
+
+#### buildCurrentValuesBlock
+
+`private JPanel buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)`
+
+Builds the stacked current-values block (high/low/avg plus a fourth metric row),
+colouring each label by metric and appending a divider-topped profit row when a
+profit label is supplied.
+
+#### buildDetailCard
+
+`private void buildDetailCard()`
+
+Constructs the detail-view card once: the header, the scrollable body, and
+every detail section (current values, market info, charts, overview grid,
+alch, notifications, acquisitions log). Sections are populated later per item.
+
+#### buildDetailLoadingCard
+
+`private void buildDetailLoadingCard()`
+
+Fills `#detailLoadingCard` with a centered spinner and caption.
+
+#### buildDetailSection
+
+`private JPanel buildDetailSection(String title, Component... contents)`
+
+Builds a titled detail-view section containing the given components.
+
+#### buildDetailSectionTitle
+
+`private JLabel buildDetailSectionTitle(String text, boolean withDivider)`
+
+Builds a centred bold section title, optionally topped with a divider rule.
+
+#### buildDetailSectionTitleRow
+
+`private JComponent buildDetailSectionTitleRow(String title, JButton popBtn)`
+
+Builds a divider-topped section title row with the title centred between a strut
+matching the pop-out button's width (so the title stays optically centred) and the
+button itself.
+
+#### buildDetailSectionTitleRow
+
+`private JComponent buildDetailSectionTitleRow(String title, Runnable onPopout)`
+
+Builds a section title row with a pop-out button wired to the given action.
+
+#### buildDetailSectionWithPopout
+
+`private JPanel buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)`
+
+Builds a titled detail-view section whose title row carries a pop-out button.
+
+#### buildEyeIcon
+
+`private Icon buildEyeIcon(int size)`
+
+Loads the bundled `eye.png` scaled to a square icon for the view-only button.
+
+#### buildLeftArrowIcon
+
+`private Icon buildLeftArrowIcon()`
+
+Paints the small left-pointing triangle used by the detail view's Back button.
+
+#### buildLinkButton
+
+`private JButton buildLinkButton(String text, String tooltip, Runnable onClick)`
+
+Builds a detail-view link button that runs the given action when clicked.
+
+#### buildLinksBlock
+
+`private JPanel buildLinksBlock()`
+
+Builds the Links detail section's content: Wiki and Live Prices buttons for the current item.
+
+#### buildMarketInfoBlock
+
+`private JPanel buildMarketInfoBlock()`
+
+Builds the market-info section (buy limit, GE value, volatility, liquidity, 30-day range, etc.).
+
+#### buildMarketInfoPair
+
+`private JPanel buildMarketInfoPair(String leftLabel, JLabel leftValue, String rightLabel, JLabel rightValue)`
+
+Builds a two-column grid pairing two captioned values side by side (Market Info / alch rows).
+
+#### buildNotificationsSection
+
+`private void buildNotificationsSection()`
+
+Builds the notifications section: the rules table and its add/remove/edit controls.
+
+#### buildOverviewGrid
+
+`private JPanel buildOverviewGrid()`
+
+Builds (and remembers) the sidebar overview grid.
+
+#### buildPopoutButton
+
+`private JButton buildPopoutButton(Runnable onClick)`
+
+Builds a borderless pop-out button that runs the given action when clicked.
+
+#### buildPopoutIcon
+
+`private Icon buildPopoutIcon()`
+
+Paints the small box-with-arrow "open in new window" icon used by pop-out buttons.
+
+#### clearItemValue
+
+`private void clearItemValue(JLabel label, String text)`
+
+Resets a value label to plain text, dropping its tooltip and any hover-tint listener.
+
+#### closePopouts
+
+`private void closePopouts()`
+
+Disposes all open pop-out windows (e.g. when leaving the detail view).
+
+#### createOverviewGrid
+
+`private JPanel createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)`
+
+Creates an overview grid panel that custom-paints its own dividers: a vertical rule
+after the window-label column and a horizontal rule between consecutive rows, both
+derived from the live label positions so they track layout changes.
+
+#### currentDetailItem
+
+`private TrackedItem currentDetailItem()`
+
+- **Returns:** the item currently shown in the detail view (a tracked item or the transient preview), or null.
+
+#### expandedAcqHeader
+
+`private static String expandedAcqHeader(String compact)`
+
+- **Returns:** the roomy pop-out header for a compact acquisitions column name.
+
+#### fillOverviewGrid
+
+`private void fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)`
+
+Lays out the overview grid's header and one row of price/volume labels per selected time window.
+
+#### formatDuration
+
+`private static String formatDuration(long seconds)`
+
+Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration.
+
+#### fullWindowLabel
+
+`private static String fullWindowLabel(TimeWindow w)`
+
+- **Returns:** the long-form window name used by the pop-out overview grid.
+
+#### geTax
+
+`private long geTax(long avgPrice)`
+
+- **Returns:** the Grand Exchange sell tax on a unit at `avgPrice` (per the live GE tax rules).
+
+#### getBoundItemId
+
+`public int getBoundItemId()`
+
+- **Returns:** the item id currently bound to this detail view, or -1 when none.
+
+#### installVolumeValue
+
+`private void installVolumeValue(JLabel label, long vol, boolean full)`
+
+Sets a volume cell's compact/full text with a full-number tooltip and hover tint, or a placeholder.
+
+#### isDetailLoading
+
+`private boolean isDetailLoading(TrackedItem item)`
+
+- **Returns:** whether `item` is a tradeable preview whose prices have not yet loaded (or failed).
+
+#### isEditingNotifications
+
+`public boolean isEditingNotifications()`
+
+- **Returns:** whether the user is mid-edit in the notifications table.
+
+#### isLoadingVisible
+
+`public boolean isLoadingVisible()`
+
+- **Returns:** whether the loading-spinner placeholder (rather than the populated card) is currently shown.
+
+#### isPreview
+
+`public boolean isPreview()`
+
+- **Returns:** whether the shown item is a read-only preview rather than a tracked item.
+
+#### newSectionWrapper
+
+`private JPanel newSectionWrapper()`
+
+- **Returns:** an empty vertical wrapper panel used to stack a detail section's rows.
+
+#### notifyNotificationsEdited
+
+`private void notifyNotificationsEdited()`
+
+Notifies the plugin (via callback) that the current item's notification rules
+changed, so it can persist them.
+
+#### onLeaveDetail
+
+`public void onLeaveDetail()`
+
+Clears the bound item and stops any in-flight loading/pop-outs when the host leaves the detail view.
+
+#### onRebuild
+
+`public boolean onRebuild()`
+
+Refreshes the bound item from the host's current tracked state on a list rebuild: clears a stale
+preview once the item is tracked, repopulates in place, and reports whether an item is still shown
+so the host can fall back to the main list when it has gone.
+
+- **Returns:** `true` if an item is still shown, `false` if the bound item has disappeared
+
+#### openCollectionLogPopout
+
+`private void openCollectionLogPopout()`
+
+Opens the editable acquisitions (collection log) table in a standalone pop-out window.
+
+#### openGraphPopout
+
+`private void openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)`
+
+Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph.
+
+#### openOverviewPopout
+
+`private void openOverviewPopout()`
+
+Opens the price overview grid in a standalone pop-out window.
+
+#### openPricesLink
+
+`private void openPricesLink()`
+
+Opens the wiki realtime prices page for the item currently shown in the detail view.
+
+#### openWikiLink
+
+`private void openWikiLink()`
+
+Opens the OSRS Wiki page for the item currently shown in the detail view.
+
+#### overviewMidpoint
+
+`private static long overviewMidpoint(WikiRealtimePriceClient.PricePoint p)`
+
+- **Returns:** the high/low midpoint of a price point, or whichever side is known when one is missing.
+
+#### populateDetail
+
+`private void populateDetail(TrackedItem item)`
+
+Fills every detail section from an item's current state: header name/icon/quantity,
+item and collection values, overview grid, charts, market info (times, volatility,
+liquidity, range, pressure), alch figures, notifications, and the acquisitions log.
+Called whenever the shown item's data changes.
+
+#### populateOverviewGrid
+
+`private void populateOverviewGrid(Set<TimeWindow> rows)`
+
+(Re)creates the overview grid panels (sidebar and pop-out) for the given set of time-window rows.
+
+#### populateOverviewLabels
+
+`private void populateOverviewLabels(Map<TimeWindow,JLabel[]> labels, TrackedItem item, boolean full)`
+
+Fills the overview grid's cells with an item's per-window high/low/avg/volume/Δ% values.
+
+#### preserveDetailScroll
+
+`private void preserveDetailScroll(Runnable refresh)`
+
+Runs a refresh-in-place of the open detail card, keeping the enclosing scroll
+pane's vertical position. The scroll yank this guards against was the
+description area's caret scrolling itself into view on `setText` — muzzled
+at the source with `DefaultCaret#NEVER_UPDATE` — so this is defensive:
+layout is forced synchronously and the position re-asserted in the same EDT
+event, with a queued re-assert for layout that settles late (async item images).
+Opening a different item still starts at the top, since `#show(int)`
+bypasses this.
+
+#### rebuildOverviewGrid
+
+`private void rebuildOverviewGrid()`
+
+Rebuilds the price overview grid to match the configured preset of time-window rows.
+
+#### refreshDetailData
+
+`public void refreshDetailData(int itemId)`
+
+Re-populates the open detail view with fresh data for `itemId` (no-op if a different item is shown).
+
+#### refreshPopouts
+
+`private void refreshPopouts(TrackedItem item)`
+
+Pushes fresh data for `item` into every open pop-out window.
+
+#### scrollAcquisitionsToBottom
+
+`private void scrollAcquisitionsToBottom()`
+
+Scrolls the acquisitions log to its newest (bottom) entry once layout has settled.
+
+#### setOverviewPlaceholder
+
+`private void setOverviewPlaceholder(JLabel label)`
+
+Resets an overview cell to the `"-"` placeholder.
+
+#### setPriceCell
+
+`private void setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)`
+
+Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset.
+
+#### show
+
+`public void show(int itemId)`
+
+Switches to the detail card for an item, requesting its full data and populating the view.
+
+#### showPopout
+
+`private void showPopout(String title, JComponent content, Consumer<TrackedItem> refresher, Runnable onClose)`
+
+Opens a non-modal pop-out window hosting `content`, registering its
+refresher so live updates reach it and running `onClose` when dismissed.
+
+#### showPreview
+
+`public void showPreview(TrackedItem item)`
+
+Opens a read-only preview of an untracked item. The item is not in the tracked list; the plugin
+supplies its price/history data directly and the tracked-only sections stay hidden.
+
+#### shownDetailItem
+
+`private TrackedItem shownDetailItem()`
+
+- **Returns:** the item currently backing the detail view (tracked or preview), or `null`.
+
+#### shownItem
+
+`public TrackedItem shownItem()`
+
+- **Returns:** the item backing the detail view (tracked or preview), or `null` when none is shown.
+
+#### spelledInterval
+
+`private static String spelledInterval(TimeWindow window)`
+
+- **Returns:** the window's long label lower-cased for use mid-sentence in tooltips.
+
+#### stopDetailLoading
+
+`private void stopDetailLoading()`
+
+Stops the spinner animation and cancels the pending load-timeout, if any.
+
+#### stopLoading
+
+`public void stopLoading()`
+
+Stops the loading spinner and its safety timeout (used when the host is disposed).
+
+#### styleNotifButton
+
+`private void styleNotifButton(JButton btn, Color fg)`
+
+Applies the shared small-button styling to a notifications-section button.
+
+#### thirtyDayRange
+
+`private long[] thirtyDayRange(TrackedItem item)`
+
+- **Returns:** the `[min, max]` price range over the item's last 30 days via `MarketClassifier`.
+
+#### toggleDetailTracking
+
+`private void toggleDetailTracking()`
+
+Toggles tracking of the item shown in the detail view (#138), driven by the header button.
+A read-only preview is added to the tracked list (the next rebuild swaps the preview for the
+real tracked detail); a tracked item is untracked but stays open as a preview so the detail
+view does not bounce back to the main list.
+
+#### updateAcqPopoutButton
+
+`private void updateAcqPopoutButton()`
+
+Hides the acquisitions pop-out button while its pop-out window is already open.
+
+#### updateMarketInfoTimes
+
+`public void updateMarketInfoTimes()`
+
+Live-updates the Market Info last-bought / last-sold relative times for the shown detail item.
+
+#### windowVolume
+
+`private long windowVolume(TrackedItem item, TimeWindow window)`
+
+- **Returns:** the total traded volume for an item over the given window, or 0 if unknown.
+
+---
+
+## com.oveduumnakal.DetailView.Layout
+
+_enum_
+
+`enum Layout`
+
+Section arrangement: the sidebar's vertical stack, or the #109 dashboard's two-column layout.
+
+### Enum Constant Summary
+
+| Enum Constant | Description |
+|---|---|
+| `DASHBOARD` |  |
+| `STACK` |  |
+
+### Enum Constant Detail
+
+#### DASHBOARD
+
+`DASHBOARD`
+
+#### STACK
+
+`STACK`
+
+---
+
+## com.oveduumnakal.DetailViewHost
+
+_interface_
+
+`public interface DetailViewHost`
+
+The seam a `DetailView` uses to reach the state and callbacks it does not own itself (#110).
+The detail view was extracted from `StockpilePanel` so a second live instance (the #109
+dashboard window) can exist; everything the extracted component still needs from its host &mdash;
+shared services, the plugin edit callbacks, and Back navigation &mdash; is supplied through this
+interface rather than direct field access. `StockpilePanel` implements it by delegating to
+the fields and callbacks it already holds.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `acquisitionsEdited(int itemId)` | Signals that the acquisitions log for `itemId` was edited in-view. |
+| `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId` from the detail header Track button (#138), honouring the add mode. |
+| `void` | `clearAcquisitions(int itemId)` | Clears the acquisitions log for `itemId`. |
+| `StockpileConfig` | `config()` |  |
+| `String` | `examine(int itemId)` |  |
+| `long` | `fireRunePrice()` |  |
+| `ItemManager` | `itemManager()` |  |
+| `long` | `natureRunePrice()` |  |
+| `void` | `notificationsEdited(int itemId)` | Signals that the notifications for `itemId` were edited in-view. |
+| `void` | `onBack()` | Invoked by the detail view's Back control. |
+| `void` | `requestDetailData(int itemId)` | Asks the plugin to (re)fetch the detailed price/history data for `itemId`. |
+| `TrackedItem` | `trackedItem(int itemId)` |  |
+| `void` | `untrackToPreview(int itemId)` | Untracks `itemId` but keeps it open as a read-only preview (#138). |
+
+### Method Detail
+
+#### acquisitionsEdited
+
+`void acquisitionsEdited(int itemId)`
+
+Signals that the acquisitions log for `itemId` was edited in-view.
+
+#### addItem
+
+`void addItem(int itemId, TrackItemMode mode)`
+
+Tracks `itemId` from the detail header Track button (#138), honouring the add mode.
+
+#### clearAcquisitions
+
+`void clearAcquisitions(int itemId)`
+
+Clears the acquisitions log for `itemId`.
+
+#### config
+
+`StockpileConfig config()`
+
+- **Returns:** the live plugin config (colours, toggles, section visibility) the detail view reads.
+
+#### examine
+
+`String examine(int itemId)`
+
+- **Returns:** the examine text for `itemId`, or `null`/empty when none is cached.
+
+#### fireRunePrice
+
+`long fireRunePrice()`
+
+- **Returns:** the current fire-rune price used for high-alch profit figures.
+
+#### itemManager
+
+`ItemManager itemManager()`
+
+- **Returns:** the shared item manager, for icon images and item lookups.
+
+#### natureRunePrice
+
+`long natureRunePrice()`
+
+- **Returns:** the current nature-rune price used for high-alch profit figures.
+
+#### notificationsEdited
+
+`void notificationsEdited(int itemId)`
+
+Signals that the notifications for `itemId` were edited in-view.
+
+#### onBack
+
+`void onBack()`
+
+Invoked by the detail view's Back control. The sidebar returns to the main list; the dashboard
+window disposes itself.
+
+#### requestDetailData
+
+`void requestDetailData(int itemId)`
+
+Asks the plugin to (re)fetch the detailed price/history data for `itemId`.
+
+#### trackedItem
+
+`TrackedItem trackedItem(int itemId)`
+
+- **Returns:** the tracked item backing `itemId`, or `null` if it is not tracked.
+
+#### untrackToPreview
+
+`void untrackToPreview(int itemId)`
+
+Untracks `itemId` but keeps it open as a read-only preview (#138).
 
 ---
 
@@ -4161,15 +5515,15 @@ field for numeric/percent ones.
 |---|---|---|
 | `private JComponent` | `active` |  |
 | `private final JComboBox<String>` | `combo` |  |
-| `private final Map<Integer,TrackedItem>` | `currentItems` |  |
 | `private final IntSupplier` | `detailItemId` |  |
 | `private final JTextField` | `field` |  |
+| `private final IntFunction<TrackedItem>` | `itemLookup` |  |
 
 ### Constructor Summary
 
 | Constructor | Description |
 |---|---|
-| `NotificationValueEditor(Map<Integer,TrackedItem> currentItems, IntSupplier detailItemId)` |  |
+| `NotificationValueEditor(IntFunction<TrackedItem> itemLookup, IntSupplier detailItemId)` |  |
 
 ### Method Summary
 
@@ -4188,10 +5542,6 @@ field for numeric/percent ones.
 
 `private final JComboBox<String> combo`
 
-#### currentItems
-
-`private final Map<Integer,TrackedItem> currentItems`
-
 #### detailItemId
 
 `private final IntSupplier detailItemId`
@@ -4200,11 +5550,15 @@ field for numeric/percent ones.
 
 `private final JTextField field`
 
+#### itemLookup
+
+`private final IntFunction<TrackedItem> itemLookup`
+
 ### Constructor Detail
 
 #### NotificationValueEditor
 
-`NotificationValueEditor(Map<Integer,TrackedItem> currentItems, IntSupplier detailItemId)`
+`NotificationValueEditor(IntFunction<TrackedItem> itemLookup, IntSupplier detailItemId)`
 
 ### Method Detail
 
@@ -8555,7 +9909,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 |---|---|---|
 | `private static final String` | `BUG_TEMPLATE` |  |
 | `private static final String` | `CARD_DETAIL` |  |
-| `private static final String` | `CARD_DETAIL_LOADING` |  |
 | `private static final String` | `CARD_LOGGED_OUT` |  |
 | `private static final String` | `CARD_MAIN` |  |
 | `private static final String` | `CL_AREA_STYLE` |  |
@@ -8569,9 +9922,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final Color` | `COLOR_LOW` |  |
 | `private static final Color` | `COLOR_LOW_STALE` |  |
 | `private static final Color` | `COLOR_VOLUME` |  |
-| `private static final int` | `DEFAULT_NOTIFICATION_ROWS` |  |
 | `private static final Dimension` | `DELTA_LABEL_SIZE` |  |
-| `private static final Color` | `DESCRIPTION_COLOR` |  |
 | `private static final Color` | `DIVIDER_COLOR` |  |
 | `private static final Color` | `DRAG_LINE_COLOR` |  |
 | `private static final int` | `DRAG_SCROLL_MARGIN` |  |
@@ -8589,11 +9940,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final Pattern` | `MD_LINK` | A markdown link `[label](url)` used for the changelog's issue references. |
 | `private static final String` | `NEW_CATEGORY_LABEL` |  |
 | `private static final NumberFormat` | `NUMBER_FORMAT` |  |
-| `private static final Color` | `OVERVIEW_ROW_DIVIDER` |  |
-| `private static final TimeWindow[]` | `OVERVIEW_WINDOWS` |  |
-| `private static final int` | `PRESSURE_BALANCED_HIGH` |  |
-| `private static final int` | `PRESSURE_BALANCED_LOW` | Buy% within [LOW, HIGH] reads as a Balanced Market; outside it, Buyers/Sellers. |
-| `private static final String` | `PRICES_BASE` |  |
 | `private static final int` | `PRICES_LEFT_PAD` |  |
 | `private static final int` | `PRICES_RIGHT_PAD` |  |
 | `private static final Border` | `PROFIT_SECTION_BORDER_COMPACT` |  |
@@ -8613,36 +9959,12 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final Border` | `TITLE_BORDER_NO_DIVIDER` |  |
 | `private static final Border` | `TITLE_BORDER_WITH_TOP_DIVIDER` |  |
 | `private static final String` | `UNCATEGORIZED_LABEL` |  |
-| `private static final String` | `WIKI_BASE` |  |
-| `private int` | `acqHoverCol` |  |
-| `private int` | `acqHoverRow` |  |
-| `private JButton` | `acqPopoutButton` |  |
-| `private AcquisitionsTableModel` | `acqPopoutModel` |  |
-| `private JScrollPane` | `acqPopoutScroll` |  |
-| `private JTable` | `acqPopoutTable` |  |
-| `private AcquisitionsTableModel` | `acquisitionsModel` |  |
-| `private JScrollPane` | `acquisitionsScroll` |  |
-| `private JPanel` | `acquisitionsSection` |  |
-| `private JTable` | `acquisitionsTable` |  |
-| `private final JLabel` | `alchEstProfit` |  |
-| `private JPanel` | `alchEstProfitRow` |  |
-| `private JPanel` | `alchInfoSection` |  |
-| `private Set<TimeWindow>` | `appliedOverviewRows` |  |
-| `private String` | `appliedSectionLayout` |  |
 | `private final JPanel` | `bottomPanel` |  |
-| `private final PressureVolumeLabel` | `buyPressureLabel` |  |
-| `private BuySellBar` | `buySellBar` |  |
 | `private final CardLayout` | `cardLayout` |  |
 | `private final JPanel` | `cardsHost` |  |
 | `private List<CategoryState>` | `categories` | Latest category state from the plugin, used to render the grouped/accordion list. |
 | `private JLabel` | `categoriesButton` | Header button (manage mode only) that opens the Manage Categories dialog. |
 | `private final CategoryActions` | `categoryActions` | Category create/rename/delete/reorder and per-item assignment operations. |
-| `private final JLabel` | `ccvAvg` |  |
-| `private final JLabel` | `ccvHigh` |  |
-| `private final JLabel` | `ccvLow` |  |
-| `private final JLabel` | `ccvProfit` |  |
-| `private final JLabel` | `ccvQuantity` |  |
-| `private JPanel` | `ccvSection` |  |
 | `private final Changelog` | `changelog` | Bundled release notes shown in the changelog window. |
 | `private JButton` | `changelogButton` | The footer "What's New ✨" / "Change log" indicator button. |
 | `private final JButton` | `clearButton` |  |
@@ -8655,27 +9977,13 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final StockpileConfig` | `config` |  |
 | `private EstimatesPosition` | `currentEstimatesPosition` |  |
 | `private final Map<Integer,TrackedItem>` | `currentItems` |  |
-| `private final JPanel` | `detailCard` |  |
-| `private final JTextArea` | `detailDescriptionArea` | Examine text renderer. |
-| `private String` | `detailExamineText` |  |
-| `private final JLabel` | `detailIconLabel` |  |
-| `private int` | `detailItemId` |  |
-| `private boolean` | `detailItemTracked` | Whether the item currently shown in the detail view is tracked (vs a read-only preview) (#138). |
-| `private boolean` | `detailLoadTimedOut` | Set when `#detailLoadTimeout` fires so the spinner stops waiting on a load that failed silently. |
-| `private Timer` | `detailLoadTimeout` | One-shot safety net that reveals the detail view if a preview's prices never arrive. |
-| `private final JPanel` | `detailLoadingCard` | Placeholder card showing a spinner while a preview item's prices are still being fetched. |
-| `private final JLabel` | `detailNameLabel` |  |
-| `private final JLabel` | `detailQtyLabel` |  |
-| `private JPanel` | `detailSectionsHost` |  |
-| `private final Spinner` | `detailSpinner` |  |
-| `private final JButton` | `detailTrackBtn` | Header Track/Untrack button in the detail view; label and colour track the shown item's state (#138). |
+| `private final DetailView` | `detailView` | The sidebar's detail view (extracted for #110); the host mounts it as the `#CARD_DETAIL` card. |
 | `private List<Integer>` | `dragGroupIds` | The dragged item's group (visual-order item ids), so a drag stays within its group. |
 | `private int` | `dragInsertIndex` | The list index where the dragged item would be inserted on drop. |
 | `private int` | `dragItemId` | Drag-reorder state. |
 | `private int` | `dragLineY` | The y-coordinate (in `#trackedItemsPanel` space) at which to paint the drop indicator line. |
 | `private int` | `dragScrollDir` | Autoscroll direction while dragging: -1 up, +1 down, 0 none. |
 | `private Timer` | `dragScrollTimer` | Edge-autoscroll timer active while a drag hovers near the viewport top/bottom. |
-| `private volatile boolean` | `editingNotifications` |  |
 | `private final IntFunction<String>` | `examineLookup` |  |
 | `private boolean` | `favoritesCollapsed` |  |
 | `private JLabel` | `filterToggle` | Header toggle that shows/hides the tracked-list filter field. |
@@ -8683,40 +9991,18 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final JPanel` | `footerPanel` |  |
 | `private final JPanel` | `geEstimatesSlotBottom` |  |
 | `private final JPanel` | `geEstimatesSlotTop` |  |
-| `private PriceGraphPanel.LineSet` | `graphLineSet` |  |
-| `private boolean` | `graphSmooth` |  |
 | `private boolean` | `groupingActive` | Whether the list is currently grouped (favorites or categories active); disables drag reorder, which is global-order only. |
-| `private final JLabel` | `haProfit` |  |
-| `private final JLabel` | `haValue` |  |
 | `private int` | `hoveredItemId` |  |
-| `private final JLabel` | `icvAvg` |  |
-| `private final JLabel` | `icvHigh` |  |
-| `private final JLabel` | `icvLow` |  |
-| `private final JLabel` | `icvVolume` |  |
 | `private final ItemManager` | `itemManager` |  |
-| `private JPanel` | `itemValuesSection` |  |
-| `private final JLabel` | `laProfit` |  |
-| `private final JLabel` | `laValue` |  |
 | `private long` | `lastCoinsIconValue` |  |
 | `private volatile Instant` | `lastPriceRefresh` |  |
 | `private final JLabel` | `lastRefreshLabel` |  |
 | `private PriceIndicatorMode` | `lastRenderIndicatorMode` |  |
 | `private List<TrackedItem>` | `lastRenderItems` | Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full plugin refresh, and so a session reset (`#resetSession()`) re-primes from the same list. |
-| `private JPanel` | `linksSection` |  |
 | `private final Timer` | `loadingGlowTimer` |  |
 | `private final List<JLabel>` | `loadingLabels` |  |
 | `private JPanel` | `loggedOutCard` | The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport while it shows. |
-| `private JPanel` | `marketInfoSection` |  |
-| `private final JLabel` | `miBuyLimit` |  |
-| `private final JLabel` | `miGeTax` |  |
-| `private final JLabel` | `miLastBought` |  |
-| `private final JLabel` | `miLastSold` |  |
-| `private final JLabel` | `miLiquidity` |  |
-| `private final JLabel` | `miVolatility` |  |
 | `private long` | `natureRunePrice` |  |
-| `private NotificationsTableModel` | `notificationsModel` |  |
-| `private JPanel` | `notificationsSection` |  |
-| `private JTable` | `notificationsTable` |  |
 | `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
@@ -8741,37 +10027,24 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Runnable` | `onWhatsNewSeen` | Callback to persist that the current release's "What's New" has been seen. |
 | `private final List<PopoutHandle>` | `openPopouts` |  |
 | `private final List<Integer>` | `orderedItemIds` | Item ids in current display order, kept in sync on each `#rebuild`, used to compute reorder targets. |
-| `private JPanel` | `overviewGrid` |  |
-| `private final Map<TimeWindow,JLabel[]>` | `overviewLabels` |  |
-| `private final List<JLabel>` | `overviewWindowLabels` |  |
 | `private JButton` | `portfolioChartButton` | Opens the portfolio value chart; hidden until at least two history points exist to plot. |
 | `private Component` | `portfolioChartStrut` | WEST strut balancing `#portfolioChartButton` so the title stays centred; toggled with it. |
 | `private final List<Runnable>` | `portfolioPopoutRefreshers` | Re-fetch actions for open portfolio-chart pop-outs; run on every rebuild so they update live. |
-| `private final JLabel` | `pressureMarketLabel` |  |
-| `private TrackedItem` | `previewItem` | A transient, read-only item shown in the detail view via `#showPreview` but never added to the tracked list. |
-| `private PriceGraphPanel` | `priceGraph` |  |
-| `private JPanel` | `priceGraphSection` |  |
-| `private JPanel` | `priceOverviewSection` |  |
-| `private PriceGraphPanel` | `pricePopoutGraph` |  |
-| `private PriceRangeBar` | `priceRangeBar` |  |
 | `private final JLabel` | `profitLabel` |  |
 | `private final JPanel` | `profitSection` |  |
 | `private final List<PulseEntry>` | `pulseEntries` |  |
 | `private final Timer` | `pulseTimer` |  |
-| `private final JLabel` | `rangePositionLabel` |  |
 | `private final Timer` | `refreshAgeTimer` |  |
 | `private boolean` | `reorderMode` | Whether the list is in reorder mode, which reveals the per-row drag/arrow strip. |
 | `private JLabel` | `reorderToggle` | Header toggle that enters/exits reorder mode. |
 | `private final Map<Long,ImageIcon>` | `rowIconCache` | 18px row icons keyed by `#iconCacheKey` (item id + rendered stack size), so quantity-aware sprites are cached per stack. |
 | `private final IconTextField` | `searchField` |  |
 | `private final JPanel` | `searchResultsPanel` |  |
-| `private final PressureVolumeLabel` | `sellPressureLabel` |  |
 | `private final JLabel` | `sessionLabel` | Static grey "Session:" prefix; never recoloured, mirroring the profit row's prefix. |
 | `private JPanel` | `sessionRow` | The row wrapping `#sessionLabel`; toggled as a whole so no empty row lingers when hidden. |
 | `private final SessionStats` | `sessionStats` | In-memory session tracking; baseline captured on the first priced render after a reset. |
 | `private final JLabel` | `sessionValueLabel` | Value gained/lost since the session baseline (login or manual reset); the only part recoloured. |
 | `private JLabel` | `sortToggle` | Header toggle that opens the sort-mode menu; highlighted when a non-manual sort is active. |
-| `private JPanel` | `topStack` |  |
 | `private final JLabel` | `totalAvgDeltaLabel` |  |
 | `private final JLabel` | `totalAvgLabel` |  |
 | `private final JPanel` | `totalAvgRow` |  |
@@ -8789,8 +10062,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Set<Integer>` | `trackedItemIds` |  |
 | `private final JPanel` | `trackedItemsPanel` |  |
 | `private boolean` | `uncategorizedCollapsed` |  |
-| `private PriceGraphPanel` | `volumeGraph` |  |
-| `private JPanel` | `volumeGraphSection` |  |
 | `private boolean` | `whatsNew` | Whether the footer indicator is currently in the highlighted "What's New" state. |
 
 ### Constructor Summary
@@ -8803,41 +10074,20 @@ constructor, and the plugin pushes data back via `#rebuild` and
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private void` | `acqAddRow(JTable table, AcquisitionsTableModel model)` | Appends a new empty acquisition row to the table and scrolls it into view. |
-| `private void` | `acqClean(AcquisitionsTableModel model)` | Consolidates the acquisitions log, merging like rows and dropping empty ones. |
-| `private void` | `acqClear()` | Clears all acquisitions for the current item after confirmation, via the plugin callback. |
-| `private void` | `acqRemoveSelected(JTable table, AcquisitionsTableModel model)` | Removes the selected acquisition rows and commits the change. |
-| `private JButton` | `acqTextButton(String text, Color fg)` | Builds a small flat text button used by the acquisitions pop-out toolbar. |
-| `private static String` | `acqTooltipLabel(int col)` |  |
+| `public void` | `acquisitionsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's acquisitions-edited callback when present. |
 | `private void` | `addFormRow(JPanel form, String label, JComponent field)` | Adds a labelled row (label above the field) to a vertical form panel. |
+| `public void` | `addItem(int itemId, TrackItemMode mode)` | {@inheritDoc} Delegates to the panel's add-item callback. |
 | `private void` | `addItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Adds a single tracked-item row plus its trailing spacer; `groupItems` scopes reorder within the group. |
 | `private void` | `addListenerRecursively(Component c, MouseListener listener)` | Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one. |
-| `private String` | `alchProfitTooltip(String label, long alchValue, long itemAvg, int fireQty)` | Builds the tooltip breaking down an alch-profit figure: alch value minus item cost and rune cost. |
 | `private static void` | `appendChangelogAnchor(StringBuilder sb, int sectionIndex)` | Appends a named scroll anchor (`sec `) matching the ids `#extractSections` hands the nav. |
 | `private static void` | `appendChangelogDiv(StringBuilder sb, String style, int indentLevel, String html)` | Appends a ` ` with the given inline CSS `style` and left indent, wrapping `html`. |
-| `private void` | `applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)` | Wires an acquisitions table's fonts, row height, per-column renderers/editors, and headers for either the compact sidebar table or the expanded pop-out table. |
-| `private void` | `applyBuyLimit(TrackedItem item)` | Shows the Buy Limit cell as `used / total` when purchases have been tracked in the current window (with a reset-countdown tooltip), the plain total when untouched, or `N/A` when the item has no GE limit. |
-| `private void` | `applyBuySellPressure(TrackedItem item)` | Computes the buy/sell volume split over the configured window and updates the pressure bar + labels. |
 | `private void` | `applyChangelogButtonStyle()` | Applies the indicator styling — gold while "What's New", muted once seen. |
-| `private void` | `applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)` | Sets a label to the signed percent change of the current price vs. |
-| `private void` | `applyDetailCard()` | Shows either the spinner placeholder or the populated detail view for the currently open item, depending on whether its prices are still loading. |
-| `private void` | `applyDetailSectionLayout()` | Reorders and shows/hides the detail sections to match the configured slot assignments. |
 | `private void` | `applyEstimatesPosition(EstimatesPosition position)` | Moves the GE estimates block above or below the other sections per the configured position. |
 | `private void` | `applyEstimatesSpacing(EstimatesSpacing spacing)` | Applies normal or compact row padding to the GE estimates block per the configured spacing. |
-| `private void` | `applyExamineWrap()` | Sets the current examine text on the description area. |
-| `private void` | `applyLiquidity(long vol24)` | Sets the market-info liquidity rating from the last 24h volume via `MarketClassifier`. |
 | `private void` | `applyLiveStaleness(JLabel cell, long value, String sideLabel, String timeLabel, long tradeTime, Color freshColor, Color staleColor)` | Reflects the staleness of a Ltst high/low value on its cell: appends the last trade time as a second tooltip line and dims the value's color when that trade is older than the configured threshold. |
-| `private void` | `applyNotificationRenderers()` | Wires the per-column cell editors/renderers on the notifications table to the current metric's input type. |
-| `private void` | `applyProfitLabel(JLabel label, long profit, boolean known)` | Sets a profit label to a signed, colored gp figure, or a placeholder when the profit is unknown. |
-| `private void` | `applyRangePosition(long min, long max, long live)` | Sets the market-info "30-day range position" rating for where the live price sits within its month range. |
 | `private void` | `applyRowIcon(JLabel iconLabel, TrackedItem item)` | Sets a label's 18px quantity-aware item icon from `#rowIconCache`, loading asynchronously on a miss. |
-| `private void` | `applyTableRenderers()` | Applies the acquisitions renderers to the sidebar (compact) table. |
 | `private void` | `applyTotalTooltip(JLabel label, long value, ValueFormat fmt)` | Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise. |
-| `private void` | `applyTradeTime(JLabel label, long epochSeconds)` | Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip. |
-| `private void` | `applyVolatility(TrackedItem item)` | Sets the market-info volatility rating from the item's week series via `MarketClassifier`. |
 | `private void` | `autoCategorizeFromDialog(JDialog dialog)` | Prompts for the auto-categorize scope (uncategorized only vs. |
-| `private JPanel` | `buildAlchBlock()` | Builds the alch-info section (high/low alch values and the high-alch profit estimate). |
-| `private Icon` | `buildBrushIcon()` | Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions button. |
 | `private JComboBox<String>` | `buildCategoryPicker(TrackedItem item)` | Builds the per-row category picker used in the manage row: assigns the item to an existing category, clears it to Uncategorized, or prompts to create-and-assign a new one. |
 | `private JButton` | `buildChangelogBadge()` | Builds the top-right header badge that opens the changelog window; `#applyChangelogButtonStyle` sets its label and colour. |
 | `private JComponent` | `buildChangelogContent()` | Builds the changelog window: a left navigation column listing each release, with the selected release's sections expanded beneath it as quick-links that jump to that section, and the selected release's notes rendered on the right. |
@@ -8845,14 +10095,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JLabel` | `buildChangelogNavVersion(String version, boolean selected)` | Builds one clickable release row for the changelog nav; the selected release is gold, the rest muted. |
 | `private Icon` | `buildChartIcon()` | Paints the small line-chart icon used to open the portfolio value chart. |
 | `private JPanel` | `buildCompactValueRow(TrackedItem item)` | Builds the compact-view row-2 value line: `total value (single item value)`, both in short format and both derived from the latest avg-of-1 price (e.g. |
-| `private JPanel` | `buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)` | Builds the stacked current-values block (high/low/avg plus a fourth metric row), colouring each label by metric and appending a divider-topped profit row when a profit label is supplied. |
-| `private void` | `buildDetailCard()` | Constructs the detail-view card once: the header, the scrollable body, and every detail section (current values, market info, charts, overview grid, alch, notifications, acquisitions log). |
-| `private void` | `buildDetailLoadingCard()` | Fills `#detailLoadingCard` with a centered spinner and caption. |
-| `private JPanel` | `buildDetailSection(String title, Component... contents)` | Builds a titled detail-view section containing the given components. |
-| `private JLabel` | `buildDetailSectionTitle(String text, boolean withDivider)` | Builds a centred bold section title, optionally topped with a divider rule. |
-| `private JComponent` | `buildDetailSectionTitleRow(String title, JButton popBtn)` | Builds a divider-topped section title row with the title centred between a strut matching the pop-out button's width (so the title stays optically centred) and the button itself. |
-| `private JComponent` | `buildDetailSectionTitleRow(String title, Runnable onPopout)` | Builds a section title row with a pop-out button wired to the given action. |
-| `private JPanel` | `buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)` | Builds a titled detail-view section whose title row carries a pop-out button. |
 | `private JPanel` | `buildDividerStrip()` | Builds the horizontal divider strip drawn between the totals block and the footer. |
 | `private Icon` | `buildEyeIcon(int size)` | Loads the bundled `eye.png` scaled to a square icon for the view-only button. |
 | `private JLabel` | `buildFavoriteStar(TrackedItem item)` | Builds the favorite-toggle star shown beneath each row's remove button. |
@@ -8860,20 +10102,11 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JButton` | `buildFooterMenu(String text, JPopupMenu menu, String tooltip)` | A footer button that drops `menu` below itself, grouping related actions so the footer stays one row. |
 | `private JMenuItem` | `buildFooterMenuItem(String text, Runnable onClick, String tooltip)` | One action inside a footer dropdown, styled to match the footer links. |
 | `private JPanel` | `buildGroupHeader(String title, String groupKey, boolean collapsed, long groupTotal)` | Builds a clickable accordion header (chevron + title + group total value) that toggles the group's collapsed state. |
-| `private JButton` | `buildIconButton(Icon icon, String tooltip, Runnable onClick)` | Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight. |
+| `static JButton` | `buildIconButton(Icon icon, String tooltip, Runnable onClick)` | Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight. |
 | `private static String` | `buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)` | Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params. |
-| `private Icon` | `buildLeftArrowIcon()` | Paints the small left-pointing triangle used by the detail view's Back button. |
-| `private JButton` | `buildLinkButton(String text, String tooltip, Runnable onClick)` | Builds a detail-view link button that runs the given action when clicked. |
-| `private JPanel` | `buildLinksBlock()` | Builds the Links detail section's content: Wiki and Live Prices buttons for the current item. |
 | `private JPanel` | `buildManageEastControls(TrackedItem item)` | Builds the right column of the manage row: an always-visible remove button stacked over a favorite star. |
 | `private JPanel` | `buildManageRow(TrackedItem item, List<TrackedItem> groupItems)` | Builds the dedicated manage-mode row: a stripped-down layout showing only what's needed to organise items. |
-| `private JPanel` | `buildMarketInfoBlock()` | Builds the market-info section (buy limit, GE value, volatility, liquidity, 30-day range, etc.). |
-| `private JPanel` | `buildMarketInfoPair(String leftLabel, JLabel leftValue, String rightLabel, JLabel rightValue)` | Builds a two-column grid pairing two captioned values side by side (Market Info / alch rows). |
-| `private void` | `buildNotificationsSection()` | Builds the notifications section: the rules table and its add/remove/edit controls. |
 | `private JLabel` | `buildOverlayToggle(TrackedItem item)` | Builds the overlay-select control beneath the favorite star: a painted monitor icon that toggles whether the item appears in the on-screen overlay. |
-| `private JPanel` | `buildOverviewGrid()` | Builds (and remembers) the sidebar overview grid. |
-| `private JButton` | `buildPopoutButton(Runnable onClick)` | Builds a borderless pop-out button that runs the given action when clicked. |
-| `private Icon` | `buildPopoutIcon()` | Paints the small box-with-arrow "open in new window" icon used by pop-out buttons. |
 | `private JPanel` | `buildReorderStrip(TrackedItem item, List<TrackedItem> groupItems)` | Builds the left reorder column (up/down, plus a drag handle when the list isn't grouped) for the manage row. |
 | `private JLabel` | `buildRowCompactToggle(TrackedItem item)` | Builds the per-item compact toggle beneath the overlay button (#210): a painted "≣" glyph that flips this row between the standard and compact two-row layouts, independent of the global compact toggle. |
 | `private JLabel` | `buildRowIcon(TrackedItem item)` | Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously on a miss. |
@@ -8882,33 +10115,29 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JPanel` | `buildTrackedItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Builds one row of the main list for a tracked item: icon, name, quantity, the configured data rows (prices/value/volume/profit), hover affordances, and a click handler that opens the item's detail view. |
 | `private static Icon` | `categoriesIcon(Color color)` | Draws a bulleted-list glyph — three dots, each followed by a line — tinted `color`. |
 | `private String` | `changelogButtonText()` |  |
-| `private void` | `clearItemValue(JLabel label, String text)` | Resets a value label to plain text, dropping its tooltip and any hover-tint listener. |
+| `public void` | `clearAcquisitions(int itemId)` | {@inheritDoc} Delegates to the panel's clear-acquisitions callback when present. |
 | `public void` | `clearSessionBaseline()` | Drops the session baseline without re-priming (used on profile change): the next rebuild captures the new profile's holdings as the baseline. |
-| `private void` | `closePopouts()` | Disposes all open pop-out windows (e.g. |
+| `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
 | `private void` | `commitDrag()` | Commits the in-progress drag: places the dragged item at its new slot within its own group and rewrites the full tracked order accordingly (kept within-group, since groups render in global order). |
 | `private List<Integer>` | `computeDragGroup(int itemId)` | Determines the dragged item's group as the contiguous run of item rows between accordion headers in the rendered list (the whole list when ungrouped), returning its item ids in visual order. |
+| `public StockpileConfig` | `config()` | {@inheritDoc} Supplies the panel's live plugin config to the detail view. |
 | `private void` | `confirmAndClearAll()` | Prompts for confirmation, then clears all tracked items via the plugin callback. |
 | `private static boolean` | `containsIgnoreCase(DefaultListModel<String> model, String value)` |  |
 | `private void` | `copyToClipboard(String text)` |  |
 | `private JLabel` | `createDeltaLabel()` | Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value. |
-| `private JPanel` | `createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)` | Creates an overview grid panel that custom-paints its own dividers: a vertical rule after the window-label column and a horizontal rule between consecutive rows, both derived from the live label positions so they track layout changes. |
-| `private TrackedItem` | `currentDetailItem()` |  |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
 | `private static String` | `escapeHtml(String text)` | Escapes the HTML-significant characters so text renders literally inside an HTML label. |
-| `private static String` | `expandedAcqHeader(String compact)` |  |
+| `public String` | `examine(int itemId)` | {@inheritDoc} Resolves the examine text through the panel's examine lookup. |
 | `private void` | `exportAcquisitionsCsv()` | Copies the acquisitions log as CSV to the clipboard once the plugin has built it. |
 | `private void` | `exportTrackedList()` | Copies the shareable tracked-list code to the clipboard once the plugin has built it. |
 | `private static List<ChangelogSection>` | `extractSections(String body)` |  |
 | `private static String` | `fieldValue(JComponent input)` |  |
-| `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
 | `private static Icon` | `filterIcon(Color color)` | Paints a small monochrome funnel (filter) icon in the given colour: a wide top bar tapering to a narrow central stem. |
-| `private static String` | `formatAge(long epochSeconds)` | Formats an epoch-second timestamp's age as a compact relative string, e.g. |
-| `private static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
-| `private static String` | `formatTotalGp(long value, ValueFormat fmt)` | Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`. |
-| `private static String` | `fullWindowLabel(TimeWindow w)` |  |
-| `private long` | `geTax(long avgPrice)` |  |
+| `public long` | `fireRunePrice()` | {@inheritDoc} Returns the fire-rune price the panel currently holds. |
+| `static String` | `formatAge(long epochSeconds)` | Formats an epoch-second timestamp's age as a compact relative string, e.g. |
+| `static String` | `formatTotalGp(long value, ValueFormat fmt)` | Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`. |
 | `public int` | `getDetailItemId()` |  |
 | `private static long` | `iconCacheKey(TrackedItem item)` |  |
 | `private void` | `importTrackedList()` | Prompts for a tracked-list code, merges it into the current profile, and reports the outcome. |
@@ -8920,80 +10149,61 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `installItemValue(JLabel label, long value, String prefix, Color tint)` | Installs a compact gp value on a label with no tooltip caption. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)` | Installs a prefixed compact gp value on a label via `#installShortValue`. |
 | `private void` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
-| `private void` | `installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)` | Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint. |
+| `static void` | `installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)` | Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint. |
 | `private static void` | `installToggleHover(JLabel button, BooleanSupplier selected, Consumer<Color> apply, Runnable restore)` | Installs grey↔gold hover colouring on a header toggle: an unselected (grey) button turns gold while hovered, a selected (gold) button turns grey, and its resting state colour is repainted on exit. |
-| `private void` | `installVolumeValue(JLabel label, long vol, boolean full)` | Sets a volume cell's compact/full text with a full-number tooltip and hover tint, or a placeholder. |
-| `private boolean` | `isDetailLoading(TrackedItem item)` |  |
 | `public boolean` | `isEditingNotifications()` |  |
 | `private boolean` | `isStale(long epochSeconds)` |  |
+| `public ItemManager` | `itemManager()` | {@inheritDoc} Supplies the panel's shared item manager to the detail view. |
 | `static Map<Integer,long[]>` | `liveSessionSnapshot(List<TrackedItem> items)` | Builds the session baseline snapshot (item id → [quantity, avg price]) from only the items whose prices came from a live fetch. |
 | `private JButton` | `makeRowControl(String glyph, String tooltip)` | Builds a compact, hover-revealed glyph button styled like the row's remove button. |
 | `private boolean` | `matchesFilter(TrackedItem item)` |  |
 | `private void` | `moveCategoryInDialog(JList<String> list, DefaultListModel<String> model, int delta)` | Moves the selected dialog category by `delta` and forwards the new index to the plugin. |
-| `private JPanel` | `newSectionWrapper()` |  |
-| `private void` | `notifyNotificationsEdited()` | Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. |
+| `public long` | `natureRunePrice()` | {@inheritDoc} Returns the nature-rune price the panel currently holds. |
+| `public void` | `notificationsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's notifications-edited callback when present. |
+| `public void` | `onBack()` | {@inheritDoc} Returns the sidebar panel to the main tracked-item list. |
 | `private void` | `onSearch(String query)` | Filters the add-item search dropdown to items matching the typed query. |
 | `private void` | `onTrackedFilterChanged()` | Re-renders the rows against the updated tracked-list filter text. |
 | `private void` | `openChangelogWindow()` | Opens the changelog window; the first open of a new release quiets the "What's New" indicator. |
-| `private void` | `openCollectionLogPopout()` | Opens the editable acquisitions (collection log) table in a standalone pop-out window. |
-| `private void` | `openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)` | Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph. |
 | `private void` | `openIssueForm(String dialogTitle, String template, String titlePrefix, List<IssueField> fields)` | Shows a modal form for an issue template, then opens the GitHub issue form in the browser with the entered title/fields pre-filled (via query params) so the user only has to review and click Submit on GitHub. |
 | `private void` | `openManageCategoriesDialog()` | Opens the modal Manage Categories dialog: create, rename, delete, and reorder categories. |
-| `private void` | `openOverviewPopout()` | Opens the price overview grid in a standalone pop-out window. |
 | `private void` | `openPortfolioChart()` | Opens a pop-out with the portfolio value history chart, fed live from the plugin's stored points. |
-| `private void` | `openPricesLink()` | Opens the wiki realtime prices page for the item currently shown in the detail view. |
 | `private void` | `openReportIssueForm()` | Opens the in-plugin "Report a bug" form. |
 | `private void` | `openRequestFeatureForm()` | Opens the in-plugin "Request a feature" form. |
 | `public void` | `openTrackedDetail(int itemId)` | Opens the tracked detail card for `itemId`. |
-| `private void` | `openWikiLink()` | Opens the OSRS Wiki page for the item currently shown in the detail view. |
 | `private int` | `overlayCount()` |  |
 | `private static Icon` | `overlayIcon(Color color)` | Paints a small monochrome monitor (on-screen overlay) icon in the given colour. |
-| `private static long` | `overviewMidpoint(WikiRealtimePriceClient.PricePoint p)` |  |
-| `private void` | `populateDetail(TrackedItem item)` | Fills every detail section from an item's current state: header name/icon/quantity, item and collection values, overview grid, charts, market info (times, volatility, liquidity, range, pressure), alch figures, notifications, and the acquisitions log. |
-| `private void` | `populateOverviewGrid(Set<TimeWindow> rows)` | (Re)creates the overview grid panels (sidebar and pop-out) for the given set of time-window rows. |
-| `private void` | `populateOverviewLabels(Map<TimeWindow,JLabel[]> labels, TrackedItem item, boolean full)` | Fills the overview grid's cells with an item's per-window high/low/avg/volume/Δ% values. |
-| `private void` | `preserveDetailScroll(Runnable refresh)` | Runs a refresh-in-place of the open detail card, keeping the enclosing scroll pane's vertical position. |
 | `public void` | `promptCategoryForItem(int itemId)` | Category prompt shown at track time (#211): a modal dropdown of the existing categories plus Uncategorized and a create-new option. |
 | `private void` | `pulseIfShown(JLabel label, int delta, PriceIndicatorMode mode)` | Starts a price pulse on the label unless the configured indicator mode suppresses it. |
 | `public void` | `rebuild(List<TrackedItem> rawItems, Instant newLastPriceRefresh, PriceIndicatorMode indicatorMode, boolean loggedIn, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed)` | Rebuilds the main item list from the latest tracked items and totals. |
 | `private void` | `rebuildChangelogNav(JPanel nav, List<Changelog.Release> releases, int selectedIndex, JEditorPane body)` | (Re)populates the changelog nav: one clickable row per release (selecting it loads its notes), and beneath the selected release its section quick-links, each of which scrolls the notes to that section. |
-| `private void` | `rebuildOverviewGrid()` | Rebuilds the price overview grid to match the configured preset of time-window rows. |
 | `public void` | `refreshDetailData(int itemId)` | Re-populates the open detail view with fresh data for `itemId` (no-op if a different item is shown). |
 | `private void` | `refreshFavoriteStar(JLabel star, boolean favorite)` | Applies a favorite star's visual from its row-hover/star-hover client flags: hidden when its row isn't hovered, the resting gold/grey glyph when the row is hovered, and a preview (light-gold fill to add, or grey outline to remove) when the star itself is hovered. |
-| `private void` | `refreshPopouts(TrackedItem item)` | Pushes fresh data for `item` into every open pop-out window. |
-| `private static void` | `removeHoverTint(JLabel label)` | Detaches any hover-tint listener from a label before its value is replaced. |
+| `static void` | `removeHoverTint(JLabel label)` | Detaches any hover-tint listener from a label before its value is replaced. |
 | `public void` | `removeSessionBaseline(int itemId)` | Drops one item's session-baseline entry when it is untracked, so removal is session-neutral. |
 | `private String` | `renderChangelogBody(String body)` | Renders a release's markdown body to HTML for the changelog window: `##`/`###`/`####` headings become sized/weighted/coloured headers that each indent one level deeper, their content indents one level further still, and `[#12](url)` issue links become clickable anchors. |
 | `private void` | `renderGroup(String title, String groupKey, boolean collapsed, List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)` | Renders one collapsible group: a clickable header plus its rows, unless empty (skipped) or collapsed (header only). |
 | `private void` | `renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)` | Renders the tracked rows into `#trackedItemsPanel`, grouped into the Favorites pseudo-group (pinned on top), then each user category in order, then Uncategorized. |
 | `private String` | `renderReleaseHtml(Changelog.Release release)` |  |
 | `private void` | `renderTrackedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)` | Clears and re-renders the tracked-item rows (empty placeholder, or the grouped rows), retaining the inputs so `#toggleReorderMode()` can re-render the manage layout without a full plugin refresh. |
+| `public void` | `requestDetailData(int itemId)` | {@inheritDoc} Delegates to the panel's detail-data request callback when present. |
 | `public void` | `resetSession()` | Re-baselines the session to the current holdings, so "Session:" restarts from zero. |
-| `private void` | `scrollAcquisitionsToBottom()` | Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. |
 | `public void` | `setAlchRunePrices(long naturePrice, long firePrice)` | Supplies the latest nature/fire rune prices used to compute high-alch profit in the detail view. |
-| `private void` | `setOverviewPlaceholder(JLabel label)` | Resets an overview cell to the `"-"` placeholder. |
-| `private void` | `setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)` | Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset. |
 | `private void` | `setTrackedFilterVisible(boolean visible)` | Sets the filter field's visibility, clearing any active filter when it is hidden. |
-| `private void` | `showDetail(int itemId)` | Switches to the detail card for an item, requesting its full data and populating the view. |
+| `private void` | `showDetail(int itemId)` | Reveals the tracked detail card for `itemId` in the card stack and binds the detail view to it. |
 | `private void` | `showMain()` | Returns to the main item list, closing any open pop-outs. |
 | `private void` | `showPopout(String title, JComponent content, Consumer<TrackedItem> refresher, Runnable onClose)` | Opens a non-modal pop-out window hosting `content`, registering its refresher so live updates reach it and running `onClose` when dismissed. |
 | `public void` | `showPreview(TrackedItem item)` | Opens a read-only preview of an untracked item in the detail view. |
 | `private void` | `showSortMenu()` | Opens the sort-mode menu on the header toggle, with the active mode checked and its current direction arrow shown. |
-| `private TrackedItem` | `shownDetailItem()` |  |
 | `public void` | `shutdown()` | Stops the animation timers so the panel can be disposed cleanly. |
-| `private static String` | `signedGp(long v)` |  |
+| `static String` | `signedGp(long v)` |  |
 | `private static Icon` | `sparkleIcon(Color color)` | Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge. |
-| `private static String` | `spelledInterval(TimeWindow window)` |  |
 | `private void` | `startPulse(JLabel label, int delta)` | Begins a color pulse on a label (green up / red down) reflecting the sign of a price change. |
-| `private void` | `stopDetailLoading()` | Stops the spinner animation and cancels the pending load-timeout, if any. |
 | `private void` | `stopDragAutoscroll()` | Stops the edge-autoscroll timer, if running. |
-| `private void` | `styleNotifButton(JButton btn, Color fg)` | Applies the shared small-button styling to a notifications-section button. |
 | `private JButton` | `styledFooterButton(String text, String tooltip)` | Shared styling for the footer's link and dropdown buttons. |
-| `private long[]` | `thirtyDayRange(TrackedItem item)` |  |
-| `private void` | `toggleDetailTracking()` | Toggles tracking of the item shown in the detail view (#138), driven by the header button. |
 | `private void` | `toggleReorderMode()` | Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. |
 | `private void` | `toggleTrackedFilter()` | Toggles the tracked-list filter field via the header filter button, focusing it when shown. |
-| `private void` | `updateAcqPopoutButton()` | Hides the acquisitions pop-out button while its pop-out window is already open. |
+| `public TrackedItem` | `trackedItem(int itemId)` | {@inheritDoc} Reads from the panel's current tracked-item map. |
+| `public void` | `untrackToPreview(int itemId)` | {@inheritDoc} Delegates to the panel's untrack-to-preview callback. |
 | `private void` | `updateCoinsIcon(long value)` | Updates the totals coin icon to the stack sprite for the given gp value, loading it asynchronously and caching per quantity. |
 | `private void` | `updateCompactToggle()` | Highlights the header compact toggle when compact view is active. |
 | `private void` | `updateCompactTotals(int itemCount, long totalAvg, long profit, boolean hasPrices, boolean showProfit, ValueFormat fmt)` | Populates the compact totals: item count plus a `total avg value (profit)` line, where the total avg uses the configured value format and the profit is always short format. |
@@ -9002,14 +10212,12 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `updateDropTarget(int yInPanel)` | Finds the list index where a drop at `yInPanel` would insert, and the indicator line position. |
 | `private void` | `updateFilterToggle()` | Updates the header filter button's funnel icon, tinting it gold while the filter field is shown. |
 | `private void` | `updateLoadingGlow()` | Timer tick that breathes the shared glow colour across every label still awaiting prices. |
-| `private void` | `updateMarketInfoTimes()` | Live-updates the Market Info last-bought / last-sold relative times for the shown detail item. |
 | `private void` | `updatePortfolioChartButton()` | Shows the chart pop-out button (and its balancing strut) only once at least two history points exist to plot. |
 | `private void` | `updatePulses()` | Timer tick that advances every active pulse's color toward its base, retiring finished ones. |
 | `private void` | `updateRefreshLabel()` | Updates the footer's "updated N ago" text from the last price-refresh timestamp. |
 | `private void` | `updateReorderToggle()` | Highlights the header reorder toggle and reveals the manage-categories button when manage mode is active. |
 | `private void` | `updateSessionLine(List<TrackedItem> items, boolean hasPrices)` | Renders the "Session:" line: the value gained/lost since the baseline, coloured green/red, with a tooltip splitting the change into price movement vs. |
 | `private void` | `updateSortToggle()` | Reflects the active sort on the header toggle: the effective direction arrow (highlighted) or the neutral glyph. |
-| `private long` | `windowVolume(TrackedItem item, TimeWindow window)` |  |
 
 ### Field Detail
 
@@ -9020,10 +10228,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 #### CARD_DETAIL
 
 `private static final String CARD_DETAIL`
-
-#### CARD_DETAIL_LOADING
-
-`private static final String CARD_DETAIL_LOADING`
 
 #### CARD_LOGGED_OUT
 
@@ -9079,17 +10283,9 @@ Pixels of left indent added per nesting level in the changelog body.
 
 `private static final Color COLOR_VOLUME`
 
-#### DEFAULT_NOTIFICATION_ROWS
-
-`private static final int DEFAULT_NOTIFICATION_ROWS`
-
 #### DELTA_LABEL_SIZE
 
 `private static final Dimension DELTA_LABEL_SIZE`
-
-#### DESCRIPTION_COLOR
-
-`private static final Color DESCRIPTION_COLOR`
 
 #### DIVIDER_COLOR
 
@@ -9170,28 +10366,6 @@ A markdown link `[label](url)` used for the changelog's issue references.
 
 `private static final NumberFormat NUMBER_FORMAT`
 
-#### OVERVIEW_ROW_DIVIDER
-
-`private static final Color OVERVIEW_ROW_DIVIDER`
-
-#### OVERVIEW_WINDOWS
-
-`private static final TimeWindow[] OVERVIEW_WINDOWS`
-
-#### PRESSURE_BALANCED_HIGH
-
-`private static final int PRESSURE_BALANCED_HIGH`
-
-#### PRESSURE_BALANCED_LOW
-
-`private static final int PRESSURE_BALANCED_LOW`
-
-Buy% within [LOW, HIGH] reads as a Balanced Market; outside it, Buyers/Sellers.
-
-#### PRICES_BASE
-
-`private static final String PRICES_BASE`
-
 #### PRICES_LEFT_PAD
 
 `private static final int PRICES_LEFT_PAD`
@@ -9270,81 +10444,9 @@ Client property on each row card holding its item id, used to map drag positions
 
 `private static final String UNCATEGORIZED_LABEL`
 
-#### WIKI_BASE
-
-`private static final String WIKI_BASE`
-
-#### acqHoverCol
-
-`private int acqHoverCol`
-
-#### acqHoverRow
-
-`private int acqHoverRow`
-
-#### acqPopoutButton
-
-`private JButton acqPopoutButton`
-
-#### acqPopoutModel
-
-`private AcquisitionsTableModel acqPopoutModel`
-
-#### acqPopoutScroll
-
-`private JScrollPane acqPopoutScroll`
-
-#### acqPopoutTable
-
-`private JTable acqPopoutTable`
-
-#### acquisitionsModel
-
-`private AcquisitionsTableModel acquisitionsModel`
-
-#### acquisitionsScroll
-
-`private JScrollPane acquisitionsScroll`
-
-#### acquisitionsSection
-
-`private JPanel acquisitionsSection`
-
-#### acquisitionsTable
-
-`private JTable acquisitionsTable`
-
-#### alchEstProfit
-
-`private final JLabel alchEstProfit`
-
-#### alchEstProfitRow
-
-`private JPanel alchEstProfitRow`
-
-#### alchInfoSection
-
-`private JPanel alchInfoSection`
-
-#### appliedOverviewRows
-
-`private Set<TimeWindow> appliedOverviewRows`
-
-#### appliedSectionLayout
-
-`private String appliedSectionLayout`
-
 #### bottomPanel
 
 `private final JPanel bottomPanel`
-
-#### buyPressureLabel
-
-`private final PressureVolumeLabel buyPressureLabel`
-
-#### buySellBar
-
-`private BuySellBar buySellBar`
 
 #### cardLayout
 
@@ -9371,30 +10473,6 @@ Header button (manage mode only) that opens the Manage Categories dialog.
 `private final CategoryActions categoryActions`
 
 Category create/rename/delete/reorder and per-item assignment operations.
-
-#### ccvAvg
-
-`private final JLabel ccvAvg`
-
-#### ccvHigh
-
-`private final JLabel ccvHigh`
-
-#### ccvLow
-
-`private final JLabel ccvLow`
-
-#### ccvProfit
-
-`private final JLabel ccvProfit`
-
-#### ccvQuantity
-
-`private final JLabel ccvQuantity`
-
-#### ccvSection
-
-`private JPanel ccvSection`
 
 #### changelog
 
@@ -9454,76 +10532,11 @@ Compact-view totals: a two-line "Total / profit (avg)" panel shown instead of th
 
 `private final Map<Integer,TrackedItem> currentItems`
 
-#### detailCard
+#### detailView
 
-`private final JPanel detailCard`
+`private final DetailView detailView`
 
-#### detailDescriptionArea
-
-`private final JTextArea detailDescriptionArea`
-
-Examine text renderer. A line-wrapping `JTextArea` rather than an HTML `JLabel`:
-Swing ignores CSS width with the RuneScape font, so HTML labels render one clipped line, while
-a text area wraps to its actual laid-out width and re-wraps responsively on resize. The
-maximum-height cap keeps the surrounding `BoxLayout` from stretching it past its text.
-
-#### detailExamineText
-
-`private String detailExamineText`
-
-#### detailIconLabel
-
-`private final JLabel detailIconLabel`
-
-#### detailItemId
-
-`private int detailItemId`
-
-#### detailItemTracked
-
-`private boolean detailItemTracked`
-
-Whether the item currently shown in the detail view is tracked (vs a read-only preview) (#138).
-
-#### detailLoadTimedOut
-
-`private boolean detailLoadTimedOut`
-
-Set when `#detailLoadTimeout` fires so the spinner stops waiting on a load that failed silently.
-
-#### detailLoadTimeout
-
-`private Timer detailLoadTimeout`
-
-One-shot safety net that reveals the detail view if a preview's prices never arrive.
-
-#### detailLoadingCard
-
-`private final JPanel detailLoadingCard`
-
-Placeholder card showing a spinner while a preview item's prices are still being fetched.
-
-#### detailNameLabel
-
-`private final JLabel detailNameLabel`
-
-#### detailQtyLabel
-
-`private final JLabel detailQtyLabel`
-
-#### detailSectionsHost
-
-`private JPanel detailSectionsHost`
-
-#### detailSpinner
-
-`private final Spinner detailSpinner`
-
-#### detailTrackBtn
-
-`private final JButton detailTrackBtn`
-
-Header Track/Untrack button in the detail view; label and colour track the shown item's state (#138).
+The sidebar's detail view (extracted for #110); the host mounts it as the `#CARD_DETAIL` card.
 
 #### dragGroupIds
 
@@ -9561,10 +10574,6 @@ Autoscroll direction while dragging: -1 up, +1 down, 0 none.
 
 Edge-autoscroll timer active while a drag hovers near the viewport top/bottom.
 
-#### editingNotifications
-
-`private volatile boolean editingNotifications`
-
 #### examineLookup
 
 `private final IntFunction<String> examineLookup`
@@ -9595,14 +10604,6 @@ Header toggle that shows/hides the tracked-list filter field.
 
 `private final JPanel geEstimatesSlotTop`
 
-#### graphLineSet
-
-`private PriceGraphPanel.LineSet graphLineSet`
-
-#### graphSmooth
-
-`private boolean graphSmooth`
-
 #### groupingActive
 
 `private boolean groupingActive`
@@ -9610,49 +10611,13 @@ Header toggle that shows/hides the tracked-list filter field.
 Whether the list is currently grouped (favorites or categories active); disables drag
 reorder, which is global-order only.
 
-#### haProfit
-
-`private final JLabel haProfit`
-
-#### haValue
-
-`private final JLabel haValue`
-
 #### hoveredItemId
 
 `private int hoveredItemId`
 
-#### icvAvg
-
-`private final JLabel icvAvg`
-
-#### icvHigh
-
-`private final JLabel icvHigh`
-
-#### icvLow
-
-`private final JLabel icvLow`
-
-#### icvVolume
-
-`private final JLabel icvVolume`
-
 #### itemManager
 
 `private final ItemManager itemManager`
-
-#### itemValuesSection
-
-`private JPanel itemValuesSection`
-
-#### laProfit
-
-`private final JLabel laProfit`
-
-#### laValue
-
-`private final JLabel laValue`
 
 #### lastCoinsIconValue
 
@@ -9677,10 +10642,6 @@ reorder, which is global-order only.
 Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full
 plugin refresh, and so a session reset (`#resetSession()`) re-primes from the same list.
 
-#### linksSection
-
-`private JPanel linksSection`
-
 #### loadingGlowTimer
 
 `private final Timer loadingGlowTimer`
@@ -9695,49 +10656,9 @@ plugin refresh, and so a session reset (`#resetSession()`) re-primes from the sa
 
 The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport while it shows.
 
-#### marketInfoSection
-
-`private JPanel marketInfoSection`
-
-#### miBuyLimit
-
-`private final JLabel miBuyLimit`
-
-#### miGeTax
-
-`private final JLabel miGeTax`
-
-#### miLastBought
-
-`private final JLabel miLastBought`
-
-#### miLastSold
-
-`private final JLabel miLastSold`
-
-#### miLiquidity
-
-`private final JLabel miLiquidity`
-
-#### miVolatility
-
-`private final JLabel miVolatility`
-
 #### natureRunePrice
 
 `private long natureRunePrice`
-
-#### notificationsModel
-
-`private NotificationsTableModel notificationsModel`
-
-#### notificationsSection
-
-`private JPanel notificationsSection`
-
-#### notificationsTable
-
-`private JTable notificationsTable`
 
 #### onAcquisitionsEdited
 
@@ -9865,18 +10786,6 @@ Callback to persist that the current release's "What's New" has been seen.
 
 Item ids in current display order, kept in sync on each `#rebuild`, used to compute reorder targets.
 
-#### overviewGrid
-
-`private JPanel overviewGrid`
-
-#### overviewLabels
-
-`private final Map<TimeWindow,JLabel[]> overviewLabels`
-
-#### overviewWindowLabels
-
-`private final List<JLabel> overviewWindowLabels`
-
 #### portfolioChartButton
 
 `private JButton portfolioChartButton`
@@ -9895,37 +10804,6 @@ WEST strut balancing `#portfolioChartButton` so the title stays centred; toggled
 
 Re-fetch actions for open portfolio-chart pop-outs; run on every rebuild so they update live.
 
-#### pressureMarketLabel
-
-`private final JLabel pressureMarketLabel`
-
-#### previewItem
-
-`private TrackedItem previewItem`
-
-A transient, read-only item shown in the detail view via `#showPreview` but
-never added to the tracked list.
-
-#### priceGraph
-
-`private PriceGraphPanel priceGraph`
-
-#### priceGraphSection
-
-`private JPanel priceGraphSection`
-
-#### priceOverviewSection
-
-`private JPanel priceOverviewSection`
-
-#### pricePopoutGraph
-
-`private PriceGraphPanel pricePopoutGraph`
-
-#### priceRangeBar
-
-`private PriceRangeBar priceRangeBar`
-
 #### profitLabel
 
 `private final JLabel profitLabel`
@@ -9941,10 +10819,6 @@ never added to the tracked list.
 #### pulseTimer
 
 `private final Timer pulseTimer`
-
-#### rangePositionLabel
-
-`private final JLabel rangePositionLabel`
 
 #### refreshAgeTimer
 
@@ -9977,10 +10851,6 @@ quantity-aware sprites are cached per stack.
 
 `private final JPanel searchResultsPanel`
 
-#### sellPressureLabel
-
-`private final PressureVolumeLabel sellPressureLabel`
-
 #### sessionLabel
 
 `private final JLabel sessionLabel`
@@ -10010,10 +10880,6 @@ Value gained/lost since the session baseline (login or manual reset); the only p
 `private JLabel sortToggle`
 
 Header toggle that opens the sort-mode menu; highlighted when a non-manual sort is active.
-
-#### topStack
-
-`private JPanel topStack`
 
 #### totalAvgDeltaLabel
 
@@ -10089,14 +10955,6 @@ Name filter over the tracked list, shown only when the list overflows into scrol
 
 `private boolean uncategorizedCollapsed`
 
-#### volumeGraph
-
-`private PriceGraphPanel volumeGraph`
-
-#### volumeGraphSection
-
-`private JPanel volumeGraphSection`
-
 #### whatsNew
 
 `private boolean whatsNew`
@@ -10121,47 +10979,23 @@ sit on their own right-justified row above the Tracked Items label.
 
 ### Method Detail
 
-#### acqAddRow
+#### acquisitionsEdited
 
-`private void acqAddRow(JTable table, AcquisitionsTableModel model)`
+`public void acquisitionsEdited(int itemId)`
 
-Appends a new empty acquisition row to the table and scrolls it into view.
-
-#### acqClean
-
-`private void acqClean(AcquisitionsTableModel model)`
-
-Consolidates the acquisitions log, merging like rows and dropping empty ones.
-
-#### acqClear
-
-`private void acqClear()`
-
-Clears all acquisitions for the current item after confirmation, via the plugin callback.
-
-#### acqRemoveSelected
-
-`private void acqRemoveSelected(JTable table, AcquisitionsTableModel model)`
-
-Removes the selected acquisition rows and commits the change.
-
-#### acqTextButton
-
-`private JButton acqTextButton(String text, Color fg)`
-
-Builds a small flat text button used by the acquisitions pop-out toolbar.
-
-#### acqTooltipLabel
-
-`private static String acqTooltipLabel(int col)`
-
-- **Returns:** the tooltip caption for an acquisitions-table column.
+{@inheritDoc} Delegates to the panel's acquisitions-edited callback when present.
 
 #### addFormRow
 
 `private void addFormRow(JPanel form, String label, JComponent field)`
 
 Adds a labelled row (label above the field) to a vertical form panel.
+
+#### addItem
+
+`public void addItem(int itemId, TrackItemMode mode)`
+
+{@inheritDoc} Delegates to the panel's add-item callback.
 
 #### addItemRow
 
@@ -10175,12 +11009,6 @@ Adds a single tracked-item row plus its trailing spacer; `groupItems` scopes reo
 
 Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one.
 
-#### alchProfitTooltip
-
-`private String alchProfitTooltip(String label, long alchValue, long itemAvg, int fireQty)`
-
-Builds the tooltip breaking down an alch-profit figure: alch value minus item cost and rune cost.
-
 #### appendChangelogAnchor
 
 `private static void appendChangelogAnchor(StringBuilder sb, int sectionIndex)`
@@ -10193,53 +11021,11 @@ Appends a named scroll anchor (`sec<n>`) matching the ids `#extractSections` han
 
 Appends a `<div>` with the given inline CSS `style` and left indent, wrapping `html`.
 
-#### applyAcqRenderers
-
-`private void applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)`
-
-Wires an acquisitions table's fonts, row height, per-column renderers/editors, and
-headers for either the compact sidebar table or the expanded pop-out table.
-
-#### applyBuyLimit
-
-`private void applyBuyLimit(TrackedItem item)`
-
-Shows the Buy Limit cell as `used / total` when purchases have been tracked in
-the current window (with a reset-countdown tooltip), the plain total when untouched,
-or `N/A` when the item has no GE limit.
-
-#### applyBuySellPressure
-
-`private void applyBuySellPressure(TrackedItem item)`
-
-Computes the buy/sell volume split over the configured window and updates the pressure bar + labels.
-
 #### applyChangelogButtonStyle
 
 `private void applyChangelogButtonStyle()`
 
 Applies the indicator styling — gold while "What's New", muted once seen.
-
-#### applyDeltaPct
-
-`private void applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)`
-
-Sets a label to the signed percent change of the current price vs. the window average, colored up/down.
-
-#### applyDetailCard
-
-`private void applyDetailCard()`
-
-Shows either the spinner placeholder or the populated detail view for the
-currently open item, depending on whether its prices are still loading.
-A view-only preview shows the spinner until its prices arrive, its load
-fails, or the safety timeout fires; everything else shows immediately.
-
-#### applyDetailSectionLayout
-
-`private void applyDetailSectionLayout()`
-
-Reorders and shows/hides the detail sections to match the configured slot assignments.
 
 #### applyEstimatesPosition
 
@@ -10252,19 +11038,6 @@ Moves the GE estimates block above or below the other sections per the configure
 `private void applyEstimatesSpacing(EstimatesSpacing spacing)`
 
 Applies normal or compact row padding to the GE estimates block per the configured spacing.
-
-#### applyExamineWrap
-
-`private void applyExamineWrap()`
-
-Sets the current examine text on the description area. The `JTextArea` line-wraps to its
-own laid-out width, so no width measurement is needed and it re-wraps responsively on resize.
-
-#### applyLiquidity
-
-`private void applyLiquidity(long vol24)`
-
-Sets the market-info liquidity rating from the last 24h volume via `MarketClassifier`.
 
 #### applyLiveStaleness
 
@@ -10280,53 +11053,17 @@ is older than the configured threshold.
 - **Parameter** `freshColor` — the normal value color
 - **Parameter** `staleColor` — the dimmed color used once the value is stale
 
-#### applyNotificationRenderers
-
-`private void applyNotificationRenderers()`
-
-Wires the per-column cell editors/renderers on the notifications table to the current metric's input type.
-
-#### applyProfitLabel
-
-`private void applyProfitLabel(JLabel label, long profit, boolean known)`
-
-Sets a profit label to a signed, colored gp figure, or a placeholder when the profit is unknown.
-
-#### applyRangePosition
-
-`private void applyRangePosition(long min, long max, long live)`
-
-Sets the market-info "30-day range position" rating for where the live price sits within its month range.
-
 #### applyRowIcon
 
 `private void applyRowIcon(JLabel iconLabel, TrackedItem item)`
 
 Sets a label's 18px quantity-aware item icon from `#rowIconCache`, loading asynchronously on a miss.
 
-#### applyTableRenderers
-
-`private void applyTableRenderers()`
-
-Applies the acquisitions renderers to the sidebar (compact) table.
-
 #### applyTotalTooltip
 
 `private void applyTotalTooltip(JLabel label, long value, ValueFormat fmt)`
 
 Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise.
-
-#### applyTradeTime
-
-`private void applyTradeTime(JLabel label, long epochSeconds)`
-
-Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip.
-
-#### applyVolatility
-
-`private void applyVolatility(TrackedItem item)`
-
-Sets the market-info volatility rating from the item's week series via `MarketClassifier`.
 
 #### autoCategorizeFromDialog
 
@@ -10335,18 +11072,6 @@ Sets the market-info volatility rating from the item's week series via `MarketCl
 Prompts for the auto-categorize scope (uncategorized only vs. everything), runs it via
 `#categoryActions`, reports the result, and closes the dialog so it reopens with the
 freshly generated categories.
-
-#### buildAlchBlock
-
-`private JPanel buildAlchBlock()`
-
-Builds the alch-info section (high/low alch values and the high-alch profit estimate).
-
-#### buildBrushIcon
-
-`private Icon buildBrushIcon()`
-
-Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions button.
 
 #### buildCategoryPicker
 
@@ -10396,60 +11121,6 @@ Builds the compact-view row-2 value line: `total value (single item value)`, bot
 in short format and both derived from the latest avg-of-1 price (e.g. `4.86m (1.62m)`).
 Falls back to a muted placeholder when the item has no prices.
 
-#### buildCurrentValuesBlock
-
-`private JPanel buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)`
-
-Builds the stacked current-values block (high/low/avg plus a fourth metric row),
-colouring each label by metric and appending a divider-topped profit row when a
-profit label is supplied.
-
-#### buildDetailCard
-
-`private void buildDetailCard()`
-
-Constructs the detail-view card once: the header, the scrollable body, and
-every detail section (current values, market info, charts, overview grid,
-alch, notifications, acquisitions log). Sections are populated later per item.
-
-#### buildDetailLoadingCard
-
-`private void buildDetailLoadingCard()`
-
-Fills `#detailLoadingCard` with a centered spinner and caption.
-
-#### buildDetailSection
-
-`private JPanel buildDetailSection(String title, Component... contents)`
-
-Builds a titled detail-view section containing the given components.
-
-#### buildDetailSectionTitle
-
-`private JLabel buildDetailSectionTitle(String text, boolean withDivider)`
-
-Builds a centred bold section title, optionally topped with a divider rule.
-
-#### buildDetailSectionTitleRow
-
-`private JComponent buildDetailSectionTitleRow(String title, JButton popBtn)`
-
-Builds a divider-topped section title row with the title centred between a strut
-matching the pop-out button's width (so the title stays optically centred) and the
-button itself.
-
-#### buildDetailSectionTitleRow
-
-`private JComponent buildDetailSectionTitleRow(String title, Runnable onPopout)`
-
-Builds a section title row with a pop-out button wired to the given action.
-
-#### buildDetailSectionWithPopout
-
-`private JPanel buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)`
-
-Builds a titled detail-view section whose title row carries a pop-out button.
-
 #### buildDividerStrip
 
 `private JPanel buildDividerStrip()`
@@ -10497,7 +11168,7 @@ toggles the group's collapsed state.
 
 #### buildIconButton
 
-`private JButton buildIconButton(Icon icon, String tooltip, Runnable onClick)`
+`static JButton buildIconButton(Icon icon, String tooltip, Runnable onClick)`
 
 Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight.
 
@@ -10506,24 +11177,6 @@ Builds a borderless icon button with the given icon, tooltip, click action, and 
 `private static String buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)`
 
 Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params.
-
-#### buildLeftArrowIcon
-
-`private Icon buildLeftArrowIcon()`
-
-Paints the small left-pointing triangle used by the detail view's Back button.
-
-#### buildLinkButton
-
-`private JButton buildLinkButton(String text, String tooltip, Runnable onClick)`
-
-Builds a detail-view link button that runs the given action when clicked.
-
-#### buildLinksBlock
-
-`private JPanel buildLinksBlock()`
-
-Builds the Links detail section's content: Wiki and Live Prices buttons for the current item.
 
 #### buildManageEastControls
 
@@ -10540,24 +11193,6 @@ organise items. A left column of reorder controls (up/down, plus drag when ungro
 middle column with the icon+name over a category picker, and a right column with the
 always-visible remove and favorite controls. All price/quantity/profit content is omitted.
 
-#### buildMarketInfoBlock
-
-`private JPanel buildMarketInfoBlock()`
-
-Builds the market-info section (buy limit, GE value, volatility, liquidity, 30-day range, etc.).
-
-#### buildMarketInfoPair
-
-`private JPanel buildMarketInfoPair(String leftLabel, JLabel leftValue, String rightLabel, JLabel rightValue)`
-
-Builds a two-column grid pairing two captioned values side by side (Market Info / alch rows).
-
-#### buildNotificationsSection
-
-`private void buildNotificationsSection()`
-
-Builds the notifications section: the rules table and its add/remove/edit controls.
-
 #### buildOverlayToggle
 
 `private JLabel buildOverlayToggle(TrackedItem item)`
@@ -10565,24 +11200,6 @@ Builds the notifications section: the rules table and its add/remove/edit contro
 Builds the overlay-select control beneath the favorite star: a painted monitor icon that
 toggles whether the item appears in the on-screen overlay. Gold when selected, and disabled
 (greyed) once `StockpilePlugin#OVERLAY_MAX` items are selected and this isn't one.
-
-#### buildOverviewGrid
-
-`private JPanel buildOverviewGrid()`
-
-Builds (and remembers) the sidebar overview grid.
-
-#### buildPopoutButton
-
-`private JButton buildPopoutButton(Runnable onClick)`
-
-Builds a borderless pop-out button that runs the given action when clicked.
-
-#### buildPopoutIcon
-
-`private Icon buildPopoutIcon()`
-
-Paints the small box-with-arrow "open in new window" icon used by pop-out buttons.
 
 #### buildReorderStrip
 
@@ -10636,11 +11253,11 @@ Draws a bulleted-list glyph — three dots, each followed by a line — tinted `
 
 - **Returns:** the indicator label: highlighted "What's New" for a new release, else "Change log".
 
-#### clearItemValue
+#### clearAcquisitions
 
-`private void clearItemValue(JLabel label, String text)`
+`public void clearAcquisitions(int itemId)`
 
-Resets a value label to plain text, dropping its tooltip and any hover-tint listener.
+{@inheritDoc} Delegates to the panel's clear-acquisitions callback when present.
 
 #### clearSessionBaseline
 
@@ -10653,7 +11270,7 @@ rebuild captures the new profile's holdings as the baseline.
 
 `private void closePopouts()`
 
-Disposes all open pop-out windows (e.g. when leaving the detail view).
+Disposes all open pop-out windows owned by the panel (portfolio, What's New).
 
 #### commitDrag
 
@@ -10670,6 +11287,12 @@ render in global order). A no-op drop is ignored.
 Determines the dragged item's group as the contiguous run of item rows between accordion
 headers in the rendered list (the whole list when ungrouped), returning its item ids in
 visual order.
+
+#### config
+
+`public StockpileConfig config()`
+
+{@inheritDoc} Supplies the panel's live plugin config to the detail view.
 
 #### confirmAndClearAll
 
@@ -10692,20 +11315,6 @@ Prompts for confirmation, then clears all tracked items via the plugin callback.
 `private JLabel createDeltaLabel()`
 
 Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value.
-
-#### createOverviewGrid
-
-`private JPanel createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)`
-
-Creates an overview grid panel that custom-paints its own dividers: a vertical rule
-after the window-label column and a horizontal rule between consecutive rows, both
-derived from the live label positions so they track layout changes.
-
-#### currentDetailItem
-
-`private TrackedItem currentDetailItem()`
-
-- **Returns:** the item currently shown in the detail view (a tracked item or the transient preview), or null.
 
 #### dragAutoscrollTick
 
@@ -10731,11 +11340,11 @@ Fixes the three totals value labels to the widest one's width so the columns sta
 
 Escapes the HTML-significant characters so text renders literally inside an HTML label.
 
-#### expandedAcqHeader
+#### examine
 
-`private static String expandedAcqHeader(String compact)`
+`public String examine(int itemId)`
 
-- **Returns:** the roomy pop-out header for a compact acquisitions column name.
+{@inheritDoc} Resolves the examine text through the panel's examine lookup.
 
 #### exportAcquisitionsCsv
 
@@ -10761,12 +11370,6 @@ Copies the shareable tracked-list code to the clipboard once the plugin has buil
 
 - **Returns:** the current text of an issue-form input (text area or dropdown selection).
 
-#### fillOverviewGrid
-
-`private void fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)`
-
-Lays out the overview grid's header and one row of price/volume labels per selected time window.
-
 #### filterIcon
 
 `private static Icon filterIcon(Color color)`
@@ -10774,36 +11377,24 @@ Lays out the overview grid's header and one row of price/volume labels per selec
 Paints a small monochrome funnel (filter) icon in the given colour: a wide top bar
 tapering to a narrow central stem.
 
+#### fireRunePrice
+
+`public long fireRunePrice()`
+
+{@inheritDoc} Returns the fire-rune price the panel currently holds.
+
 #### formatAge
 
-`private static String formatAge(long epochSeconds)`
+`static String formatAge(long epochSeconds)`
 
 Formats an epoch-second timestamp's age as a compact relative string,
 e.g. `"5s"`, `"5m"`, `"3hr"`, `"2d ago"`.
 
-#### formatDuration
-
-`private static String formatDuration(long seconds)`
-
-Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration.
-
 #### formatTotalGp
 
-`private static String formatTotalGp(long value, ValueFormat fmt)`
+`static String formatTotalGp(long value, ValueFormat fmt)`
 
 Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`.
-
-#### fullWindowLabel
-
-`private static String fullWindowLabel(TimeWindow w)`
-
-- **Returns:** the long-form window name used by the pop-out overview grid.
-
-#### geTax
-
-`private long geTax(long avgPrice)`
-
-- **Returns:** the Grand Exchange sell tax on a unit at `avgPrice` (per the live GE tax rules).
 
 #### getDetailItemId
 
@@ -10880,7 +11471,7 @@ the remove button, favorite star, and the (optional) overlay-select and per-item
 
 #### installShortValue
 
-`private void installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)`
+`static void installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)`
 
 Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint.
 
@@ -10897,18 +11488,6 @@ state colour is repainted on exit.
                     buttons, `setIcon` for icon buttons)
 - **Parameter** `restore` — repaints the button's resting state colour
 
-#### installVolumeValue
-
-`private void installVolumeValue(JLabel label, long vol, boolean full)`
-
-Sets a volume cell's compact/full text with a full-number tooltip and hover tint, or a placeholder.
-
-#### isDetailLoading
-
-`private boolean isDetailLoading(TrackedItem item)`
-
-- **Returns:** whether `item` is a tradeable preview whose prices have not yet loaded (or failed).
-
 #### isEditingNotifications
 
 `public boolean isEditingNotifications()`
@@ -10920,6 +11499,12 @@ Sets a volume cell's compact/full text with a full-number tooltip and hover tint
 `private boolean isStale(long epochSeconds)`
 
 - **Returns:** whether `epochSeconds` is older than the configured stale-price threshold.
+
+#### itemManager
+
+`public ItemManager itemManager()`
+
+{@inheritDoc} Supplies the panel's shared item manager to the detail view.
 
 #### liveSessionSnapshot
 
@@ -10949,18 +11534,23 @@ Builds a compact, hover-revealed glyph button styled like the row's remove butto
 
 Moves the selected dialog category by `delta` and forwards the new index to the plugin.
 
-#### newSectionWrapper
+#### natureRunePrice
 
-`private JPanel newSectionWrapper()`
+`public long natureRunePrice()`
 
-- **Returns:** an empty vertical wrapper panel used to stack a detail section's rows.
+{@inheritDoc} Returns the nature-rune price the panel currently holds.
 
-#### notifyNotificationsEdited
+#### notificationsEdited
 
-`private void notifyNotificationsEdited()`
+`public void notificationsEdited(int itemId)`
 
-Notifies the plugin (via callback) that the current item's notification rules
-changed, so it can persist them.
+{@inheritDoc} Delegates to the panel's notifications-edited callback when present.
+
+#### onBack
+
+`public void onBack()`
+
+{@inheritDoc} Returns the sidebar panel to the main tracked-item list.
 
 #### onSearch
 
@@ -10980,18 +11570,6 @@ Re-renders the rows against the updated tracked-list filter text.
 
 Opens the changelog window; the first open of a new release quiets the "What's New" indicator.
 
-#### openCollectionLogPopout
-
-`private void openCollectionLogPopout()`
-
-Opens the editable acquisitions (collection log) table in a standalone pop-out window.
-
-#### openGraphPopout
-
-`private void openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)`
-
-Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph.
-
 #### openIssueForm
 
 `private void openIssueForm(String dialogTitle, String template, String titlePrefix, List<IssueField> fields)`
@@ -11008,23 +11586,11 @@ Opens the modal Manage Categories dialog: create, rename, delete, and reorder ca
 Each action updates the dialog's list immediately and forwards to the plugin via
 `#categoryActions`, which persists and rebuilds the panel.
 
-#### openOverviewPopout
-
-`private void openOverviewPopout()`
-
-Opens the price overview grid in a standalone pop-out window.
-
 #### openPortfolioChart
 
 `private void openPortfolioChart()`
 
 Opens a pop-out with the portfolio value history chart, fed live from the plugin's stored points.
-
-#### openPricesLink
-
-`private void openPricesLink()`
-
-Opens the wiki realtime prices page for the item currently shown in the detail view.
 
 #### openReportIssueForm
 
@@ -11046,12 +11612,6 @@ Opens the tracked detail card for `itemId`. A no-op when that item's tracked
 detail is already showing, so re-opening it (e.g. from the GE integration) leaves the
 card's scroll position and state untouched instead of rebuilding it back to the top.
 
-#### openWikiLink
-
-`private void openWikiLink()`
-
-Opens the OSRS Wiki page for the item currently shown in the detail view.
-
 #### overlayCount
 
 `private int overlayCount()`
@@ -11063,46 +11623,6 @@ Opens the OSRS Wiki page for the item currently shown in the detail view.
 `private static Icon overlayIcon(Color color)`
 
 Paints a small monochrome monitor (on-screen overlay) icon in the given colour.
-
-#### overviewMidpoint
-
-`private static long overviewMidpoint(WikiRealtimePriceClient.PricePoint p)`
-
-- **Returns:** the high/low midpoint of a price point, or whichever side is known when one is missing.
-
-#### populateDetail
-
-`private void populateDetail(TrackedItem item)`
-
-Fills every detail section from an item's current state: header name/icon/quantity,
-item and collection values, overview grid, charts, market info (times, volatility,
-liquidity, range, pressure), alch figures, notifications, and the acquisitions log.
-Called whenever the shown item's data changes.
-
-#### populateOverviewGrid
-
-`private void populateOverviewGrid(Set<TimeWindow> rows)`
-
-(Re)creates the overview grid panels (sidebar and pop-out) for the given set of time-window rows.
-
-#### populateOverviewLabels
-
-`private void populateOverviewLabels(Map<TimeWindow,JLabel[]> labels, TrackedItem item, boolean full)`
-
-Fills the overview grid's cells with an item's per-window high/low/avg/volume/Δ% values.
-
-#### preserveDetailScroll
-
-`private void preserveDetailScroll(Runnable refresh)`
-
-Runs a refresh-in-place of the open detail card, keeping the enclosing scroll
-pane's vertical position. The scroll yank this guards against was the
-description area's caret scrolling itself into view on `setText` — muzzled
-at the source with `DefaultCaret#NEVER_UPDATE` — so this is defensive:
-layout is forced synchronously and the position re-asserted in the same EDT
-event, with a queued re-assert for layout that settles late (async item images).
-Opening a different item still starts at the top, since `#showDetail`
-bypasses this.
 
 #### promptCategoryForItem
 
@@ -11138,12 +11658,6 @@ for items whose price moved.
 and beneath the selected release its section quick-links, each of which scrolls the notes to
 that section.
 
-#### rebuildOverviewGrid
-
-`private void rebuildOverviewGrid()`
-
-Rebuilds the price overview grid to match the configured preset of time-window rows.
-
 #### refreshDetailData
 
 `public void refreshDetailData(int itemId)`
@@ -11158,15 +11672,9 @@ Applies a favorite star's visual from its row-hover/star-hover client flags: hid
 when its row isn't hovered, the resting gold/grey glyph when the row is hovered, and a
 preview (light-gold fill to add, or grey outline to remove) when the star itself is hovered.
 
-#### refreshPopouts
-
-`private void refreshPopouts(TrackedItem item)`
-
-Pushes fresh data for `item` into every open pop-out window.
-
 #### removeHoverTint
 
-`private static void removeHoverTint(JLabel label)`
+`static void removeHoverTint(JLabel label)`
 
 Detaches any hover-tint listener from a label before its value is replaced.
 
@@ -11215,35 +11723,23 @@ Clears and re-renders the tracked-item rows (empty placeholder, or the grouped r
 retaining the inputs so `#toggleReorderMode()` can re-render the manage layout
 without a full plugin refresh.
 
+#### requestDetailData
+
+`public void requestDetailData(int itemId)`
+
+{@inheritDoc} Delegates to the panel's detail-data request callback when present.
+
 #### resetSession
 
 `public void resetSession()`
 
 Re-baselines the session to the current holdings, so "Session:" restarts from zero.
 
-#### scrollAcquisitionsToBottom
-
-`private void scrollAcquisitionsToBottom()`
-
-Scrolls the acquisitions log to its newest (bottom) entry once layout has settled.
-
 #### setAlchRunePrices
 
 `public void setAlchRunePrices(long naturePrice, long firePrice)`
 
 Supplies the latest nature/fire rune prices used to compute high-alch profit in the detail view.
-
-#### setOverviewPlaceholder
-
-`private void setOverviewPlaceholder(JLabel label)`
-
-Resets an overview cell to the `"-"` placeholder.
-
-#### setPriceCell
-
-`private void setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)`
-
-Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset.
 
 #### setTrackedFilterVisible
 
@@ -11255,7 +11751,8 @@ Sets the filter field's visibility, clearing any active filter when it is hidden
 
 `private void showDetail(int itemId)`
 
-Switches to the detail card for an item, requesting its full data and populating the view.
+Reveals the tracked detail card for `itemId` in the card stack and binds the detail view to
+it. A no-op when the item is not tracked.
 
 #### showMain
 
@@ -11286,12 +11783,6 @@ Opens the sort-mode menu on the header toggle, with the active mode checked and 
 direction arrow shown. Clicking the active (non-manual) mode flips the sort direction; clicking
 any other mode selects it.
 
-#### shownDetailItem
-
-`private TrackedItem shownDetailItem()`
-
-- **Returns:** the item currently backing the detail view (tracked or preview), or `null`.
-
 #### shutdown
 
 `public void shutdown()`
@@ -11300,7 +11791,7 @@ Stops the animation timers so the panel can be disposed cleanly.
 
 #### signedGp
 
-`private static String signedGp(long v)`
+`static String signedGp(long v)`
 
 - **Returns:** the value as a comma-grouped gp string with an explicit `+` when positive.
 
@@ -11310,23 +11801,11 @@ Stops the animation timers so the panel can be disposed cleanly.
 
 Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge.
 
-#### spelledInterval
-
-`private static String spelledInterval(TimeWindow window)`
-
-- **Returns:** the window's long label lower-cased for use mid-sentence in tooltips.
-
 #### startPulse
 
 `private void startPulse(JLabel label, int delta)`
 
 Begins a color pulse on a label (green up / red down) reflecting the sign of a price change.
-
-#### stopDetailLoading
-
-`private void stopDetailLoading()`
-
-Stops the spinner animation and cancels the pending load-timeout, if any.
 
 #### stopDragAutoscroll
 
@@ -11334,32 +11813,11 @@ Stops the spinner animation and cancels the pending load-timeout, if any.
 
 Stops the edge-autoscroll timer, if running.
 
-#### styleNotifButton
-
-`private void styleNotifButton(JButton btn, Color fg)`
-
-Applies the shared small-button styling to a notifications-section button.
-
 #### styledFooterButton
 
 `private JButton styledFooterButton(String text, String tooltip)`
 
 Shared styling for the footer's link and dropdown buttons.
-
-#### thirtyDayRange
-
-`private long[] thirtyDayRange(TrackedItem item)`
-
-- **Returns:** the `[min, max]` price range over the item's last 30 days via `MarketClassifier`.
-
-#### toggleDetailTracking
-
-`private void toggleDetailTracking()`
-
-Toggles tracking of the item shown in the detail view (#138), driven by the header button.
-A read-only preview is added to the tracked list (the next rebuild swaps the preview for the
-real tracked detail); a tracked item is untracked but stays open as a preview so the detail
-view does not bounce back to the main list.
 
 #### toggleReorderMode
 
@@ -11373,11 +11831,17 @@ Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a 
 
 Toggles the tracked-list filter field via the header filter button, focusing it when shown.
 
-#### updateAcqPopoutButton
+#### trackedItem
 
-`private void updateAcqPopoutButton()`
+`public TrackedItem trackedItem(int itemId)`
 
-Hides the acquisitions pop-out button while its pop-out window is already open.
+{@inheritDoc} Reads from the panel's current tracked-item map.
+
+#### untrackToPreview
+
+`public void untrackToPreview(int itemId)`
+
+{@inheritDoc} Delegates to the panel's untrack-to-preview callback.
 
 #### updateCoinsIcon
 
@@ -11432,12 +11896,6 @@ Updates the header filter button's funnel icon, tinting it gold while the filter
 
 Timer tick that breathes the shared glow colour across every label still awaiting prices.
 
-#### updateMarketInfoTimes
-
-`private void updateMarketInfoTimes()`
-
-Live-updates the Market Info last-bought / last-sold relative times for the shown detail item.
-
 #### updatePortfolioChartButton
 
 `private void updatePortfolioChartButton()`
@@ -11477,12 +11935,6 @@ until prices are available.
 
 Reflects the active sort on the header toggle: the effective direction arrow
 (highlighted) or the neutral glyph.
-
-#### windowVolume
-
-`private long windowVolume(TrackedItem item, TimeWindow window)`
-
-- **Returns:** the total traded volume for an item over the given window, or 0 if unknown.
 
 ---
 
