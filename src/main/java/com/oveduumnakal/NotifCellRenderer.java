@@ -18,14 +18,17 @@ class NotifCellRenderer extends DefaultTableCellRenderer
 		setHorizontalAlignment(SwingConstants.CENTER);
 	}
 
+	/**
+	 * Renders a notifications-table cell. Metrics show a terse abbreviation in the narrow row cell with
+	 * the full name on hover; other values render as-is but still carry a tooltip so anything the column
+	 * truncates stays readable.
+	 */
 	@Override
 	public Component getTableCellRendererComponent(JTable table, Object value,
 			boolean isSelected, boolean hasFocus, int row, int column)
 	{
 		super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-		// Metrics show a terse abbreviation in the narrow row cell with the full name on hover; other
-		// values render as-is but still carry a tooltip so anything the column truncates stays readable.
 		if (value instanceof NotificationMetric)
 		{
 			NotificationMetric metric = (NotificationMetric) value;
