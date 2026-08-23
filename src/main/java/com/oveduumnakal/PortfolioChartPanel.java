@@ -22,6 +22,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -126,9 +127,32 @@ public final class PortfolioChartPanel extends JPanel
 	/** Sets the points to plot ({@code {epochSeconds, value, costBasis}}) and repaints. */
 	public void setData(List<long[]> data)
 	{
-		points = data != null ? data : Collections.emptyList();
+		List<long[]> next = data != null ? data : Collections.emptyList();
+		if (samePoints(points, next))
+			return;
+
+		points = next;
 		plotCacheDirty = true;
 		repaint();
+	}
+
+	/**
+	 * @return whether two point series are equal, so an unchanged rebuild does not re-rasterize the
+	 *         full chart (a new ARGB image + both series) (#184). Cheaper than the raster it guards.
+	 */
+	private static boolean samePoints(List<long[]> a, List<long[]> b)
+	{
+		if (a == b)
+			return true;
+
+		if (a.size() != b.size())
+			return false;
+
+		for (int i = 0; i < a.size(); i++)
+			if (!Arrays.equals(a.get(i), b.get(i)))
+				return false;
+
+		return true;
 	}
 
 	/**

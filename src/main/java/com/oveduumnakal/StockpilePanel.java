@@ -84,6 +84,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -225,6 +226,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Consumer<String>> onExportCsv;
 	/** Supplies the portfolio value history points ({@code {epochSeconds, value, costBasis}}) for the chart. */
 	private final Supplier<List<long[]>> onPortfolioHistory;
+	/** Supplies the cheap aggregate point count for the chart button's per-rebuild visibility check (#184). */
+	private final IntSupplier onPortfolioPointCount;
 	/** Bundled release notes shown in the changelog window. */
 	private final Changelog changelog;
 	/** Callback to persist that the current release's "What's New" has been seen. */
@@ -530,6 +533,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onImportList = actions::importList;
 		this.onExportCsv = actions::exportCsv;
 		this.onPortfolioHistory = actions::portfolioHistory;
+		this.onPortfolioPointCount = actions::portfolioPointCount;
 		this.changelog = changelog;
 		this.whatsNew = whatsNew;
 		this.onWhatsNewSeen = actions::whatsNewSeen;
@@ -1724,7 +1728,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	/** Shows the chart pop-out button (and its balancing strut) only once at least two history points exist to plot. */
 	private void updatePortfolioChartButton()
 	{
-		boolean enough = onPortfolioHistory != null && onPortfolioHistory.get().size() >= 2;
+		boolean enough = onPortfolioPointCount != null && onPortfolioPointCount.getAsInt() >= 2;
 		if (portfolioChartButton.isVisible() == enough)
 			return;
 

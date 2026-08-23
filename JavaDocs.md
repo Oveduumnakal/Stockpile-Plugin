@@ -5880,6 +5880,7 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `importList(String data, Consumer<String> callback)` | Imports the tracked list encoded in `data`, reporting the outcome through `callback`. |
 | `void` | `notificationsEdited(int itemId)` | Notifies the plugin that `itemId`'s notification rules were edited and must be persisted. |
 | `List<long[]>` | `portfolioHistory()` |  |
+| `int` | `portfolioPointCount()` |  |
 | `void` | `removeItem(int itemId)` | Stops tracking `itemId` and removes it from the list entirely. |
 | `void` | `reorder(int from, int to)` | Moves the item at index `from` to index `to` in the manual order. |
 | `void` | `requestDetailData(int itemId)` | Requests a fresh market/detail data load for `itemId`. |
@@ -5955,6 +5956,13 @@ Notifies the plugin that `itemId`'s notification rules were edited and must be p
 `List<long[]> portfolioHistory()`
 
 - **Returns:** the portfolio value-history points the chart plots.
+
+#### portfolioPointCount
+
+`int portfolioPointCount()`
+
+- **Returns:** the number of aggregate portfolio-history points, for the chart button's cheap
+        "enough to plot?" check without pulling the whole series each rebuild (#184).
 
 #### removeItem
 
@@ -6159,6 +6167,7 @@ so an offline gap reads as one connecting segment between the two known values.
 | `private void` | `drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom, int plotH, double axisMin, double axisRange, int ticks)` | Draws the horizontal gridlines and their right-side value labels for the "nice" value axis. |
 | `private static double[]` | `niceAxis(long dataMin, long dataMax, int minTicks, int maxTicks)` | Picks a human-friendly value axis covering `[dataMin, dataMax]` using a 1/2/2.5/5 step progression so labels land on round numbers. |
 | `protected void` | `paintComponent(Graphics g)` | Paints the chart: the expensive static plot (grid, axes, legend, series) is rasterized once into `#plotCache` and reused, while only the lightweight hover crosshair is redrawn over it on mouse moves. |
+| `private static boolean` | `samePoints(List<long[]> a, List<long[]> b)` |  |
 | `public void` | `setData(List<long[]> data)` | Sets the points to plot (`{epochSeconds, value, costBasis`}) and repaints. |
 | `private static int` | `valueY(long value, double axisMin, double axisRange, int top, int bottom, int plotH)` | Maps a value to its y pixel within the plot, clamped to the plot bounds. |
 
@@ -6377,6 +6386,13 @@ rasterized once into `#plotCache` and reused, while only the lightweight
 hover crosshair is redrawn over it on mouse moves. The cheap layout is recomputed
 each paint so the hover overlay maps correctly onto the cached pixels.
 
+#### samePoints
+
+`private static boolean samePoints(List<long[]> a, List<long[]> b)`
+
+- **Returns:** whether two point series are equal, so an unchanged rebuild does not re-rasterize the
+        full chart (a new ARGB image + both series) (#184). Cheaper than the raster it guards.
+
 #### setData
 
 `public void setData(List<long[]> data)`
@@ -6466,6 +6482,8 @@ map of primitive lists with no schema shape to guard.
 | `private static final long` | `HOUR` |  |
 | `static final int` | `HOURLY_HOURS` | Hours of recent history kept at one-point-per-hour resolution (7 days). |
 | `static final int` | `RETENTION_DAYS` | Days of history retained before points are dropped. |
+| `private List<long[]>` | `aggregateCache` | Memoized `#aggregate()` result, rebuilt only when `#aggregateDirty` is set (#184). |
+| `private boolean` | `aggregateDirty` |  |
 | `private final Map<Integer,List<long[]>>` | `series` | itemId → that item's thinned series of `{epochSeconds, value, costBasis`}. |
 
 ### Method Summary
@@ -6476,6 +6494,7 @@ map of primitive lists with no schema shape to guard.
 | `public void` | `clear()` | Drops all stored series, e.g. |
 | `public boolean` | `isEmpty()` |  |
 | `public void` | `load(Map<Integer,List<long[]>> stored)` | Replaces all series with `stored` (as loaded from config); ignores malformed entries. |
+| `public int` | `pointCount()` |  |
 | `public void` | `record(long epochSeconds, Map<Integer,long[]> perItem)` | Records a snapshot at `epochSeconds` for each item in `perItem` (id → `{value, costBasis`}). |
 | `public void` | `removeItem(int itemId)` | Drops the series for `itemId` (e.g. |
 | `public Map<Integer,List<long[]>>` | `seriesByItem()` |  |
@@ -6508,6 +6527,16 @@ Hours of recent history kept at one-point-per-hour resolution (7 days).
 `static final int RETENTION_DAYS`
 
 Days of history retained before points are dropped.
+
+#### aggregateCache
+
+`private List<long[]> aggregateCache`
+
+Memoized `#aggregate()` result, rebuilt only when `#aggregateDirty` is set (#184).
+
+#### aggregateDirty
+
+`private boolean aggregateDirty`
 
 #### series
 
@@ -6542,6 +6571,14 @@ Drops all stored series, e.g. when the tracked list is emptied.
 `public void load(Map<Integer,List<long[]>> stored)`
 
 Replaces all series with `stored` (as loaded from config); ignores malformed entries.
+
+#### pointCount
+
+`public int pointCount()`
+
+- **Returns:** the number of aggregate chart points (distinct recorded timestamps). Backed by the same
+        memoized aggregate as `#aggregate()` (#184), so the panel's per-rebuild
+        "enough to plot?" check does not rebuild the series each event.
 
 #### record
 
@@ -10021,6 +10058,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
 | `private final Consumer<Integer>` | `onNotificationsEdited` |  |
 | `private final Supplier<List<long[]>>` | `onPortfolioHistory` | Supplies the portfolio value history points (`{epochSeconds, value, costBasis`}) for the chart. |
+| `private final IntSupplier` | `onPortfolioPointCount` | Supplies the cheap aggregate point count for the chart button's per-rebuild visibility check (#184). |
 | `private final Consumer<Integer>` | `onRemoveItem` |  |
 | `private final BiConsumer<Integer,Integer>` | `onReorder` | Reorder callback: (itemId, targetIndex) — moves the item to a new position in the tracked list. |
 | `private final Consumer<Integer>` | `onRequestDetailData` |  |
@@ -10712,6 +10750,12 @@ Imports a tracked-list token (merge, non-destructive); delivers a user-facing re
 `private final Supplier<List<long[]>> onPortfolioHistory`
 
 Supplies the portfolio value history points (`{epochSeconds, value, costBasis`}) for the chart.
+
+#### onPortfolioPointCount
+
+`private final IntSupplier onPortfolioPointCount`
+
+Supplies the cheap aggregate point count for the chart button's per-rebuild visibility check (#184).
 
 #### onRemoveItem
 
@@ -12422,6 +12466,7 @@ executor.
 | `private final AtomicReference<Runnable>` | `pendingRebuild` | The newest un-rendered panel snapshot; non-null means a rebuild drainer is already queued. |
 | `private StockpilePersistence` | `persistence` | Client-free persistence layer (#111); built in `#startUp()` once gson/config are injected. |
 | `private final PortfolioHistory` | `portfolioHistory` | Per-item thinned time series of portfolio value/cost for the history chart. |
+| `private final AtomicLong` | `portfolioSaveSeq` | Monotonic submit counter that coalesces overlapping async portfolio saves so only the newest snapshot wins. |
 | `private TrackedItem` | `previewItem` | Transient, non-persisted item backing the read-only detail preview (view-only button); not in `#trackedItems`. |
 | `private ScheduledFuture<?>` | `priceRefreshTask` |  |
 | `private int` | `processingXpTick` | The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. |
@@ -12560,7 +12605,8 @@ executor.
 | `private int` | `overlayItemCount()` |  |
 | `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
 | `private void` | `persistCategories()` | Serializes the category definitions and group collapsed state to per-profile config. |
-| `private void` | `persistPortfolioHistory()` | Serializes the per-item portfolio history to per-profile config. |
+| `private void` | `persistPortfolioHistory()` | Persists the per-item portfolio history to per-profile config (#184). |
+| `private void` | `persistPortfolioHistorySync()` | Serializes the portfolio history synchronously (shutdown only), when the executor may not run queued tasks. |
 | `private void` | `persistPriceCache()` | Writes every priced tracked item's current prices to the RS profile config. |
 | `public void` | `persistTrackedItems()` | Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config. |
 | `List<long[]>` | `portfolioHistoryPoints()` |  |
@@ -13119,6 +13165,12 @@ Client-free persistence layer (#111); built in `#startUp()` once gson/config are
 `private final PortfolioHistory portfolioHistory`
 
 Per-item thinned time series of portfolio value/cost for the history chart.
+
+#### portfolioSaveSeq
+
+`private final AtomicLong portfolioSaveSeq`
+
+Monotonic submit counter that coalesces overlapping async portfolio saves so only the newest snapshot wins.
 
 #### previewItem
 
@@ -14198,7 +14250,18 @@ Serializes the category definitions and group collapsed state to per-profile con
 
 `private void persistPortfolioHistory()`
 
-Serializes the per-item portfolio history to per-profile config.
+Persists the per-item portfolio history to per-profile config (#184). The snapshot
+(`PortfolioHistory#seriesByItem()`, a deep copy) is taken here on the client thread, but the
+gson serialization (~48k numbers at 50 items) and the config write are handed to the shared
+executor so they don't stall the game thread each save interval or on every item removal. A submit
+sequence guard drops a snapshot already superseded by a newer submission, so out-of-order pool
+execution can't write stale history.
+
+#### persistPortfolioHistorySync
+
+`private void persistPortfolioHistorySync()`
+
+Serializes the portfolio history synchronously (shutdown only), when the executor may not run queued tasks.
 
 #### persistPriceCache
 
