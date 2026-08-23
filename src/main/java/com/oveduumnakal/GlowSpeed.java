@@ -31,9 +31,13 @@ package com.oveduumnakal;
  */
 public enum GlowSpeed
 {
+	/** The {@code "Slow"} option. */
 	SLOW("Slow"),
+	/** The {@code "Medium"} option. */
 	MEDIUM("Medium"),
+	/** The {@code "Fast"} option. */
 	FAST("Fast"),
+	/** The {@code "Off"} option. */
 	OFF("Off");
 
 	private final String displayName;
@@ -43,6 +47,11 @@ public enum GlowSpeed
 		this.displayName = displayName;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

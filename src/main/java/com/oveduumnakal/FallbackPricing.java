@@ -20,9 +20,13 @@ package com.oveduumnakal;
  */
 public enum FallbackPricing
 {
+	/** The {@code "High"} option. */
 	HIGH("High"),
+	/** The {@code "Low"} option. */
 	LOW("Low"),
+	/** The {@code "Avg"} option. */
 	AVG("Avg"),
+	/** The {@code "Zero"} option. */
 	ZERO("Zero");
 
 	private final String label;
@@ -32,6 +36,11 @@ public enum FallbackPricing
 		this.label = label;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

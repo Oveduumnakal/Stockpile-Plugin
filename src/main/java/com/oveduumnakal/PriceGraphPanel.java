@@ -56,13 +56,22 @@ import net.runelite.client.ui.FontManager;
 public class PriceGraphPanel extends JPanel
 {
 	/** Whether this panel charts prices or trade volume. */
-	public enum Mode { PRICE, VOLUME }
+	public enum Mode
+	{
+		/** Chart item prices. */
+		PRICE,
+		/** Chart trade volume. */
+		VOLUME
+	}
 
 	/** Which price lines to draw: all three, just high/low, or just the average. */
 	public enum LineSet
 	{
+		/** Draw high, low, and average lines. */
 		ALL("ALL"),
+		/** Draw only the high and low lines. */
 		HIGH_LOW("H/L"),
+		/** Draw only the average line. */
 		AVG("AVG");
 
 		final String label;
@@ -413,6 +422,11 @@ public class PriceGraphPanel extends JPanel
 		repaint();
 	}
 
+	/**
+	 * Returns the time window currently charted.
+	 *
+	 * @return the active time window
+	 */
 	public TimeWindow getActiveWindow()
 	{
 		return activeWindow;

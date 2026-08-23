@@ -60,6 +60,13 @@ public class StockpileHighlightOverlay extends WidgetItemOverlay
 		showOnBank();
 	}
 
+	/**
+	 * Highlights a tracked item's widget in the inventory or bank.
+	 *
+	 * @param graphics the overlay graphics context
+	 * @param itemId the item id being rendered
+	 * @param widgetItem the widget item to highlight
+	 */
 	@Override
 	public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
 	{

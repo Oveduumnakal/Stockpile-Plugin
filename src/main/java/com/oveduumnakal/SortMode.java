@@ -20,10 +20,15 @@ import java.util.function.Predicate;
  */
 public enum SortMode
 {
+	/** The {@code "Manual"} option. */
 	MANUAL("Manual"),
+	/** The {@code "Name"} option. */
 	NAME("Name"),
+	/** The {@code "Value"} option. */
 	VALUE("Value"),
+	/** The {@code "Profit"} option. */
 	PROFIT("Profit"),
+	/** The {@code "24h Change"} option. */
 	CHANGE_24H("24h Change");
 
 	private final String label;
@@ -109,6 +114,11 @@ public enum SortMode
 		return (double) (current - baseline) / baseline;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

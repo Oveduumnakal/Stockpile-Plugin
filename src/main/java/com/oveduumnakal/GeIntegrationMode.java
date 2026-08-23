@@ -13,9 +13,13 @@ package com.oveduumnakal;
  */
 public enum GeIntegrationMode
 {
+	/** The {@code "Off"} option. */
 	OFF("Off"),
+	/** The {@code "Button on GE"} option. */
 	BUTTON("Button on GE"),
+	/** The {@code "Auto-open"} option. */
 	AUTO("Auto-open"),
+	/** The {@code "Both"} option. */
 	BOTH("Both");
 
 	private final String label;
@@ -25,6 +29,11 @@ public enum GeIntegrationMode
 		this.label = label;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

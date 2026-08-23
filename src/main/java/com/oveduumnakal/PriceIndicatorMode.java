@@ -31,8 +31,11 @@ package com.oveduumnakal;
  */
 public enum PriceIndicatorMode
 {
+	/** The {@code "All"} option. */
 	ALL("All"),
+	/** The {@code "Change"} option. */
 	CHANGE("Change"),
+	/** The {@code "Off"} option. */
 	OFF("Off");
 
 	private final String displayName;
@@ -42,6 +45,11 @@ public enum PriceIndicatorMode
 		this.displayName = displayName;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

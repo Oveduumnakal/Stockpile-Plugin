@@ -4293,42 +4293,79 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		refreshPanel(false);
 	}
 
+	/**
+	 * Returns the current client game tick.
+	 *
+	 * @return the tick count
+	 */
 	@Override
 	public int currentTick()
 	{
 		return client.getTickCount();
 	}
 
+	/**
+	 * Returns whether source-aware pricing is enabled in config.
+	 *
+	 * @return {@code true} if quantity changes are priced by their source
+	 */
 	@Override
 	public boolean sourcePricing()
 	{
 		return config.sourcePricing();
 	}
 
+	/**
+	 * Returns the configured fallback-pricing policy for unknown-source changes.
+	 *
+	 * @return the fallback-pricing mode
+	 */
 	@Override
 	public FallbackPricing fallbackPricing()
 	{
 		return config.fallbackPricing();
 	}
 
+	/**
+	 * Returns the tracked item with the given id, if tracked.
+	 *
+	 * @param itemId the item id
+	 * @return the tracked item, or {@code null} when the id is not tracked
+	 */
 	@Override
 	public TrackedItem trackedItem(int itemId)
 	{
 		return trackedItems.get(itemId);
 	}
 
+	/**
+	 * Returns all currently tracked items.
+	 *
+	 * @return the tracked items
+	 */
 	@Override
 	public Collection<TrackedItem> trackedItems()
 	{
 		return trackedItems.values();
 	}
 
+	/**
+	 * Returns whether the given item id is a known empty-container placeholder.
+	 *
+	 * @param itemId the item id
+	 * @return {@code true} if the id is an empty container (e.g. an empty vial)
+	 */
 	@Override
 	public boolean isEmptyContainer(int itemId)
 	{
 		return EMPTY_CONTAINERS.contains(itemId);
 	}
 
+	/**
+	 * Returns the player's current Grand Exchange offers.
+	 *
+	 * @return the open GE offer slots
+	 */
 	@Override
 	public GrandExchangeOffer[] openGeOffers()
 	{

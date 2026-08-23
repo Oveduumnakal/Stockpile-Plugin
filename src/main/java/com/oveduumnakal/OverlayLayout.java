@@ -11,7 +11,9 @@ package com.oveduumnakal;
  */
 public enum OverlayLayout
 {
+	/** The {@code "Compact"} option. */
 	COMPACT("Compact"),
+	/** The {@code "Standard"} option. */
 	STANDARD("Standard");
 
 	private final String label;
@@ -21,6 +23,11 @@ public enum OverlayLayout
 		this.label = label;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{

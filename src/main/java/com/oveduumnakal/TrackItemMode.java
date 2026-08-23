@@ -14,6 +14,8 @@ package com.oveduumnakal;
  */
 public enum TrackItemMode
 {
+	/** Watch-only: shown for prices/charts, excluded from totals. */
 	VIEW,
+	/** Fully tracked: counts toward quantities, value, and profit totals. */
 	TRACK
 }

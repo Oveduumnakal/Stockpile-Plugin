@@ -34,11 +34,26 @@ public class AcquisitionRecord
 	private AcquisitionSource source;
 	private AcquisitionSource sellSource;
 
+	/**
+	 * Creates a lot with an unknown acquisition source (the legacy default).
+	 *
+	 * @param quantity the number of units bought
+	 * @param boughtAt the buy price per unit
+	 * @param soldAt the sell price per unit, or {@code null} while the lot is still held
+	 */
 	public AcquisitionRecord(int quantity, long boughtAt, Long soldAt)
 	{
 		this(quantity, boughtAt, soldAt, null);
 	}
 
+	/**
+	 * Creates a lot with an explicit acquisition source.
+	 *
+	 * @param quantity the number of units bought
+	 * @param boughtAt the buy price per unit
+	 * @param soldAt the sell price per unit, or {@code null} while the lot is still held
+	 * @param source how the lot entered the collection
+	 */
 	public AcquisitionRecord(int quantity, long boughtAt, Long soldAt, AcquisitionSource source)
 	{
 		this.quantity = quantity;

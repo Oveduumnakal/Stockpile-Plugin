@@ -7,6 +7,10 @@
 # output in PersistedSchemaSnapshotTest, so it must stay LF in the working tree.
 *.snapshot text eol=lf
 
+# JavaDocs.md is regenerated and compared byte-for-byte by checkJavaDocs, so it
+# must stay LF in the working tree for the drift check to be stable cross-platform.
+JavaDocs.md text eol=lf
+
 # Shell scripts must stay LF; Windows batch scripts must stay CRLF.
 *.sh    text eol=lf
 gradlew text eol=lf

@@ -32,9 +32,13 @@ package com.oveduumnakal;
  */
 public enum HighlightMode
 {
+	/** The {@code "Ground"} option. */
 	GROUND("Ground"),
+	/** The {@code "Inv/Bank"} option. */
 	INV_BANK("Inv/Bank"),
+	/** The {@code "Both"} option. */
 	BOTH("Both"),
+	/** The {@code "Off"} option. */
 	OFF("Off");
 
 	private final String displayName;
@@ -56,6 +60,11 @@ public enum HighlightMode
 		return this == INV_BANK || this == BOTH;
 	}
 
+	/**
+	 * Returns the display label shown in the UI.
+	 *
+	 * @return the display label
+	 */
 	@Override
 	public String toString()
 	{
