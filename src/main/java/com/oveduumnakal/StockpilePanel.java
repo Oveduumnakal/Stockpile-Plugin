@@ -47,7 +47,9 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -93,6 +95,7 @@ import javax.swing.BoxLayout;
 import javax.swing.DefaultCellEditor;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
+import javax.swing.DropMode;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
@@ -120,6 +123,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.TransferHandler;
 import javax.swing.WindowConstants;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
@@ -2974,6 +2978,7 @@ public class StockpilePanel extends PluginPanel
 
 		JList<String> list = new JList<>(model);
 		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		installCategoryDragReorder(list, model);
 
 		JButton newBtn = new JButton("New");
 		newBtn.addActionListener(e ->
@@ -3081,6 +3086,80 @@ public class StockpilePanel extends PluginPanel
 		String result = categoryActions.autoCategorize(choice == 1);
 		JOptionPane.showMessageDialog(dialog, result, "Auto-categorize", JOptionPane.INFORMATION_MESSAGE);
 		dialog.dispose();
+	}
+
+	/**
+	 * Enables drag-and-drop reordering on the Manage Categories list (#212): dragging a category and
+	 * dropping it between two others sets the order in one gesture, committing through the same
+	 * {@link CategoryActions#reorder(String, int)} path as the ↑/↓ buttons. {@link DropMode#INSERT}
+	 * draws the insertion line, so the drop target is shown while dragging.
+	 */
+	private void installCategoryDragReorder(JList<String> list, DefaultListModel<String> model)
+	{
+		list.setDragEnabled(true);
+		list.setDropMode(DropMode.INSERT);
+		list.setTransferHandler(new TransferHandler()
+		{
+			@Override
+			public int getSourceActions(JComponent c)
+			{
+				return MOVE;
+			}
+
+			@Override
+			protected Transferable createTransferable(JComponent c)
+			{
+				return new StringSelection(String.valueOf(list.getSelectedIndex()));
+			}
+
+			@Override
+			public boolean canImport(TransferSupport support)
+			{
+				return support.isDrop() && support.isDataFlavorSupported(DataFlavor.stringFlavor);
+			}
+
+			@Override
+			public boolean importData(TransferSupport support)
+			{
+				if (!canImport(support))
+					return false;
+
+				int from = sourceIndex(support);
+				if (from < 0 || from >= model.size())
+					return false;
+
+				int drop = ((JList.DropLocation) support.getDropLocation()).getIndex();
+				int target = drop > from ? drop - 1 : drop;
+				if (target < 0)
+					target = 0;
+
+				if (target >= model.size())
+					target = model.size() - 1;
+
+				if (target == from)
+					return false;
+
+				String name = model.remove(from);
+				model.add(target, name);
+				list.setSelectedIndex(target);
+				categoryActions.reorder(name, target);
+				return true;
+			}
+
+			/** @return the dragged row index carried in the transfer, or -1 when unreadable. */
+			private int sourceIndex(TransferSupport support)
+			{
+				try
+				{
+					Object data = support.getTransferable().getTransferData(DataFlavor.stringFlavor);
+					return Integer.parseInt(data.toString());
+				}
+				catch (Exception ex)
+				{
+					return -1;
+				}
+			}
+		});
 	}
 
 	/** Moves the selected dialog category by {@code delta} and forwards the new index to the plugin. */
