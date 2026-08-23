@@ -1562,10 +1562,14 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return sb.toString();
 	}
 
-	private static final String CL_SECTION_STYLE = "font-size:14px;font-weight:bold;color:#ffffff;margin-top:14px;";
-	private static final String CL_AREA_STYLE = "font-size:13px;font-weight:bold;color:#e0a54a;margin-top:12px;";
-	private static final String CL_FEATURE_STYLE = "font-weight:bold;color:#d4d4d4;margin-top:8px;";
-	private static final String CL_TEXT_STYLE = "color:#9a9a9a;margin-top:2px;";
+	private static final String CL_SECTION_STYLE = "font-size:14px;font-weight:bold;color:"
+			+ StockpileColors.toHex(Color.WHITE) + ";margin-top:14px;";
+	private static final String CL_AREA_STYLE = "font-size:13px;font-weight:bold;color:"
+			+ StockpileColors.toHex(StockpileColors.AVG) + ";margin-top:12px;";
+	private static final String CL_FEATURE_STYLE = "font-weight:bold;color:"
+			+ StockpileColors.toHex(ColorScheme.LIGHT_GRAY_COLOR) + ";margin-top:8px;";
+	private static final String CL_TEXT_STYLE = "color:"
+			+ StockpileColors.toHex(StockpileColors.MUTED) + ";margin-top:2px;";
 
 	/** Pixels of left indent added per nesting level in the changelog body. */
 	private static final int CL_INDENT_STEP = 12;

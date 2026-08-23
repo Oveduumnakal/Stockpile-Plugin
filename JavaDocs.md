@@ -4985,7 +4985,7 @@ Cell renderer for the notifications table, applying the panel's fonts/colors and
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `public Component` | `getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)` |  |
+| `public Component` | `getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)` | Renders a notifications-table cell. |
 
 ### Constructor Detail
 
@@ -4998,6 +4998,10 @@ Cell renderer for the notifications table, applying the panel's fonts/colors and
 #### getTableCellRendererComponent
 
 `public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)`
+
+Renders a notifications-table cell. Metrics show a terse abbreviation in the narrow row cell with
+the full name on hover; other values render as-is but still carry a tooltip so anything the column
+truncates stays readable.
 
 ---
 
