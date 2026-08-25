@@ -26,9 +26,10 @@ import java.util.Map;
  * #claimDurable durable} claims (#180): a GE fill and its collected inventory
  * gain can be many ticks apart and must survive a logout, so durable claims
  * carry no TTL, are matched by their own {@link #attributeDurable} path, and
- * {@linkplain #exportDurable serialize} as the persisted GE buy ledger. All
- * operations are O(open claims) with no allocation when idle, keeping the
- * per-tick cost negligible; the class touches no client types, so it is
+ * {@linkplain #exportDurable serialize} as the persisted GE buy ledger. They live
+ * in a separate deque, so the per-tick {@link #attribute}/{@link #expire} scans stay
+ * O(ordinary open claims) no matter how many uncollected buys are outstanding (#259),
+ * with no allocation when idle; the class touches no client types, so it is
  * unit-testable in isolation.
  */
 class SourceAttributionCore
@@ -43,17 +44,15 @@ class SourceAttributionCore
 		final int itemId;
 		final long unitPrice;
 		final int expiryTick;
-		final boolean durable;
 		int quantity;
 
-		Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick, boolean durable)
+		Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick)
 		{
 			this.source = source;
 			this.itemId = itemId;
 			this.quantity = quantity;
 			this.unitPrice = unitPrice;
 			this.expiryTick = expiryTick;
-			this.durable = durable;
 		}
 	}
 
@@ -86,6 +85,13 @@ class SourceAttributionCore
 	private final Deque<Claim> claims = new ArrayDeque<>();
 
 	/**
+	 * Durable (GE buy) claims, kept apart from {@link #claims} so the per-tick {@link #attribute} and
+	 * {@link #expire} scans never walk them &mdash; an uncollected buy can outlive many ticks without
+	 * inflating the per-tick cost (#259). Matched only by {@link #attributeDurable}.
+	 */
+	private final Deque<Claim> durableClaims = new ArrayDeque<>();
+
+	/**
 	 * Registers a detector's expectation that {@code quantity} units of
 	 * {@code itemId} are about to change hands at {@code unitPrice} gp each.
 	 */
@@ -94,7 +100,7 @@ class SourceAttributionCore
 		if (quantity <= 0)
 			return;
 
-		claims.addLast(new Claim(source, itemId, quantity, unitPrice, currentTick + CLAIM_TTL_TICKS, false));
+		claims.addLast(new Claim(source, itemId, quantity, unitPrice, currentTick + CLAIM_TTL_TICKS));
 	}
 
 	/**
@@ -108,7 +114,7 @@ class SourceAttributionCore
 		if (quantity <= 0)
 			return;
 
-		claims.addLast(new Claim(source, itemId, quantity, unitPrice, 0, true));
+		durableClaims.addLast(new Claim(source, itemId, quantity, unitPrice, 0));
 	}
 
 	/**
@@ -127,7 +133,7 @@ class SourceAttributionCore
 		while (it.hasNext())
 		{
 			Claim c = it.next();
-			if (c.durable || c.itemId != itemId || c.expiryTick < currentTick)
+			if (c.itemId != itemId || c.expiryTick < currentTick)
 				continue;
 
 			if (c.quantity <= quantity)
@@ -150,16 +156,16 @@ class SourceAttributionCore
 	 */
 	List<long[]> attributeDurable(int itemId, int quantity)
 	{
-		if (claims.isEmpty() || quantity <= 0)
+		if (durableClaims.isEmpty() || quantity <= 0)
 			return Collections.emptyList();
 
 		List<long[]> consumed = new ArrayList<>();
 		int remaining = quantity;
-		Iterator<Claim> it = claims.iterator();
+		Iterator<Claim> it = durableClaims.iterator();
 		while (it.hasNext() && remaining > 0)
 		{
 			Claim c = it.next();
-			if (!c.durable || c.itemId != itemId)
+			if (c.itemId != itemId)
 				continue;
 
 			int take = Math.min(remaining, c.quantity);
@@ -174,6 +180,53 @@ class SourceAttributionCore
 	}
 
 	/**
+	 * Prunes orphaned durable (GE buy) claims (#259): caps each item's durable claims, oldest-first, to the
+	 * quantity still outstanding in the live GE buy offers ({@code outstandingByItem}). A buy that was never
+	 * collected keeps its offer open across logins, so its claim survives; buys collected long ago (their offer
+	 * slot now empty) leave orphaned claims that would misprice a later FIFO collection, so the excess beyond
+	 * what is still outstanding is dropped. Items absent from {@code outstandingByItem} are treated as zero
+	 * outstanding. Idempotent: re-running with the same offers prunes nothing further.
+	 *
+	 * @return {@code true} if any durable claim quantity was pruned
+	 */
+	boolean reconcileDurable(Map<Integer, Integer> outstandingByItem)
+	{
+		if (durableClaims.isEmpty())
+			return false;
+
+		Map<Integer, Integer> durableByItem = new LinkedHashMap<>();
+		for (Claim c : durableClaims)
+			durableByItem.merge(c.itemId, c.quantity, Integer::sum);
+
+		boolean pruned = false;
+		for (Map.Entry<Integer, Integer> entry : durableByItem.entrySet())
+		{
+			int itemId = entry.getKey();
+			int outstanding = outstandingByItem.getOrDefault(itemId, 0);
+			int excess = entry.getValue() - outstanding;
+			if (excess <= 0)
+				continue;
+
+			Iterator<Claim> it = durableClaims.iterator();
+			while (it.hasNext() && excess > 0)
+			{
+				Claim c = it.next();
+				if (c.itemId != itemId)
+					continue;
+
+				int take = Math.min(excess, c.quantity);
+				c.quantity -= take;
+				excess -= take;
+				pruned = true;
+				if (c.quantity <= 0)
+					it.remove();
+			}
+		}
+
+		return pruned;
+	}
+
+	/**
 	 * Discards expired ordinary claims; call once per tick. Durable (GE buy) claims have no TTL and
 	 * are never touched here. No-op (and allocation-free) when idle.
 	 */
@@ -182,19 +235,20 @@ class SourceAttributionCore
 		if (claims.isEmpty())
 			return;
 
-		claims.removeIf(c -> !c.durable && c.expiryTick < currentTick);
+		claims.removeIf(c -> c.expiryTick < currentTick);
 	}
 
 	/** Drops every open claim (logout, plugin shutdown), durable ones included. */
 	void clear()
 	{
 		claims.clear();
+		durableClaims.clear();
 	}
 
 	/** Drops only the durable (GE buy) claims, so a reload can replace them without disturbing live claims. */
 	void clearDurable()
 	{
-		claims.removeIf(c -> c.durable);
+		durableClaims.clear();
 	}
 
 	/**
@@ -205,11 +259,8 @@ class SourceAttributionCore
 	Map<Integer, List<long[]>> exportDurable()
 	{
 		Map<Integer, List<long[]>> ledger = new LinkedHashMap<>();
-		for (Claim c : claims)
+		for (Claim c : durableClaims)
 		{
-			if (!c.durable)
-				continue;
-
 			ledger.computeIfAbsent(c.itemId, k -> new ArrayList<>())
 					.add(new long[]{c.quantity, c.unitPrice});
 		}
@@ -226,7 +277,7 @@ class SourceAttributionCore
 		for (Map.Entry<Integer, List<long[]>> e : ledger.entrySet())
 		{
 			for (long[] chunk : e.getValue())
-				claims.addLast(new Claim(AcquisitionSource.GE_TRADE, e.getKey(), (int) chunk[0], chunk[1], 0, true));
+				durableClaims.addLast(new Claim(AcquisitionSource.GE_TRADE, e.getKey(), (int) chunk[0], chunk[1], 0));
 		}
 	}
 }
