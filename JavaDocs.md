@@ -20,7 +20,9 @@
 - [com.oveduumnakal.DestroyedOutputSources](#comoveduumnakaldestroyedoutputsources)
 - [com.oveduumnakal.DetailView](#comoveduumnakaldetailview)
 - [com.oveduumnakal.DetailView.Layout](#comoveduumnakaldetailviewlayout)
+- [com.oveduumnakal.DetailView.WeightedColumnsLayout](#comoveduumnakaldetailviewweightedcolumnslayout)
 - [com.oveduumnakal.DetailViewHost](#comoveduumnakaldetailviewhost)
+- [com.oveduumnakal.DetailWindow](#comoveduumnakaldetailwindow)
 - [com.oveduumnakal.DoseFamily](#comoveduumnakaldosefamily)
 - [com.oveduumnakal.DoseFamily.Parsed](#comoveduumnakaldosefamilyparsed)
 - [com.oveduumnakal.EllipsisText](#comoveduumnakalellipsistext)
@@ -2054,6 +2056,7 @@ populated detail card and a loading placeholder.
 | Type | Description |
 |---|---|
 | _enum_ [`Layout`](#comoveduumnakaldetailviewlayout) | Section arrangement: the sidebar's vertical stack, or the #109 dashboard's two-column layout. |
+| _class_ [`WeightedColumnsLayout`](#comoveduumnakaldetailviewweightedcolumnslayout) | A three-column horizontal layout for the dashboard body (#109). |
 
 ### Field Summary
 
@@ -2062,6 +2065,10 @@ populated detail card and a loading placeholder.
 | `private static final String` | `CARD_CONTENT` |  |
 | `private static final String` | `CARD_LOADING` |  |
 | `private static final Color` | `COLOR_VOLUME` |  |
+| `private static final Font` | `DASHBOARD_FONT` |  |
+| `private static final int[]` | `DASHBOARD_LEFT` | Fixed dashboard column assignments (#109), indexing the section array built in `#applyDetailSectionLayout()`: left = item values, market info, alch, notifications; middle = collection values, price overview, collection log; right = price and volume graphs. |
+| `private static final int[]` | `DASHBOARD_MIDDLE` | Middle dashboard column section indices; see `#DASHBOARD_LEFT`. |
+| `private static final int[]` | `DASHBOARD_RIGHT` | Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`. |
 | `private static final int` | `DEFAULT_NOTIFICATION_ROWS` |  |
 | `private static final Color` | `DESCRIPTION_COLOR` |  |
 | `private static final NumberFormat` | `NUMBER_FORMAT` |  |
@@ -2070,7 +2077,10 @@ populated detail card and a loading placeholder.
 | `private static final int` | `PRESSURE_BALANCED_HIGH` |  |
 | `private static final int` | `PRESSURE_BALANCED_LOW` |  |
 | `private static final String` | `PRICES_BASE` |  |
+| `private static final String` | `PRICES_HOME` |  |
+| `private static final Color` | `SEARCH_PLACEHOLDER_COLOR` |  |
 | `private static final String` | `WIKI_BASE` |  |
+| `private static final String` | `WIKI_HOME` |  |
 | `private int` | `acqHoverCol` |  |
 | `private int` | `acqHoverRow` |  |
 | `private JButton` | `acqPopoutButton` |  |
@@ -2097,6 +2107,16 @@ populated detail card and a loading placeholder.
 | `private final JLabel` | `ccvQuantity` |  |
 | `private JPanel` | `ccvSection` |  |
 | `private final StockpileConfig` | `config` |  |
+| `private JLabel` | `dashboardEmptyMessage` |  |
+| `private boolean` | `dashboardHome` |  |
+| `private JPanel` | `dashboardLeftColumn` |  |
+| `private JPanel` | `dashboardMiddleColumn` |  |
+| `private JButton` | `dashboardPricesBtn` |  |
+| `private JPanel` | `dashboardRightColumn` |  |
+| `private JPanel` | `dashboardRightControls` |  |
+| `private JTextField` | `dashboardSearchField` |  |
+| `private JPopupMenu` | `dashboardSearchPopup` |  |
+| `private JButton` | `dashboardWikiBtn` |  |
 | `private final JPanel` | `detailCard` |  |
 | `private final JTextArea` | `detailDescriptionArea` |  |
 | `private String` | `detailExamineText` |  |
@@ -2106,11 +2126,13 @@ populated detail card and a loading placeholder.
 | `private Timer` | `detailLoadTimeout` |  |
 | `private final JPanel` | `detailLoadingCard` |  |
 | `private final JLabel` | `detailNameLabel` |  |
+| `private JButton` | `detailPopOutBtn` |  |
 | `private final JLabel` | `detailQtyLabel` |  |
 | `private JPanel` | `detailSectionsHost` |  |
 | `private final Spinner` | `detailSpinner` |  |
 | `private final JButton` | `detailTrackBtn` |  |
 | `private volatile boolean` | `editingNotifications` |  |
+| `private int` | `firstSearchResultId` |  |
 | `private PriceGraphPanel.LineSet` | `graphLineSet` |  |
 | `private boolean` | `graphSmooth` |  |
 | `private final JLabel` | `haProfit` |  |
@@ -2179,6 +2201,8 @@ populated detail card and a loading placeholder.
 | `private void` | `applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)` | Wires an acquisitions table's fonts, row height, per-column renderers/editors, and headers for either the compact sidebar table or the expanded pop-out table. |
 | `private void` | `applyBuyLimit(TrackedItem item)` | Shows the Buy Limit cell as `used / total` when purchases have been tracked in the current window (with a reset-countdown tooltip), the plain total when untouched, or `N/A` when the item has no GE limit. |
 | `private void` | `applyBuySellPressure(TrackedItem item)` | Computes the buy/sell volume split over the configured window and updates the pressure bar + labels. |
+| `private void` | `applyDashboardHome()` | Applies the dashboard-home identity and layout: Stockpile icon and name, the dashboard examine caption, a hidden quantity line and Track button, the section columns hidden, and the centred search prompt shown in their place. |
+| `private void` | `applyDashboardLinks(boolean home)` | Lays out the dashboard toolbar's right-hand controls (#109). |
 | `private void` | `applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)` | Sets a label to the signed percent change of the current price vs. |
 | `private void` | `applyDetailCard()` | Shows either the spinner placeholder or the populated detail view for the currently open item, depending on whether its prices are still loading. |
 | `private void` | `applyDetailSectionLayout()` | Reorders and shows/hides the detail sections to match the configured slot assignments. |
@@ -2190,9 +2214,15 @@ populated detail card and a loading placeholder.
 | `private void` | `applyTableRenderers()` | Applies the acquisitions renderers to the sidebar (compact) table. |
 | `private void` | `applyTradeTime(JLabel label, long epochSeconds)` | Sets a label to an epoch-second trade time's relative age, with the absolute time as a tooltip. |
 | `private void` | `applyVolatility(TrackedItem item)` | Sets the market-info volatility rating from the item's week series via `MarketClassifier`. |
+| `private Font` | `boldFont()` |  |
 | `private JPanel` | `buildAlchBlock()` | Builds the alch-info section (high/low alch values and the high-alch profit estimate). |
 | `private Icon` | `buildBrushIcon()` | Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions button. |
 | `private JPanel` | `buildCurrentValuesBlock(JLabel high, JLabel low, JLabel avg, JLabel fourth, JLabel profit)` | Builds the stacked current-values block (high/low/avg plus a fourth metric row), colouring each label by metric and appending a divider-topped profit row when a profit label is supplied. |
+| `private JPanel` | `buildDashboardColumn()` | Builds one top-anchored dashboard column. |
+| `private Component` | `buildDashboardPad()` |  |
+| `private JTextField` | `buildDashboardSearch()` | Builds the dashboard toolbar's centre search control: a text field that fills the middle of the toolbar, shows a faint "Search..." placeholder when empty, filters OSRS items as you type, and lists matches in a floating popup whose rows switch the window to the chosen item. |
+| `private JPanel` | `buildDashboardSearchRow(int itemId, String itemName)` | Builds one clickable dashboard search-result row that switches the window to `itemId` when picked. |
+| `private void` | `buildDashboardToolbar(JPanel titleTextStack)` | Builds the dashboard (pop-out window) header as a single toolbar row (#109): the item identity &mdash; icon, name, quantity and description &mdash; floats left, a width-capped search bar to switch the shown item sits centre, and equal-width Wiki, Live Prices and Track/Untrack controls float right. |
 | `private void` | `buildDetailCard()` | Constructs the detail-view card once: the header, the scrollable body, and every detail section (current values, market info, charts, overview grid, alch, notifications, acquisitions log). |
 | `private void` | `buildDetailLoadingCard()` | Fills `#detailLoadingCard` with a centered spinner and caption. |
 | `private JPanel` | `buildDetailSection(String title, Component... contents)` | Builds a titled detail-view section containing the given components. |
@@ -2210,16 +2240,23 @@ populated detail card and a loading placeholder.
 | `private JPanel` | `buildOverviewGrid()` | Builds (and remembers) the sidebar overview grid. |
 | `private JButton` | `buildPopoutButton(Runnable onClick)` | Builds a borderless pop-out button that runs the given action when clicked. |
 | `private Icon` | `buildPopoutIcon()` | Paints the small box-with-arrow "open in new window" icon used by pop-out buttons. |
+| `private void` | `buildStackHeader(JPanel titleTextStack)` | Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row, then the icon-and-title row, then the wrapping description &mdash; all stacked vertically. |
 | `private void` | `clearItemValue(JLabel label, String text)` | Resets a value label to plain text, dropping its tooltip and any hover-tint listener. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows (e.g. |
 | `private JPanel` | `createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)` | Creates an overview grid panel that custom-paints its own dividers: a vertical rule after the window-label column and a horizontal rule between consecutive rows, both derived from the live label positions so they track layout changes. |
 | `private TrackedItem` | `currentDetailItem()` |  |
 | `private static String` | `expandedAcqHeader(String compact)` |  |
+| `private void` | `fillDashboardColumn(JPanel column, int[] indices, JPanel[] sections, SectionSlot[] slots)` | Adds the sections named by `indices` (in that fixed order) to a dashboard column, skipping any the config has hidden. |
 | `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
 | `private static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
 | `private static String` | `fullWindowLabel(TimeWindow w)` |  |
 | `private long` | `geTax(long avgPrice)` |  |
 | `public int` | `getBoundItemId()` |  |
+| `public Dimension` | `getPreferredScrollableViewportSize()` |  |
+| `public int` | `getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)` |  |
+| `public boolean` | `getScrollableTracksViewportHeight()` |  |
+| `public boolean` | `getScrollableTracksViewportWidth()` |  |
+| `public int` | `getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)` |  |
 | `private void` | `installVolumeValue(JLabel label, long vol, boolean full)` | Sets a volume cell's compact/full text with a full-number tooltip and hover tint, or a placeholder. |
 | `private boolean` | `isDetailLoading(TrackedItem item)` |  |
 | `public boolean` | `isEditingNotifications()` |  |
@@ -2227,13 +2264,14 @@ populated detail card and a loading placeholder.
 | `public boolean` | `isPreview()` |  |
 | `private JPanel` | `newSectionWrapper()` |  |
 | `private void` | `notifyNotificationsEdited()` | Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. |
+| `private void` | `onDashboardSearch(String query)` | Filters the floating dashboard search popup to OSRS items matching `query` (min two characters). |
 | `public void` | `onLeaveDetail()` | Clears the bound item and stops any in-flight loading/pop-outs when the host leaves the detail view. |
 | `public boolean` | `onRebuild()` | Refreshes the bound item from the host's current tracked state on a list rebuild: clears a stale preview once the item is tracked, repopulates in place, and reports whether an item is still shown so the host can fall back to the main list when it has gone. |
 | `private void` | `openCollectionLogPopout()` | Opens the editable acquisitions (collection log) table in a standalone pop-out window. |
 | `private void` | `openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)` | Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph. |
 | `private void` | `openOverviewPopout()` | Opens the price overview grid in a standalone pop-out window. |
-| `private void` | `openPricesLink()` | Opens the wiki realtime prices page for the item currently shown in the detail view. |
-| `private void` | `openWikiLink()` | Opens the OSRS Wiki page for the item currently shown in the detail view. |
+| `private void` | `openPricesLink()` | Opens the wiki realtime prices page for the item shown, or the prices home page in dashboard-home mode. |
+| `private void` | `openWikiLink()` | Opens the OSRS Wiki page for the item currently shown, or the wiki home page in dashboard-home mode. |
 | `private static long` | `overviewMidpoint(WikiRealtimePriceClient.PricePoint p)` |  |
 | `private void` | `populateDetail(TrackedItem item)` | Fills every detail section from an item's current state: header name/icon/quantity, item and collection values, overview grid, charts, market info (times, volatility, liquidity, range, pressure), alch figures, notifications, and the acquisitions log. |
 | `private void` | `populateOverviewGrid(Set<TimeWindow> rows)` | (Re)creates the overview grid panels (sidebar and pop-out) for the given set of time-window rows. |
@@ -2243,17 +2281,22 @@ populated detail card and a loading placeholder.
 | `public void` | `refreshDetailData(int itemId)` | Re-populates the open detail view with fresh data for `itemId` (no-op if a different item is shown). |
 | `private void` | `refreshPopouts(TrackedItem item)` | Pushes fresh data for `item` into every open pop-out window. |
 | `private void` | `scrollAcquisitionsToBottom()` | Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. |
+| `private void` | `selectDashboardSearch(int itemId)` | Clears the dashboard search field and asks the host to switch this window to `itemId`. |
 | `private void` | `setOverviewPlaceholder(JLabel label)` | Resets an overview cell to the `"-"` placeholder. |
 | `private void` | `setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)` | Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset. |
 | `public void` | `show(int itemId)` | Switches to the detail card for an item, requesting its full data and populating the view. |
+| `public void` | `showDashboardHome()` | Shows the item-less "dashboard home" state of the pop-out window (#109): the Stockpile icon and name stand in for an item, the body is replaced by a centred "search for an item" prompt, and the Track/Untrack control is hidden while the search bar stays live. |
 | `private void` | `showPopout(String title, JComponent content, Consumer<TrackedItem> refresher, Runnable onClose)` | Opens a non-modal pop-out window hosting `content`, registering its refresher so live updates reach it and running `onClose` when dismissed. |
 | `public void` | `showPreview(TrackedItem item)` | Opens a read-only preview of an untracked item. |
 | `private TrackedItem` | `shownDetailItem()` |  |
 | `public TrackedItem` | `shownItem()` |  |
+| `private void` | `sizeDashboardGraph(PriceGraphPanel graph, int height)` | Fixes a dashboard chart's height to `height` so it reads at a pop-out-like size rather than the shrunk sidebar height, while leaving its width free to stretch to the column (#109). |
+| `private Font` | `smallFont()` |  |
 | `private static String` | `spelledInterval(TimeWindow window)` |  |
 | `private void` | `stopDetailLoading()` | Stops the spinner animation and cancels the pending load-timeout, if any. |
 | `public void` | `stopLoading()` | Stops the loading spinner and its safety timeout (used when the host is disposed). |
 | `private void` | `styleNotifButton(JButton btn, Color fg)` | Applies the shared small-button styling to a notifications-section button. |
+| `private void` | `styleToolbarButton(JButton button)` | Styles a dashboard toolbar button: small font, a subtle border, and padding matching the search bar. |
 | `private long[]` | `thirtyDayRange(TrackedItem item)` |  |
 | `private void` | `toggleDetailTracking()` | Toggles tracking of the item shown in the detail view (#138), driven by the header button. |
 | `private void` | `updateAcqPopoutButton()` | Hides the acquisitions pop-out button while its pop-out window is already open. |
@@ -2273,6 +2316,30 @@ populated detail card and a loading placeholder.
 #### COLOR_VOLUME
 
 `private static final Color COLOR_VOLUME`
+
+#### DASHBOARD_FONT
+
+`private static final Font DASHBOARD_FONT`
+
+#### DASHBOARD_LEFT
+
+`private static final int[] DASHBOARD_LEFT`
+
+Fixed dashboard column assignments (#109), indexing the section array built in
+`#applyDetailSectionLayout()`: left = item values, market info, alch, notifications;
+middle = collection values, price overview, collection log; right = price and volume graphs.
+
+#### DASHBOARD_MIDDLE
+
+`private static final int[] DASHBOARD_MIDDLE`
+
+Middle dashboard column section indices; see `#DASHBOARD_LEFT`.
+
+#### DASHBOARD_RIGHT
+
+`private static final int[] DASHBOARD_RIGHT`
+
+Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`.
 
 #### DEFAULT_NOTIFICATION_ROWS
 
@@ -2306,9 +2373,21 @@ populated detail card and a loading placeholder.
 
 `private static final String PRICES_BASE`
 
+#### PRICES_HOME
+
+`private static final String PRICES_HOME`
+
+#### SEARCH_PLACEHOLDER_COLOR
+
+`private static final Color SEARCH_PLACEHOLDER_COLOR`
+
 #### WIKI_BASE
 
 `private static final String WIKI_BASE`
+
+#### WIKI_HOME
+
+`private static final String WIKI_HOME`
 
 #### acqHoverCol
 
@@ -2414,6 +2493,46 @@ populated detail card and a loading placeholder.
 
 `private final StockpileConfig config`
 
+#### dashboardEmptyMessage
+
+`private JLabel dashboardEmptyMessage`
+
+#### dashboardHome
+
+`private boolean dashboardHome`
+
+#### dashboardLeftColumn
+
+`private JPanel dashboardLeftColumn`
+
+#### dashboardMiddleColumn
+
+`private JPanel dashboardMiddleColumn`
+
+#### dashboardPricesBtn
+
+`private JButton dashboardPricesBtn`
+
+#### dashboardRightColumn
+
+`private JPanel dashboardRightColumn`
+
+#### dashboardRightControls
+
+`private JPanel dashboardRightControls`
+
+#### dashboardSearchField
+
+`private JTextField dashboardSearchField`
+
+#### dashboardSearchPopup
+
+`private JPopupMenu dashboardSearchPopup`
+
+#### dashboardWikiBtn
+
+`private JButton dashboardWikiBtn`
+
 #### detailCard
 
 `private final JPanel detailCard`
@@ -2450,6 +2569,10 @@ populated detail card and a loading placeholder.
 
 `private final JLabel detailNameLabel`
 
+#### detailPopOutBtn
+
+`private JButton detailPopOutBtn`
+
 #### detailQtyLabel
 
 `private final JLabel detailQtyLabel`
@@ -2469,6 +2592,10 @@ populated detail card and a loading placeholder.
 #### editingNotifications
 
 `private volatile boolean editingNotifications`
+
+#### firstSearchResultId
+
+`private int firstSearchResultId`
 
 #### graphLineSet
 
@@ -2733,6 +2860,22 @@ or `N/A` when the item has no GE limit.
 
 Computes the buy/sell volume split over the configured window and updates the pressure bar + labels.
 
+#### applyDashboardHome
+
+`private void applyDashboardHome()`
+
+Applies the dashboard-home identity and layout: Stockpile icon and name, the dashboard examine
+caption, a hidden quantity line and Track button, the section columns hidden, and the centred
+search prompt shown in their place.
+
+#### applyDashboardLinks
+
+`private void applyDashboardLinks(boolean home)`
+
+Lays out the dashboard toolbar's right-hand controls (#109). With an item shown, Wiki, Live Prices and
+Track share three equal cells; in dashboard-home mode the Track button is dropped and Wiki + Live Prices
+expand to fill the freed space, staying right-aligned.
+
 #### applyDeltaPct
 
 `private void applyDeltaPct(JLabel label, TrackedItem item, TimeWindow window)`
@@ -2803,6 +2946,12 @@ Sets a label to an epoch-second trade time's relative age, with the absolute tim
 
 Sets the market-info volatility rating from the item's week series via `MarketClassifier`.
 
+#### boldFont
+
+`private Font boldFont()`
+
+- **Returns:** the emphasis font: bold monospace across the dashboard, RuneScape bold in the sidebar.
+
 #### buildAlchBlock
 
 `private JPanel buildAlchBlock()`
@@ -2822,6 +2971,45 @@ Loads the bundled `broom.png` scaled to a 12px icon for the clear-acquisitions b
 Builds the stacked current-values block (high/low/avg plus a fourth metric row),
 colouring each label by metric and appending a divider-topped profit row when a
 profit label is supplied.
+
+#### buildDashboardColumn
+
+`private JPanel buildDashboardColumn()`
+
+Builds one top-anchored dashboard column. Its content minimum width is honoured by
+`WeightedColumnsLayout` so the column is never squeezed narrow enough to truncate its
+contents (#109).
+
+#### buildDashboardPad
+
+`private Component buildDashboardPad()`
+
+- **Returns:** a flexible horizontal spacer whose width tracks 10% of the view, used to pad the dashboard
+        toolbar's centre search bar away from the identity block and the right-hand controls.
+
+#### buildDashboardSearch
+
+`private JTextField buildDashboardSearch()`
+
+Builds the dashboard toolbar's centre search control: a text field that fills the middle of the
+toolbar, shows a faint "Search..." placeholder when empty, filters OSRS items as you type, and lists
+matches in a floating popup whose rows switch the window to the chosen item.
+
+#### buildDashboardSearchRow
+
+`private JPanel buildDashboardSearchRow(int itemId, String itemName)`
+
+Builds one clickable dashboard search-result row that switches the window to `itemId` when picked.
+
+#### buildDashboardToolbar
+
+`private void buildDashboardToolbar(JPanel titleTextStack)`
+
+Builds the dashboard (pop-out window) header as a single toolbar row (#109): the item identity
+&mdash; icon, name, quantity and description &mdash; floats left, a width-capped search bar to
+switch the shown item sits centre, and equal-width Wiki, Live Prices and Track/Untrack controls
+float right. Everything is vertically centred; results are drawn in a floating popup that overlays
+the dashboard rather than displacing it.
 
 #### buildDetailCard
 
@@ -2929,6 +3117,13 @@ Builds a borderless pop-out button that runs the given action when clicked.
 
 Paints the small box-with-arrow "open in new window" icon used by pop-out buttons.
 
+#### buildStackHeader
+
+`private void buildStackHeader(JPanel titleTextStack)`
+
+Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row,
+then the icon-and-title row, then the wrapping description &mdash; all stacked vertically.
+
 #### clearItemValue
 
 `private void clearItemValue(JLabel label, String text)`
@@ -2961,6 +3156,14 @@ derived from the live label positions so they track layout changes.
 
 - **Returns:** the roomy pop-out header for a compact acquisitions column name.
 
+#### fillDashboardColumn
+
+`private void fillDashboardColumn(JPanel column, int[] indices, JPanel[] sections, SectionSlot[] slots)`
+
+Adds the sections named by `indices` (in that fixed order) to a dashboard column, skipping any
+the config has hidden. The dashboard uses a fixed three-column arrangement (#109) rather than the
+config's sidebar ordering.
+
 #### fillOverviewGrid
 
 `private void fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)`
@@ -2990,6 +3193,40 @@ Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` dura
 `public int getBoundItemId()`
 
 - **Returns:** the item id currently bound to this detail view, or -1 when none.
+
+#### getPreferredScrollableViewportSize
+
+`public Dimension getPreferredScrollableViewportSize()`
+
+- **Returns:** this view's own preferred size as the preferred viewport size.
+
+#### getScrollableBlockIncrement
+
+`public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)`
+
+- **Returns:** a block scroll increment of one visible page along the scroll axis.
+
+#### getScrollableTracksViewportHeight
+
+`public boolean getScrollableTracksViewportHeight()`
+
+- **Returns:** `true` in dashboard-home mode so the short header + centred prompt fill the viewport
+        height (letting the prompt sit vertically centred); `false` otherwise so tall item
+        content scrolls vertically instead of squashing.
+
+#### getScrollableTracksViewportWidth
+
+`public boolean getScrollableTracksViewportWidth()`
+
+- **Returns:** `true` so the view always matches the viewport width and reflows its dashboard
+        columns when the hosting window is resized &mdash; including shrinking back after a
+        maximise/restore &mdash; rather than clipping at a stale wide preferred width (#109).
+
+#### getScrollableUnitIncrement
+
+`public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)`
+
+- **Returns:** a fixed unit scroll increment matching the enclosing scroll pane's step.
 
 #### installVolumeValue
 
@@ -3034,6 +3271,12 @@ Sets a volume cell's compact/full text with a full-number tooltip and hover tint
 Notifies the plugin (via callback) that the current item's notification rules
 changed, so it can persist them.
 
+#### onDashboardSearch
+
+`private void onDashboardSearch(String query)`
+
+Filters the floating dashboard search popup to OSRS items matching `query` (min two characters).
+
 #### onLeaveDetail
 
 `public void onLeaveDetail()`
@@ -3072,13 +3315,13 @@ Opens the price overview grid in a standalone pop-out window.
 
 `private void openPricesLink()`
 
-Opens the wiki realtime prices page for the item currently shown in the detail view.
+Opens the wiki realtime prices page for the item shown, or the prices home page in dashboard-home mode.
 
 #### openWikiLink
 
 `private void openWikiLink()`
 
-Opens the OSRS Wiki page for the item currently shown in the detail view.
+Opens the OSRS Wiki page for the item currently shown, or the wiki home page in dashboard-home mode.
 
 #### overviewMidpoint
 
@@ -3144,6 +3387,12 @@ Pushes fresh data for `item` into every open pop-out window.
 
 Scrolls the acquisitions log to its newest (bottom) entry once layout has settled.
 
+#### selectDashboardSearch
+
+`private void selectDashboardSearch(int itemId)`
+
+Clears the dashboard search field and asks the host to switch this window to `itemId`.
+
 #### setOverviewPlaceholder
 
 `private void setOverviewPlaceholder(JLabel label)`
@@ -3161,6 +3410,14 @@ Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, 
 `public void show(int itemId)`
 
 Switches to the detail card for an item, requesting its full data and populating the view.
+
+#### showDashboardHome
+
+`public void showDashboardHome()`
+
+Shows the item-less "dashboard home" state of the pop-out window (#109): the Stockpile icon and name
+stand in for an item, the body is replaced by a centred "search for an item" prompt, and the
+Track/Untrack control is hidden while the search bar stays live. Dashboard layout only.
 
 #### showPopout
 
@@ -3188,6 +3445,19 @@ supplies its price/history data directly and the tracked-only sections stay hidd
 
 - **Returns:** the item backing the detail view (tracked or preview), or `null` when none is shown.
 
+#### sizeDashboardGraph
+
+`private void sizeDashboardGraph(PriceGraphPanel graph, int height)`
+
+Fixes a dashboard chart's height to `height` so it reads at a pop-out-like size rather than
+the shrunk sidebar height, while leaving its width free to stretch to the column (#109).
+
+#### smallFont
+
+`private Font smallFont()`
+
+- **Returns:** the base body font: monospace across the dashboard (#109), RuneScape small in the sidebar.
+
 #### spelledInterval
 
 `private static String spelledInterval(TimeWindow window)`
@@ -3211,6 +3481,12 @@ Stops the loading spinner and its safety timeout (used when the host is disposed
 `private void styleNotifButton(JButton btn, Color fg)`
 
 Applies the shared small-button styling to a notifications-section button.
+
+#### styleToolbarButton
+
+`private void styleToolbarButton(JButton button)`
+
+Styles a dashboard toolbar button: small font, a subtle border, and padding matching the search bar.
 
 #### thirtyDayRange
 
@@ -3274,6 +3550,98 @@ Section arrangement: the sidebar's vertical stack, or the #109 dashboard's two-c
 
 ---
 
+## com.oveduumnakal.DetailView.WeightedColumnsLayout
+
+_class_
+
+`private static final class WeightedColumnsLayout`
+
+A three-column horizontal layout for the dashboard body (#109). It splits the available width by
+fixed weights (20% / 20% / 60%) when the window is wide enough, but never shrinks a column below its
+content's minimum width &mdash; so a smaller window scales the columns to fit their contents rather
+than truncating them with "&hellip;". Each column is given the full body height; a trailing glue in
+the column keeps its sections at their natural heights.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final int` | `gap` |  |
+| `private final double[]` | `weights` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `WeightedColumnsLayout(double[] weights, int gap)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `public void` | `addLayoutComponent(String name, Component comp)` |  |
+| `public void` | `layoutContainer(Container parent)` |  |
+| `private Dimension` | `measure(Container parent, boolean minimum)` |  |
+| `public Dimension` | `minimumLayoutSize(Container parent)` |  |
+| `public Dimension` | `preferredLayoutSize(Container parent)` |  |
+| `public void` | `removeLayoutComponent(Component comp)` |  |
+| `private double` | `unlockedWeight(boolean[] locked)` |  |
+
+### Field Detail
+
+#### gap
+
+`private final int gap`
+
+#### weights
+
+`private final double[] weights`
+
+### Constructor Detail
+
+#### WeightedColumnsLayout
+
+`WeightedColumnsLayout(double[] weights, int gap)`
+
+- **Parameter** `weights` — per-column width weights (need not sum to one)
+- **Parameter** `gap` — horizontal pixels between adjacent columns
+
+### Method Detail
+
+#### addLayoutComponent
+
+`public void addLayoutComponent(String name, Component comp)`
+
+#### layoutContainer
+
+`public void layoutContainer(Container parent)`
+
+#### measure
+
+`private Dimension measure(Container parent, boolean minimum)`
+
+- **Returns:** the summed column widths and tallest column height, using min or preferred sizes.
+
+#### minimumLayoutSize
+
+`public Dimension minimumLayoutSize(Container parent)`
+
+#### preferredLayoutSize
+
+`public Dimension preferredLayoutSize(Container parent)`
+
+#### removeLayoutComponent
+
+`public void removeLayoutComponent(Component comp)`
+
+#### unlockedWeight
+
+`private double unlockedWeight(boolean[] locked)`
+
+- **Returns:** the total weight of the columns not yet locked to their minimum width.
+
+---
+
 ## com.oveduumnakal.DetailViewHost
 
 _interface_
@@ -3301,7 +3669,9 @@ the fields and callbacks it already holds.
 | `long` | `natureRunePrice()` |  |
 | `void` | `notificationsEdited(int itemId)` | Signals that the notifications for `itemId` were edited in-view. |
 | `void` | `onBack()` | Invoked by the detail view's Back control. |
+| `void` | `popOut(int itemId)` | Pops `itemId` out into its own standalone detail window, focusing an existing one (#109). |
 | `void` | `requestDetailData(int itemId)` | Asks the plugin to (re)fetch the detailed price/history data for `itemId`. |
+| `void` | `switchDetailItem(int itemId)` | Switches the detail view to show `itemId` in place, from the dashboard toolbar's search bar (#109). |
 | `TrackedItem` | `trackedItem(int itemId)` |  |
 | `void` | `untrackToPreview(int itemId)` | Untracks `itemId` but keeps it open as a read-only preview (#138). |
 
@@ -3368,11 +3738,25 @@ Signals that the notifications for `itemId` were edited in-view.
 Invoked by the detail view's Back control. The sidebar returns to the main list; the dashboard
 window disposes itself.
 
+#### popOut
+
+`void popOut(int itemId)`
+
+Pops `itemId` out into its own standalone detail window, focusing an existing one (#109).
+
 #### requestDetailData
 
 `void requestDetailData(int itemId)`
 
 Asks the plugin to (re)fetch the detailed price/history data for `itemId`.
+
+#### switchDetailItem
+
+`void switchDetailItem(int itemId)`
+
+Switches the detail view to show `itemId` in place, from the dashboard toolbar's search bar
+(#109). A pop-out window rebinds itself to the new item (tracked, or a read-only preview when it is
+not tracked); the sidebar shows the item's detail.
 
 #### trackedItem
 
@@ -3385,6 +3769,176 @@ Asks the plugin to (re)fetch the detailed price/history data for `itemId`.
 `void untrackToPreview(int itemId)`
 
 Untracks `itemId` but keeps it open as a read-only preview (#138).
+
+---
+
+## com.oveduumnakal.DetailWindow
+
+_class_
+
+`final class DetailWindow`
+
+A standalone, resizable window hosting the full item detail view for one item (#109). Wraps a
+dedicated `DetailView` built in `DetailView.Layout#DASHBOARD` (two-column) mode inside
+its own `JFrame`, so an item's stats, charts and collection log can stay open and
+live-updating independently of the sidebar &mdash; and several items can be popped out at once.
+The plugin owns the window registry, keeps the bound item's prices fresh, and disposes every
+window on shutdown. All methods run on the Swing EDT.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final Dimension` | `DEFAULT_SIZE` |  |
+| `private static final Dimension` | `MIN_SIZE` |  |
+| `private TrackedItem` | `boundItem` |  |
+| `private final JFrame` | `frame` |  |
+| `private int` | `itemId` |  |
+| `private boolean` | `preview` |  |
+| `private final DetailView` | `view` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<Integer> onClose)` | Builds and shows the item-less "dashboard home" window (#109): a full dashboard whose header stands in for an item (Stockpile icon and name) and whose body prompts the user to search for an item. |
+| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<Integer> onClose)` | Builds and shows the window for `item`. |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `TrackedItem` | `boundItem()` |  |
+| `private JFrame` | `buildFrame(String title, Consumer<Integer> onClose)` | Wraps the view in a scroll pane and a disposable `JFrame` titled `title`. |
+| `void` | `dispose()` | Disposes the window (its close listener drops it from the plugin registry). |
+| `void` | `focus()` | Brings the window to the front, restoring it if minimised, so re-popping focuses it. |
+| `boolean` | `isPreview()` |  |
+| `int` | `itemId()` |  |
+| `void` | `rebind(int newItemId, TrackedItem item, boolean preview)` | Rebinds the window to a different item picked from the dashboard search bar (#109): re-titles the frame and re-shows the view as the tracked item, or as a read-only preview when `preview`. |
+| `void` | `refreshData()` | Re-populates the window with fresh data for its item, keeping the scroll position. |
+| `void` | `showAsPreview(TrackedItem previewItem)` | Transitions the window to a read-only preview after its item was untracked from the header (#138). |
+| `void` | `syncTracked(TrackedItem tracked)` | Transitions the window to show `tracked` after its preview was tracked from the header (#138). |
+| `void` | `updateMarketInfoTimes()` | Live-updates the Market Info last-bought / last-sold relative times. |
+
+### Field Detail
+
+#### DEFAULT_SIZE
+
+`private static final Dimension DEFAULT_SIZE`
+
+#### MIN_SIZE
+
+`private static final Dimension MIN_SIZE`
+
+#### boundItem
+
+`private TrackedItem boundItem`
+
+#### frame
+
+`private final JFrame frame`
+
+#### itemId
+
+`private int itemId`
+
+#### preview
+
+`private boolean preview`
+
+#### view
+
+`private final DetailView view`
+
+### Constructor Detail
+
+#### DetailWindow
+
+`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<Integer> onClose)`
+
+Builds and shows the item-less "dashboard home" window (#109): a full dashboard whose header stands in
+for an item (Stockpile icon and name) and whose body prompts the user to search for an item. Picking an
+item from the search bar rebinds this window to that item's detail. The registry keys it under id 0.
+
+#### DetailWindow
+
+`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<Integer> onClose)`
+
+Builds and shows the window for `item`. The host is supplied by `hostFactory` so it
+can capture this window &mdash; its Back/close disposes the window and its tracked-item lookup
+returns this window's own bound instance rather than reading the plugin's live map off the EDT.
+`onClose` fires with the item id when the window is disposed, letting the plugin drop it
+from the registry.
+
+### Method Detail
+
+#### boundItem
+
+`TrackedItem boundItem()`
+
+- **Returns:** the item instance backing this window (tracked or preview).
+
+#### buildFrame
+
+`private JFrame buildFrame(String title, Consumer<Integer> onClose)`
+
+Wraps the view in a scroll pane and a disposable `JFrame` titled `title`.
+
+#### dispose
+
+`void dispose()`
+
+Disposes the window (its close listener drops it from the plugin registry).
+
+#### focus
+
+`void focus()`
+
+Brings the window to the front, restoring it if minimised, so re-popping focuses it.
+
+#### isPreview
+
+`boolean isPreview()`
+
+- **Returns:** whether this window currently shows a read-only preview rather than a tracked item.
+
+#### itemId
+
+`int itemId()`
+
+- **Returns:** the item id this window is bound to.
+
+#### rebind
+
+`void rebind(int newItemId, TrackedItem item, boolean preview)`
+
+Rebinds the window to a different item picked from the dashboard search bar (#109): re-titles the
+frame and re-shows the view as the tracked item, or as a read-only preview when `preview`.
+The plugin re-keys its window registry to `newItemId` around this call.
+
+#### refreshData
+
+`void refreshData()`
+
+Re-populates the window with fresh data for its item, keeping the scroll position.
+
+#### showAsPreview
+
+`void showAsPreview(TrackedItem previewItem)`
+
+Transitions the window to a read-only preview after its item was untracked from the header (#138).
+
+#### syncTracked
+
+`void syncTracked(TrackedItem tracked)`
+
+Transitions the window to show `tracked` after its preview was tracked from the header (#138).
+
+#### updateMarketInfoTimes
+
+`void updateMarketInfoTimes()`
+
+Live-updates the Market Info last-bought / last-sold relative times.
 
 ---
 
@@ -5870,6 +6424,8 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `exportList(Consumer<String> callback)` | Builds the share token for the tracked list and hands it back through `callback`. |
 | `void` | `importList(String data, Consumer<String> callback)` | Imports the tracked list encoded in `data`, reporting the outcome through `callback`. |
 | `void` | `notificationsEdited(int itemId)` | Notifies the plugin that `itemId`'s notification rules were edited and must be persisted. |
+| `void` | `openDashboard()` | Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. |
+| `void` | `popOut(int itemId)` | Pops `itemId` out into its own standalone, resizable detail window (#109), or focuses the existing window if one is already open for it. |
 | `List<long[]>` | `portfolioHistory()` |  |
 | `void` | `removeItem(int itemId)` | Stops tracking `itemId` and removes it from the list entirely. |
 | `void` | `reorder(int from, int to)` | Moves the item at index `from` to index `to` in the manual order. |
@@ -5940,6 +6496,19 @@ Imports the tracked list encoded in `data`, reporting the outcome through `callb
 `void notificationsEdited(int itemId)`
 
 Notifies the plugin that `itemId`'s notification rules were edited and must be persisted.
+
+#### openDashboard
+
+`void openDashboard()`
+
+Opens the item-less Stockpile dashboard window (#109), or focuses it if already open.
+
+#### popOut
+
+`void popOut(int itemId)`
+
+Pops `itemId` out into its own standalone, resizable detail window (#109), or focuses the
+existing window if one is already open for it. Both tracked items and read-only previews.
 
 #### portfolioHistory
 
@@ -6920,6 +7489,7 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 | `private static final Color` | `COLOR_LOW` |  |
 | `private static final Color` | `COLOR_NEUTRAL` |  |
 | `private static final Color` | `CURRENT_LINE_COLOR` |  |
+| `private static final int` | `DEFAULT_EXPANDED_FONT_SIZE` | Default point size of the expanded (pop-out) monospace font. |
 | `private static final Color` | `GRID_COLOR` |  |
 | `private static final int` | `LEFT_PAD` |  |
 | `private static final Color` | `MA_COLOR` |  |
@@ -6963,7 +7533,8 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 |---|---|
 | `PriceGraphPanel()` | Builds a sidebar-sized price chart. |
 | `PriceGraphPanel(Mode mode)` | Builds a sidebar-sized chart in the given mode. |
-| `PriceGraphPanel(Mode mode, boolean expanded)` | Builds the chart and its timeframe tab bar. |
+| `PriceGraphPanel(Mode mode, boolean expanded)` | Builds the chart and its timeframe tab bar with the default expanded font size. |
+| `PriceGraphPanel(Mode mode, boolean expanded, int expandedFontSize)` | Builds the chart and its timeframe tab bar. |
 
 ### Method Summary
 
@@ -7030,6 +7601,12 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 #### CURRENT_LINE_COLOR
 
 `private static final Color CURRENT_LINE_COLOR`
+
+#### DEFAULT_EXPANDED_FONT_SIZE
+
+`private static final int DEFAULT_EXPANDED_FONT_SIZE`
+
+Default point size of the expanded (pop-out) monospace font.
 
 #### GRID_COLOR
 
@@ -7193,11 +7770,24 @@ Builds a sidebar-sized chart in the given mode.
 
 `public PriceGraphPanel(Mode mode, boolean expanded)`
 
-Builds the chart and its timeframe tab bar.
+Builds the chart and its timeframe tab bar with the default expanded font size.
 
 - **Parameter** `mode` — whether to chart price or volume
 - **Parameter** `expanded` — `true` for the larger pop-out variant (bigger font,
                 denser axes, full tab labels); `false` for the sidebar
+
+#### PriceGraphPanel
+
+`public PriceGraphPanel(Mode mode, boolean expanded, int expandedFontSize)`
+
+Builds the chart and its timeframe tab bar.
+
+- **Parameter** `mode` — whether to chart price or volume
+- **Parameter** `expanded` — `true` for the larger pop-out variant (bigger
+                         font, denser axes, full tab labels); `false`
+                         for the sidebar
+- **Parameter** `expandedFontSize` — point size of the expanded monospace font, letting an
+                         embedded dashboard chart match its surrounding text
 
 ### Method Detail
 
@@ -10011,6 +10601,8 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Consumer<Consumer<String>>` | `onExportList` | Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. |
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
 | `private final Consumer<Integer>` | `onNotificationsEdited` |  |
+| `private final Runnable` | `onOpenDashboard` | Opens the item-less Stockpile dashboard window (#109). |
+| `private final Consumer<Integer>` | `onPopOut` | Pops the shown item out into its own standalone detail window (#109). |
 | `private final Supplier<List<long[]>>` | `onPortfolioHistory` | Supplies the portfolio value history points (`{epochSeconds, value, costBasis`}) for the chart. |
 | `private final Consumer<Integer>` | `onRemoveItem` |  |
 | `private final BiConsumer<Integer,Integer>` | `onReorder` | Reorder callback: (itemId, targetIndex) — moves the item to a new position in the tracked list. |
@@ -10109,6 +10701,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JLabel` | `buildOverlayToggle(TrackedItem item)` | Builds the overlay-select control beneath the favorite star: a painted monitor icon that toggles whether the item appears in the on-screen overlay. |
 | `private JPanel` | `buildReorderStrip(TrackedItem item, List<TrackedItem> groupItems)` | Builds the left reorder column (up/down, plus a drag handle when the list isn't grouped) for the manage row. |
 | `private JLabel` | `buildRowCompactToggle(TrackedItem item)` | Builds the per-item compact toggle beneath the overlay button (#210): a painted "≣" glyph that flips this row between the standard and compact two-row layouts, independent of the global compact toggle. |
+| `private JLabel` | `buildRowDashboardButton(TrackedItem item)` | Builds a row hover button (dashboard icon) that opens this item in its own dashboard window (#109). |
 | `private JLabel` | `buildRowIcon(TrackedItem item)` | Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously on a miss. |
 | `private JPanel` | `buildSearchResultRow(int itemId, String itemName)` | Builds one clickable row in the search-results dropdown that adds the item when clicked. |
 | `private JPanel` | `buildTotalsRow(JLabel valueLabel, JLabel pulseLabel)` | Builds one estimate row pairing a totals value label with its pulse-indicator label. |
@@ -10125,6 +10718,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static boolean` | `containsIgnoreCase(DefaultListModel<String> model, String value)` |  |
 | `private void` | `copyToClipboard(String text)` |  |
 | `private JLabel` | `createDeltaLabel()` | Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value. |
+| `private static Icon` | `dashboardIcon(Color color)` | Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title bar and three content columns, echoing the pop-out dashboard's panel layout (#109). |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
@@ -10148,7 +10742,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `installDragHandle(JLabel handle, int itemId)` | Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging updates the drop indicator and edge autoscroll, and releasing commits the move. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, Color tint)` | Installs a compact gp value on a label with no tooltip caption. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)` | Installs a prefixed compact gp value on a label via `#installShortValue`. |
-| `private void` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
+| `private void` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
 | `static void` | `installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)` | Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint. |
 | `private static void` | `installToggleHover(JLabel button, BooleanSupplier selected, Consumer<Color> apply, Runnable restore)` | Installs grey↔gold hover colouring on a header toggle: an unselected (grey) button turns gold while hovered, a selected (gold) button turns grey, and its resting state colour is repainted on exit. |
 | `public boolean` | `isEditingNotifications()` |  |
@@ -10172,6 +10766,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `openTrackedDetail(int itemId)` | Opens the tracked detail card for `itemId`. |
 | `private int` | `overlayCount()` |  |
 | `private static Icon` | `overlayIcon(Color color)` | Paints a small monochrome monitor (on-screen overlay) icon in the given colour. |
+| `public void` | `popOut(int itemId)` | {@inheritDoc} Delegates to the panel's pop-out callback. |
 | `public void` | `promptCategoryForItem(int itemId)` | Category prompt shown at track time (#211): a modal dropdown of the existing categories plus Uncategorized and a create-new option. |
 | `private void` | `pulseIfShown(JLabel label, int delta, PriceIndicatorMode mode)` | Starts a price pulse on the label unless the configured indicator mode suppresses it. |
 | `public void` | `rebuild(List<TrackedItem> rawItems, Instant newLastPriceRefresh, PriceIndicatorMode indicatorMode, boolean loggedIn, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed)` | Rebuilds the main item list from the latest tracked items and totals. |
@@ -10200,6 +10795,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `startPulse(JLabel label, int delta)` | Begins a color pulse on a label (green up / red down) reflecting the sign of a price change. |
 | `private void` | `stopDragAutoscroll()` | Stops the edge-autoscroll timer, if running. |
 | `private JButton` | `styledFooterButton(String text, String tooltip)` | Shared styling for the footer's link and dropdown buttons. |
+| `public void` | `switchDetailItem(int itemId)` | {@inheritDoc} The sidebar has no dashboard search bar, so this fires only via the shared host contract; it shows the requested item's detail in place. |
 | `private void` | `toggleReorderMode()` | Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. |
 | `private void` | `toggleTrackedFilter()` | Toggles the tracked-list filter field via the header filter button, focusing it when shown. |
 | `public TrackedItem` | `trackedItem(int itemId)` | {@inheritDoc} Reads from the panel's current tracked-item map. |
@@ -10697,6 +11293,18 @@ Imports a tracked-list token (merge, non-destructive); delivers a user-facing re
 #### onNotificationsEdited
 
 `private final Consumer<Integer> onNotificationsEdited`
+
+#### onOpenDashboard
+
+`private final Runnable onOpenDashboard`
+
+Opens the item-less Stockpile dashboard window (#109).
+
+#### onPopOut
+
+`private final Consumer<Integer> onPopOut`
+
+Pops the shown item out into its own standalone detail window (#109).
 
 #### onPortfolioHistory
 
@@ -11215,6 +11823,13 @@ Builds the per-item compact toggle beneath the overlay button (#210): a painted 
 that flips this row between the standard and compact two-row layouts, independent of the
 global compact toggle. Gold when this row's compact override is on, grey otherwise.
 
+#### buildRowDashboardButton
+
+`private JLabel buildRowDashboardButton(TrackedItem item)`
+
+Builds a row hover button (dashboard icon) that opens this item in its own dashboard window (#109).
+Dim at rest, gold while hovered, mirroring the other row hover affordances.
+
 #### buildRowIcon
 
 `private JLabel buildRowIcon(TrackedItem item)`
@@ -11315,6 +11930,13 @@ Prompts for confirmation, then clears all tracked items via the plugin callback.
 `private JLabel createDeltaLabel()`
 
 Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value.
+
+#### dashboardIcon
+
+`private static Icon dashboardIcon(Color color)`
+
+Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title
+bar and three content columns, echoing the pop-out dashboard's panel layout (#109).
 
 #### dragAutoscrollTick
 
@@ -11462,7 +12084,7 @@ Installs a prefixed compact gp value on a label via `#installShortValue`.
 
 #### installRowHover
 
-`private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, Color removeColor, Color removeHidden)`
+`private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)`
 
 Wires the shared row hover behaviour onto a tracked-item card: clicking the row
 (other than the remove button, favorite star, overlay button, or compact button) opens
@@ -11623,6 +12245,12 @@ card's scroll position and state untouched instead of rebuilding it back to the 
 `private static Icon overlayIcon(Color color)`
 
 Paints a small monochrome monitor (on-screen overlay) icon in the given colour.
+
+#### popOut
+
+`public void popOut(int itemId)`
+
+{@inheritDoc} Delegates to the panel's pop-out callback.
 
 #### promptCategoryForItem
 
@@ -11818,6 +12446,13 @@ Stops the edge-autoscroll timer, if running.
 `private JButton styledFooterButton(String text, String tooltip)`
 
 Shared styling for the footer's link and dropdown buttons.
+
+#### switchDetailItem
+
+`public void switchDetailItem(int itemId)`
+
+{@inheritDoc} The sidebar has no dashboard search bar, so this fires only via the shared host
+contract; it shows the requested item's detail in place.
 
 #### toggleReorderMode
 
@@ -12377,6 +13012,7 @@ executor.
 | `private ConfigManager` | `configManager` |  |
 | `private final Map<Integer,Map<Integer,Integer>>` | `containerCounts` |  |
 | `private int` | `currentGeItem` | The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). |
+| `private final Map<Integer,DetailWindow>` | `detailWindows` | Open pop-out detail windows keyed by item id (#109). |
 | `private final Set<Integer>` | `doseSwapClaimedIds` | Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). |
 | `private ScheduledExecutorService` | `executor` |  |
 | `private boolean` | `favoritesCollapsed` |  |
@@ -12395,6 +13031,8 @@ executor.
 | `private StockpileHighlightOverlay` | `highlightOverlay` |  |
 | `private ItemManager` | `itemManager` |  |
 | `private volatile Map<Integer,WikiRealtimePriceClient.ItemMapping>` | `itemMappings` |  |
+| `private volatile long` | `lastFireRunePrice` |  |
+| `private volatile long` | `lastNatureRunePrice` | Latest nature/fire rune prices, cached for the pop-out windows' alch figures (`#requestDetailData`). |
 | `private Instant` | `lastPortfolioSave` |  |
 | `private Instant` | `lastPriceCacheSave` | When the price cache was last written, to throttle per-refresh saves. |
 | `private Instant` | `lastPriceRefresh` |  |
@@ -12432,6 +13070,7 @@ executor.
 | `private final Map<Integer,TrackedItem>` | `trackedItems` |  |
 | `private boolean` | `uncategorizedCollapsed` |  |
 | `private WikiRealtimePriceClient` | `wikiPriceClient` |  |
+| `private final Map<Integer,TrackedItem>` | `windowItems` | The bound item instance backing each open pop-out window, keyed by item id (#109). |
 
 ### Method Summary
 
@@ -12454,6 +13093,7 @@ executor.
 | `String` | `autoCategorize(boolean includeCategorized)` | Auto-assigns tracked items to wiki-derived categories (see `ItemCategoryClassifier`), creating any missing categories. |
 | `float` | `breathingAlpha()` |  |
 | `void` | `buildAcquisitionsCsv(Consumer<String> onResult)` | Builds the acquisitions log of all tracked items as CSV (see `AcquisitionCsvExporter`) on the client thread — the items and their acquisition lists are client-thread state — and hands it to `onResult` on the EDT. |
+| `private TrackedItem` | `buildPreview(int itemId)` | Builds a transient read-only preview item (name, tradeability, GE metadata) for an untracked id. |
 | `void` | `buildShareToken(Consumer<String> onResult)` | Builds a shareable code for the current tracked list (ids, modes, categories, favorites) — "" when empty — and hands it to `onResult` on the EDT. |
 | `private void` | `captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
 | `private String` | `categoryValue(TrackedItem item, NotificationMetric metric)` | Resolves the current categorical rating of a metric for an item (volatility, liquidity, or 30-day range position) via `MarketClassifier`. |
@@ -12461,7 +13101,9 @@ executor.
 | `private void` | `clearAcquisitions(int itemId)` | Clears an item's acquisition lots (resetting its cost basis) and persists/refreshes. |
 | `private void` | `clearAllTrackedItems()` | Removes every tracked item, then persists and refreshes. |
 | `private void` | `clearPortfolioHistory()` | Wipes the portfolio value history (in memory and in config), e.g. |
+| `private void` | `closeAllDetailWindows()` | Disposes every open pop-out window (on the EDT), e.g. |
 | `private void` | `closeAllGroundSuspensions()` | Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking. |
+| `private void` | `closeDetailWindowFor(int itemId)` | Closes any open pop-out window for `itemId` (e.g. |
 | `private void` | `closeGivenItems(Map<Integer,Integer> side, long gp)` | Closes given items as sells at the apportioned per-unit price, realizing them against the trade suspension taken when they were offered. |
 | `private static String` | `colourGp(long value, String colour)` |  |
 | `private void` | `correlateCombine()` | Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`, so the ingredients' cost basis carries onto the product instead of both sides falling to Unknown at market value (#231). |
@@ -12530,6 +13172,7 @@ executor.
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66). |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync, evaluates notifications, and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
+| `private void` | `onDetailWindowClosed(int itemId)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
 | `public void` | `onGameStateChanged(GameStateChanged event)` | Resets transient and per-login state on game-state transitions: clears ground items on each load, and on login wipes the count caches and reloads the persisted tracked items. |
 | `public void` | `onGameTick(GameTick event)` | Grand Exchange integration: each tick, detects the item on the open offer setup/details screen and, per `StockpileConfig#geIntegration()`, either auto-opens it in Stockpile or injects a "View in Stockpile" button. |
 | `public void` | `onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)` | Consumes GE offer progress to price trades and track the buy limit. |
@@ -12545,6 +13188,8 @@ executor.
 | `public void` | `onVarbitChanged(VarbitChanged event)` | Mirrors rune pouch contents (held in varbits, not a normal container) into the quantity counts, accumulating deltas like a container change. |
 | `public void` | `onWidgetClosed(WidgetClosed event)` | Clears GE-integration state when the offer interface closes, and shop state for #67. |
 | `public void` | `onWidgetLoaded(WidgetLoaded event)` | Forces the GE buttons to be re-injected against a freshly (re)built offer interface. |
+| `private void` | `openDashboardWindow()` | Opens the item-less Stockpile dashboard window (#109), or focuses the existing one. |
+| `private void` | `openDetailWindow(TrackedItem item, boolean preview)` | Creates and registers a pop-out window for `item`, or focuses an existing one. |
 | `private void` | `openGeItemInStockpile(int itemId)` | Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. |
 | `public GrandExchangeOffer[]` | `openGeOffers()` | Returns the player's current Grand Exchange offers. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
@@ -12554,6 +13199,7 @@ executor.
 | `private void` | `persistPortfolioHistory()` | Serializes the per-item portfolio history to per-profile config. |
 | `private void` | `persistPriceCache()` | Writes every priced tracked item's current prices to the RS profile config. |
 | `public void` | `persistTrackedItems()` | Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config. |
+| `private void` | `popOutDetail(int itemId)` | Pops `itemId` out into its own standalone detail window (#109), or focuses the existing one. |
 | `List<long[]>` | `portfolioHistoryPoints()` |  |
 | `private void` | `previewItem(int itemId)` | Opens a read-only detail preview for an untracked item without adding it to the tracked list or persisting anything. |
 | `private String` | `priceLines()` |  |
@@ -12564,6 +13210,7 @@ executor.
 | `private void` | `recomputeWindowStats(TrackedItem tracked)` | Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series. |
 | `private void` | `reconcileAllQuantities()` | Recounts every tracked item from scratch across all containers plus the rune pouch, and reconciles each item's lots to match the true on-hand total (opening or closing lots as needed). |
 | `private void` | `recordPortfolioSnapshot()` | Records a portfolio snapshot into the history (persisting throttled): the running value — owned units (held plus suspended) marked to the current average plus sold lots at their actual sale price — against the invested cost basis of every logged lot, which stays fixed as lots sell. |
+| `private void` | `refreshDetailWindows()` | Re-populates every open pop-out window with fresh data. |
 | `private void` | `refreshGePrices()` | Fetches the latest prices for all items in the background, then applies them on the client thread. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
 | `private void` | `refreshPanel(boolean pricesUpdated)` | Pushes the current tracked items and totals to the panel on the Swing thread. |
@@ -12595,19 +13242,23 @@ executor.
 | `public boolean` | `sourcePricing()` | Returns whether source-aware pricing is enabled in config. |
 | `protected void` | `startUp() throws Exception` | Builds the side panel (wiring its callbacks back to this plugin), registers the nav button and overlays, restores persisted items, and kicks off the metadata fetch and recurring price refresh. |
 | `private void` | `swapConflictingSection(ConfigChanged event)` | Keeps detail-section slots unique: when a section is moved to a slot already occupied by another, the other section is swapped into the vacated slot. |
+| `private void` | `switchWindowItem(DetailWindow window, int newItemId)` | Rebinds a pop-out window to a different item chosen from its search bar (#109). |
 | `private void` | `syncQuantitiesForItem(TrackedItem tracked)` | Recounts a single item across all containers and the rune pouch and sets its quantity. |
 | `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: positive deltas open new lots (auto-add), negative deltas close lots FIFO, and each item's quantity is adjusted. |
 | `private void` | `syncRunePouch()` | Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits. |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
+| `private void` | `trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)` | Tracks `itemId` from a pop-out window's header (#138), then transitions that window to tracked. |
 | `public TrackedItem` | `trackedItem(int itemId)` | Returns the tracked item with the given id, if tracked. |
 | `public Collection<TrackedItem>` | `trackedItems()` | Returns all currently tracked items. |
 | `private static long` | `tradeGp(Map<Integer,Integer> side)` |  |
 | `private List<TradeApportioner.Leg>` | `tradeLegs(Map<Integer,Integer> side)` | Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. |
 | `private void` | `unregisterGeButtonSprite()` | Removes the Stockpile GE-button sprite override on shutdown (#140). |
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
+| `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
 | `private long` | `untrackedInputValue(int itemId)` |  |
+| `private DetailViewHost` | `windowHost(DetailWindow window)` | Builds the `DetailViewHost` for a pop-out window. |
 
 ### Field Detail
 
@@ -12930,6 +13581,14 @@ Bundled release notes, parsed once at startup; the newest entry is the current v
 
 The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration).
 
+#### detailWindows
+
+`private final Map<Integer,DetailWindow> detailWindows`
+
+Open pop-out detail windows keyed by item id (#109). EDT-only: created, focused, refreshed and
+disposed on the Swing thread. Its client-thread counterpart is `#windowItems`, which holds
+the bound instances so pricing/lookup can reach them without touching Swing state off the EDT.
+
 #### doseSwapClaimedIds
 
 `private final Set<Integer> doseSwapClaimedIds`
@@ -13017,6 +13676,16 @@ The dark text label riding on `#geTrackButton`; carries the Track/Untrack text (
 #### itemMappings
 
 `private volatile Map<Integer,WikiRealtimePriceClient.ItemMapping> itemMappings`
+
+#### lastFireRunePrice
+
+`private volatile long lastFireRunePrice`
+
+#### lastNatureRunePrice
+
+`private volatile long lastNatureRunePrice`
+
+Latest nature/fire rune prices, cached for the pop-out windows' alch figures (`#requestDetailData`).
 
 #### lastPortfolioSave
 
@@ -13212,6 +13881,14 @@ This tick's ground spawns/despawns/stack changes, correlated against the invento
 
 `private WikiRealtimePriceClient wikiPriceClient`
 
+#### windowItems
+
+`private final Map<Integer,TrackedItem> windowItems`
+
+The bound item instance backing each open pop-out window, keyed by item id (#109). Client-thread
+state, mutated alongside the price maps so `#lookupItem`, `#applyGePrices` and the
+per-detail request loop keep every popped-out item (tracked or preview) live.
+
 ### Method Detail
 
 #### addTrackedItem
@@ -13356,6 +14033,12 @@ Builds the acquisitions log of all tracked items as CSV (see
 acquisition lists are client-thread state — and hands it to `onResult`
 on the EDT.
 
+#### buildPreview
+
+`private TrackedItem buildPreview(int itemId)`
+
+Builds a transient read-only preview item (name, tradeability, GE metadata) for an untracked id.
+
 #### buildShareToken
 
 `void buildShareToken(Consumer<String> onResult)`
@@ -13408,11 +14091,23 @@ Removes every tracked item, then persists and refreshes. Runs on the client thre
 
 Wipes the portfolio value history (in memory and in config), e.g. when the whole tracked list is cleared.
 
+#### closeAllDetailWindows
+
+`private void closeAllDetailWindows()`
+
+Disposes every open pop-out window (on the EDT), e.g. at shutdown or when the whole list is cleared.
+
 #### closeAllGroundSuspensions
 
 `private void closeAllGroundSuspensions()`
 
 Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking.
+
+#### closeDetailWindowFor
+
+`private void closeDetailWindowFor(int itemId)`
+
+Closes any open pop-out window for `itemId` (e.g. when the item is untracked). Runs on the EDT.
 
 #### closeGivenItems
 
@@ -14027,6 +14722,12 @@ Reacts to this plugin's config changes: resolves detail-section slot
 conflicts, reschedules the refresh when the interval changes, and otherwise
 just repaints the panel. Ignores other plugins' groups.
 
+#### onDetailWindowClosed
+
+`private void onDetailWindowClosed(int itemId)`
+
+Drops a closed pop-out window from both the EDT registry and its client-thread instance map.
+
 #### onGameStateChanged
 
 `public void onGameStateChanged(GameStateChanged event)`
@@ -14137,6 +14838,20 @@ Clears GE-integration state when the offer interface closes, and shop state for 
 
 Forces the GE buttons to be re-injected against a freshly (re)built offer interface.
 
+#### openDashboardWindow
+
+`private void openDashboardWindow()`
+
+Opens the item-less Stockpile dashboard window (#109), or focuses the existing one. The window is
+registered under the reserved id 0 (real item ids are always positive); searching an item from it
+re-keys the registry to that item's id via `#switchWindowItem`. Runs on the EDT.
+
+#### openDetailWindow
+
+`private void openDetailWindow(TrackedItem item, boolean preview)`
+
+Creates and registers a pop-out window for `item`, or focuses an existing one. Runs on the EDT.
+
 #### openGeItemInStockpile
 
 `private void openGeItemInStockpile(int itemId)`
@@ -14199,6 +14914,15 @@ Called throttled from refreshes and unconditionally at shutdown.
 `public void persistTrackedItems()`
 
 Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config.
+
+#### popOutDetail
+
+`private void popOutDetail(int itemId)`
+
+Pops `itemId` out into its own standalone detail window (#109), or focuses the existing one.
+Invoked on the EDT from the detail header pop-out button. Resolves the bound instance on the
+client thread &mdash; the live tracked item, the current sidebar preview when it matches, or a
+freshly built preview &mdash; then opens the window on the EDT and kicks off a data fetch.
 
 #### portfolioHistoryPoints
 
@@ -14276,6 +15000,12 @@ lot, which stays fixed as lots sell. Their gap is thus the realized-plus-unreali
 profit. Suspended units must count: their lots are still open on the cost side, so
 omitting their value would carve a false loss into the chart for the duration of
 every in-flight sell, trade, drop, or death.
+
+#### refreshDetailWindows
+
+`private void refreshDetailWindows()`
+
+Re-populates every open pop-out window with fresh data. Runs on the EDT.
 
 #### refreshGePrices
 
@@ -14522,6 +15252,16 @@ metadata fetch and recurring price refresh.
 Keeps detail-section slots unique: when a section is moved to a slot already
 occupied by another, the other section is swapped into the vacated slot.
 
+#### switchWindowItem
+
+`private void switchWindowItem(DetailWindow window, int newItemId)`
+
+Rebinds a pop-out window to a different item chosen from its search bar (#109). Re-keys both the
+EDT window registry and its client-thread instance map from the old id to the new one, resolves the
+new item (the live tracked item, or a freshly built read-only preview when untracked), transitions
+the window in place, and kicks off a data fetch. When another window already shows the target item,
+that window is focused instead and this one is left unchanged.
+
 #### syncQuantitiesForItem
 
 `private void syncQuantitiesForItem(TrackedItem tracked)`
@@ -14562,6 +15302,12 @@ and only correct itself on the next mouse-leave.
 `private void toggleSortReversed()`
 
 Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel.
+
+#### trackFromWindow
+
+`private void trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)`
+
+Tracks `itemId` from a pop-out window's header (#138), then transitions that window to tracked.
 
 #### trackedItem
 
@@ -14609,11 +15355,28 @@ it: the preview is opened (posting `showPreview` to the EDT) before the list reb
 queued, so the rebuild finds the panel already backed by the preview and keeps the detail card
 up instead of returning to the list. Runs on the client thread.
 
+#### untrackWindowToPreview
+
+`private void untrackWindowToPreview(DetailWindow window, int itemId)`
+
+Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a
+read-only preview. Removes and persists exactly as `#untrackToPreview`, then rebinds the
+window to a fresh preview instead of the sidebar.
+
 #### untrackedInputValue
 
 `private long untrackedInputValue(int itemId)`
 
 - **Returns:** an untracked processing input's per-unit value under the configured fallback pricing.
+
+#### windowHost
+
+`private DetailViewHost windowHost(DetailWindow window)`
+
+Builds the `DetailViewHost` for a pop-out window. Shares the plugin's services and edit
+callbacks, but resolves the tracked item from the window's own bound instance (never the live map
+off the EDT), routes track/untrack through window-aware handlers so the transition stays in that
+window, and disposes the window on Back.
 
 ---
 

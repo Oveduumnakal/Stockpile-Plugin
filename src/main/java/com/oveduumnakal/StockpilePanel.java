@@ -192,6 +192,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Integer> onRemoveItem;
 	/** Untracks the shown item but keeps the detail view open as a preview (#138). */
 	private final Consumer<Integer> onUntrackToPreview;
+	/** Pops the shown item out into its own standalone detail window (#109). */
+	private final Consumer<Integer> onPopOut;
+	/** Opens the item-less Stockpile dashboard window (#109). */
+	private final Runnable onOpenDashboard;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
@@ -510,6 +514,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onAddItem = actions::addItem;
 		this.onRemoveItem = actions::removeItem;
 		this.onUntrackToPreview = actions::untrackToPreview;
+		this.onPopOut = actions::popOut;
+		this.onOpenDashboard = actions::openDashboard;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
@@ -735,8 +741,30 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		headerToggles.add(categoriesButton);
 		headerToggles.add(reorderToggle);
 
+		JLabel dashboardButton = new JLabel(dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR));
+		dashboardButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		dashboardButton.setBorder(new EmptyBorder(0, 2, 0, 6));
+		dashboardButton.setToolTipText("Dashboard View");
+		dashboardButton.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (onOpenDashboard != null)
+					onOpenDashboard.run();
+			}
+		});
+		installToggleHover(dashboardButton, () -> false,
+				color -> dashboardButton.setIcon(dashboardIcon(color)),
+				() -> dashboardButton.setIcon(dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR)));
+
+		JPanel dashboardButtonWrap = new JPanel(new GridBagLayout());
+		dashboardButtonWrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		dashboardButtonWrap.add(dashboardButton);
+
 		JPanel togglesRow = new JPanel(new BorderLayout());
 		togglesRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		togglesRow.add(dashboardButtonWrap, BorderLayout.WEST);
 		togglesRow.add(headerToggles, BorderLayout.EAST);
 
 		JPanel trackedLabelWrapper = new JPanel(new BorderLayout(0, 2));
@@ -2469,6 +2497,28 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return new ImageIcon(img);
 	}
 
+	/**
+	 * Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title
+	 * bar and three content columns, echoing the pop-out dashboard's panel layout (#109).
+	 */
+	private static Icon dashboardIcon(Color color)
+	{
+		int size = 16;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		g.drawRect(1, 2, 13, 11);
+		g.fillRect(2, 3, 12, 2);
+		g.fillRect(3, 7, 2, 5);
+		g.fillRect(7, 7, 2, 5);
+		g.fillRect(11, 7, 2, 5);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
 	/** Draws a bulleted-list glyph — three dots, each followed by a line — tinted {@code color}. */
 	private static Icon categoriesIcon(Color color)
 	{
@@ -3353,6 +3403,46 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return toggle;
 	}
 
+	/**
+	 * Builds a row hover button (dashboard icon) that opens this item in its own dashboard window (#109).
+	 * Dim at rest, gold while hovered, mirroring the other row hover affordances.
+	 */
+	private JLabel buildRowDashboardButton(TrackedItem item)
+	{
+		final Color restColor = STAR_DIM;
+		final Color hoverColor = COLOR_AVG;
+
+		JLabel button = new JLabel(dashboardIcon(restColor));
+		button.setPreferredSize(new Dimension(20, 20));
+		button.setMaximumSize(new Dimension(20, 20));
+		button.setAlignmentX(Component.CENTER_ALIGNMENT);
+		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		button.setToolTipText("Open in Dashboard View");
+		button.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (onPopOut != null)
+					onPopOut.accept(item.getItemId());
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				button.setIcon(dashboardIcon(hoverColor));
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				button.setIcon(dashboardIcon(restColor));
+			}
+		});
+
+		return button;
+	}
+
 	/** @return how many currently tracked items are flagged for the on-screen overlay. */
 	private int overlayCount()
 	{
@@ -3418,6 +3508,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
 		final JLabel compactBtn = config.compactView() ? null : buildRowCompactToggle(item);
+		final JLabel dashboardBtn = buildRowDashboardButton(item);
 		final boolean rowCompact = config.compactView() || item.isCompact();
 
 		JPanel eastPanel = new JPanel()
@@ -3451,6 +3542,15 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 						d.height += cb.height;
 				}
 
+				if (!dashboardBtn.isVisible())
+				{
+					Dimension db = dashboardBtn.getPreferredSize();
+					if (rowCompact)
+						d.width += db.width;
+					else
+						d.height += db.height;
+				}
+
 				return d;
 			}
 		};
@@ -3470,6 +3570,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			compactBtn.setVisible(false);
 			eastPanel.add(compactBtn);
 		}
+
+		dashboardBtn.setVisible(false);
+		eastPanel.add(dashboardBtn);
 
 		if (rowCompact)
 		{
@@ -3512,7 +3615,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		{
 			centerPanel.add(buildCompactValueRow(item));
 			card.add(centerPanel, BorderLayout.CENTER);
-			installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, REMOVE_COLOR, STAR_HIDDEN);
+			installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, dashboardBtn,
+					REMOVE_COLOR, STAR_HIDDEN);
 			return card;
 		}
 
@@ -3727,7 +3831,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		}
 
 		card.add(centerPanel, BorderLayout.CENTER);
-		installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, REMOVE_COLOR, STAR_HIDDEN);
+		installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, dashboardBtn,
+				REMOVE_COLOR, STAR_HIDDEN);
 
 		return card;
 	}
@@ -3739,7 +3844,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	 * the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons.
 	 */
 	private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar,
-			JLabel overlayBtn, JLabel compactBtn, Color removeColor, Color removeHidden)
+			JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)
 	{
 		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		MouseAdapter hoverListener = new MouseAdapter()
@@ -3748,7 +3853,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			public void mouseClicked(MouseEvent e)
 			{
 				if (e.getSource() == removeBtn || e.getSource() == favStar
-						|| e.getSource() == overlayBtn || e.getSource() == compactBtn)
+						|| e.getSource() == overlayBtn || e.getSource() == compactBtn
+						|| e.getSource() == dashboardBtn)
 					return;
 
 				showDetail(item.getItemId());
@@ -3766,6 +3872,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 				if (compactBtn != null)
 					compactBtn.setVisible(true);
+
+				dashboardBtn.setVisible(true);
 			}
 
 			@Override
@@ -3786,6 +3894,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 					if (compactBtn != null)
 						compactBtn.setVisible(false);
+
+					dashboardBtn.setVisible(false);
 				}
 			}
 		};
@@ -4599,6 +4709,25 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	public void untrackToPreview(int itemId)
 	{
 		onUntrackToPreview.accept(itemId);
+	}
+
+	/** {@inheritDoc} Delegates to the panel's pop-out callback. */
+	@Override
+	public void popOut(int itemId)
+	{
+		if (itemId > 0)
+			onPopOut.accept(itemId);
+	}
+
+	/**
+	 * {@inheritDoc} The sidebar has no dashboard search bar, so this fires only via the shared host
+	 * contract; it shows the requested item's detail in place.
+	 */
+	@Override
+	public void switchDetailItem(int itemId)
+	{
+		if (itemId > 0)
+			showDetail(itemId);
 	}
 
 	/** {@inheritDoc} Returns the sidebar panel to the main tracked-item list. */
