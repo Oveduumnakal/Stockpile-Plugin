@@ -21,6 +21,7 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Image;
 import java.awt.Insets;
+import java.awt.LayoutManager;
 import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -100,6 +101,8 @@ import javax.swing.JTextField;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -140,7 +143,7 @@ import net.runelite.http.api.item.ItemPrice;
  * through {@link DetailViewHost}. The component itself is a {@link CardLayout} flipping between the
  * populated detail card and a loading placeholder.
  */
-public class DetailView extends JPanel
+public class DetailView extends JPanel implements Scrollable
 {
 	/** Section arrangement: the sidebar's vertical stack, or the #109 dashboard's two-column layout. */
 	enum Layout
@@ -152,12 +155,29 @@ public class DetailView extends JPanel
 	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 	private static final Color COLOR_VOLUME = new Color(200, 200, 200);
 	private static final Color DESCRIPTION_COLOR = new Color(160, 160, 160);
+	private static final Color SEARCH_PLACEHOLDER_COLOR = new Color(140, 140, 140);
+	private static final Font DASHBOARD_FONT = new Font(Font.MONOSPACED, Font.PLAIN, 10);
+
+	/**
+	 * Fixed dashboard column assignments (#109), indexing the section array built in
+	 * {@link #applyDetailSectionLayout()}: left = item values, market info, alch, notifications;
+	 * middle = collection values, price overview, collection log; right = price and volume graphs.
+	 */
+	private static final int[] DASHBOARD_LEFT = {0, 2, 6, 7};
+
+	/** Middle dashboard column section indices; see {@link #DASHBOARD_LEFT}. */
+	private static final int[] DASHBOARD_MIDDLE = {1, 3, 8};
+
+	/** Right dashboard column section indices (the graphs); see {@link #DASHBOARD_LEFT}. */
+	private static final int[] DASHBOARD_RIGHT = {4, 5};
 	private static final Color OVERVIEW_ROW_DIVIDER = new Color(45, 45, 45);
 	private static final int DEFAULT_NOTIFICATION_ROWS = 5;
 	private static final int PRESSURE_BALANCED_LOW = 45;
 	private static final int PRESSURE_BALANCED_HIGH = 55;
 	private static final String WIKI_BASE = "https://oldschool.runescape.wiki/w/";
 	private static final String PRICES_BASE = "https://prices.runescape.wiki/osrs/item/";
+	private static final String WIKI_HOME = "https://oldschool.runescape.wiki/";
+	private static final String PRICES_HOME = "https://prices.runescape.wiki/osrs/";
 	private static final TimeWindow[] OVERVIEW_WINDOWS = {
 			TimeWindow.LIVE, TimeWindow.M5, TimeWindow.H1, TimeWindow.H3, TimeWindow.H6, TimeWindow.H12,
 			TimeWindow.H24, TimeWindow.WEEK, TimeWindow.MONTH, TimeWindow.MONTH3,
@@ -190,6 +210,10 @@ public class DetailView extends JPanel
 	private final JLabel detailNameLabel = new JLabel();
 	private final JLabel detailQtyLabel = new JLabel();
 	private final JButton detailTrackBtn = new JButton();
+	private JButton dashboardWikiBtn;
+	private JButton dashboardPricesBtn;
+	private JPanel dashboardRightControls;
+	private JButton detailPopOutBtn;
 	private boolean detailItemTracked;
 	private final JTextArea detailDescriptionArea = new JTextArea()
 	{
@@ -254,7 +278,15 @@ public class DetailView extends JPanel
 
 	private JPanel topStack;
 	private String detailExamineText;
+	private boolean dashboardHome;
+	private JLabel dashboardEmptyMessage;
 	private JPanel detailSectionsHost;
+	private JPanel dashboardLeftColumn;
+	private JPanel dashboardMiddleColumn;
+	private JPanel dashboardRightColumn;
+	private JPopupMenu dashboardSearchPopup;
+	private JTextField dashboardSearchField;
+	private int firstSearchResultId = -1;
 	private JPanel itemValuesSection;
 	private JPanel marketInfoSection;
 	private JPanel priceOverviewSection;
@@ -282,6 +314,9 @@ public class DetailView extends JPanel
 	{
 		this.host = host;
 		this.viewLayout = viewLayout;
+		if (viewLayout == Layout.DASHBOARD)
+			graphSmooth = false;
+
 		this.config = host.config();
 		this.itemManager = host.itemManager();
 		this.onAcquisitionsEdited = host::acquisitionsEdited;
@@ -379,6 +414,7 @@ public class DetailView extends JPanel
 	 */
 	public void showPreview(TrackedItem item)
 	{
+		dashboardHome = false;
 		previewItem = item;
 		boundItemId = item.getItemId();
 		detailLoadTimedOut = false;
@@ -499,42 +535,19 @@ public class DetailView extends JPanel
 		detailCard.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		detailCard.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-		JButton backBtn = new JButton("Back", buildLeftArrowIcon());
-		backBtn.setIconTextGap(6);
-		backBtn.setVerticalAlignment(SwingConstants.CENTER);
-		backBtn.setHorizontalAlignment(SwingConstants.CENTER);
-		backBtn.setFocusPainted(false);
-		backBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		backBtn.setForeground(Color.WHITE);
-		backBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		backBtn.addActionListener(e -> host.onBack());
-
-		JPanel headerRow = new JPanel(new BorderLayout(6, 0))
-		{
-			@Override
-			public Dimension getMaximumSize()
-			{
-				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
-			}
-		};
-		headerRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		headerRow.add(backBtn, BorderLayout.WEST);
-
 		detailTrackBtn.setFocusPainted(false);
 		detailTrackBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		detailTrackBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		detailTrackBtn.addActionListener(e -> toggleDetailTracking());
-		headerRow.add(detailTrackBtn, BorderLayout.EAST);
 
 		detailIconLabel.setPreferredSize(new Dimension(32, 32));
 		detailIconLabel.setVerticalAlignment(SwingConstants.CENTER);
 		detailNameLabel.setForeground(Color.WHITE);
-		detailNameLabel.setFont(FontManager.getRunescapeBoldFont());
+		detailNameLabel.setFont(boldFont());
 		detailNameLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE,
 				detailNameLabel.getFontMetrics(detailNameLabel.getFont()).getHeight()));
 		detailQtyLabel.setForeground(Color.WHITE);
-		detailQtyLabel.setFont(FontManager.getRunescapeSmallFont());
+		detailQtyLabel.setFont(smallFont());
 
 		detailDescriptionArea.setEditable(false);
 		detailDescriptionArea.setFocusable(false);
@@ -544,7 +557,7 @@ public class DetailView extends JPanel
 		detailDescriptionArea.setWrapStyleWord(true);
 		detailDescriptionArea.setMargin(new Insets(0, 0, 0, 0));
 		detailDescriptionArea.setForeground(DESCRIPTION_COLOR);
-		detailDescriptionArea.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
+		detailDescriptionArea.setFont(smallFont().deriveFont(Font.ITALIC));
 		detailDescriptionArea.setAlignmentX(Component.LEFT_ALIGNMENT);
 		detailDescriptionArea.setBorder(new EmptyBorder(8, 0, 0, 0));
 
@@ -557,31 +570,32 @@ public class DetailView extends JPanel
 		titleTextStack.add(Box.createVerticalStrut(2));
 		titleTextStack.add(detailQtyLabel);
 
-		JPanel titleRow = new JPanel(new BorderLayout(8, 0))
-		{
-			@Override
-			public Dimension getMaximumSize()
-			{
-				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
-			}
-		};
-		titleRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		titleRow.setBorder(new EmptyBorder(16, 0, 0, 0));
-		titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		titleRow.add(detailIconLabel, BorderLayout.WEST);
-		titleRow.add(titleTextStack, BorderLayout.CENTER);
-
 		topStack = new JPanel();
 		topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
 		topStack.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		topStack.add(headerRow);
-		topStack.add(titleRow);
-		topStack.add(detailDescriptionArea);
+		if (viewLayout == Layout.DASHBOARD)
+			buildDashboardToolbar(titleTextStack);
+		else
+			buildStackHeader(titleTextStack);
 
 		detailSectionsHost = new JPanel();
-		detailSectionsHost.setLayout(new BoxLayout(detailSectionsHost, BoxLayout.Y_AXIS));
 		detailSectionsHost.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		detailSectionsHost.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (viewLayout == Layout.DASHBOARD)
+		{
+			detailSectionsHost.setLayout(new WeightedColumnsLayout(new double[]{0.2, 0.2, 0.6}, 8));
+			dashboardLeftColumn = buildDashboardColumn();
+			dashboardMiddleColumn = buildDashboardColumn();
+			dashboardRightColumn = buildDashboardColumn();
+			detailSectionsHost.add(dashboardLeftColumn);
+			detailSectionsHost.add(dashboardMiddleColumn);
+			detailSectionsHost.add(dashboardRightColumn);
+		}
+		else
+		{
+			detailSectionsHost.setLayout(new BoxLayout(detailSectionsHost, BoxLayout.Y_AXIS));
+		}
+
 		topStack.add(detailSectionsHost);
 
 		itemValuesSection = buildDetailSection("Item Current Values",
@@ -593,8 +607,16 @@ public class DetailView extends JPanel
 		priceOverviewSection = buildDetailSectionWithPopout("Price Overview",
 				this::openOverviewPopout, buildOverviewGrid());
 
-		priceGraph = new PriceGraphPanel(PriceGraphPanel.Mode.PRICE);
+		boolean expandedGraphs = viewLayout == Layout.DASHBOARD;
+
+		priceGraph = new PriceGraphPanel(PriceGraphPanel.Mode.PRICE, expandedGraphs, DASHBOARD_FONT.getSize());
 		priceGraph.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (expandedGraphs)
+		{
+			priceGraph.setActiveWindow(TimeWindow.WEEK);
+			sizeDashboardGraph(priceGraph, 420);
+		}
+
 		priceGraph.setSmooth(graphSmooth);
 		priceGraph.setSmoothListener(b ->
 		{
@@ -613,8 +635,14 @@ public class DetailView extends JPanel
 				() -> openGraphPopout("Price Graph", PriceGraphPanel.Mode.PRICE, priceGraph),
 				priceGraph, Box.createVerticalStrut(4));
 
-		volumeGraph = new PriceGraphPanel(PriceGraphPanel.Mode.VOLUME);
+		volumeGraph = new PriceGraphPanel(PriceGraphPanel.Mode.VOLUME, expandedGraphs, DASHBOARD_FONT.getSize());
 		volumeGraph.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (expandedGraphs)
+		{
+			volumeGraph.setActiveWindow(TimeWindow.WEEK);
+			sizeDashboardGraph(volumeGraph, 320);
+		}
+
 		volumeGraphSection = buildDetailSectionWithPopout("Volume Graph",
 				() -> openGraphPopout("Volume Graph", PriceGraphPanel.Mode.VOLUME, volumeGraph),
 				volumeGraph);
@@ -626,6 +654,17 @@ public class DetailView extends JPanel
 		linksSection = buildDetailSection("Links", buildLinksBlock());
 
 		detailCard.add(topStack, BorderLayout.NORTH);
+
+		if (viewLayout == Layout.DASHBOARD)
+		{
+			dashboardEmptyMessage = new JLabel("Search for an Item to see its detailed view...",
+					SwingConstants.CENTER);
+			dashboardEmptyMessage.setVerticalAlignment(SwingConstants.CENTER);
+			dashboardEmptyMessage.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+			dashboardEmptyMessage.setFont(smallFont().deriveFont(Font.ITALIC, 13f));
+			dashboardEmptyMessage.setVisible(false);
+			detailCard.add(dashboardEmptyMessage, BorderLayout.CENTER);
+		}
 
 		acquisitionsModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> boundItemId, false);
 		acquisitionsTable = new JTable(acquisitionsModel)
@@ -694,13 +733,13 @@ public class DetailView extends JPanel
 		});
 		acquisitionsTable.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		acquisitionsTable.setForeground(Color.WHITE);
-		acquisitionsTable.setFont(FontManager.getRunescapeSmallFont());
+		acquisitionsTable.setFont(smallFont());
 		acquisitionsTable.setGridColor(StockpileColors.TABLE_GRID);
 		acquisitionsTable.setRowHeight(22);
 		acquisitionsTable.setFillsViewportHeight(true);
 		acquisitionsTable.getTableHeader().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		acquisitionsTable.getTableHeader().setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		acquisitionsTable.getTableHeader().setFont(FontManager.getRunescapeSmallFont());
+		acquisitionsTable.getTableHeader().setFont(smallFont());
 		applyTableRenderers();
 		TableCellRenderer headerRenderer = acquisitionsTable.getTableHeader().getDefaultRenderer();
 		if (headerRenderer instanceof DefaultTableCellRenderer)
@@ -753,13 +792,14 @@ public class DetailView extends JPanel
 		JScrollPane tableScroll = new JScrollPane(acquisitionsTable);
 		tableScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		tableScroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
+		tableScroll.setMinimumSize(new Dimension(0, acquisitionsTable.getRowHeight() * 5 + 26));
 		acquisitionsScroll = tableScroll;
 
 		JButton addRowBtn = new JButton("+ Add");
 		addRowBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		addRowBtn.setForeground(Color.WHITE);
 		addRowBtn.setFocusPainted(false);
-		addRowBtn.setFont(FontManager.getRunescapeSmallFont());
+		addRowBtn.setFont(smallFont());
 		addRowBtn.setMargin(new Insets(2, 5, 2, 5));
 		addRowBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		addRowBtn.addActionListener(e ->
@@ -780,7 +820,7 @@ public class DetailView extends JPanel
 		removeRowBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		removeRowBtn.setForeground(Color.WHITE);
 		removeRowBtn.setFocusPainted(false);
-		removeRowBtn.setFont(FontManager.getRunescapeSmallFont());
+		removeRowBtn.setFont(smallFont());
 		removeRowBtn.setMargin(new Insets(2, 5, 2, 5));
 		removeRowBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		removeRowBtn.setEnabled(false);
@@ -855,7 +895,7 @@ public class DetailView extends JPanel
 		clearBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		clearBtn.setForeground(StockpileColors.LOW);
 		clearBtn.setFocusPainted(false);
-		clearBtn.setFont(FontManager.getRunescapeSmallFont());
+		clearBtn.setFont(smallFont());
 		clearBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		clearBtn.setMargin(new Insets(2, 5, 2, 5));
 		clearBtn.addActionListener(e ->
@@ -946,8 +986,8 @@ public class DetailView extends JPanel
 		notificationsTable.setForeground(Color.WHITE);
 		notificationsTable.setGridColor(StockpileColors.TABLE_GRID);
 		notificationsTable.setRowHeight(22);
-		notificationsTable.setFont(FontManager.getRunescapeSmallFont());
-		notificationsTable.getTableHeader().setFont(FontManager.getRunescapeSmallFont());
+		notificationsTable.setFont(smallFont());
+		notificationsTable.getTableHeader().setFont(smallFont());
 		notificationsTable.getTableHeader().setReorderingAllowed(false);
 		notificationsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
@@ -960,6 +1000,8 @@ public class DetailView extends JPanel
 		JScrollPane tableScroll = new JScrollPane(notificationsTable);
 		tableScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		tableScroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
+		int notifMinHeight = notificationsTable.getRowHeight() * DEFAULT_NOTIFICATION_ROWS + 26;
+		tableScroll.setMinimumSize(new Dimension(0, notifMinHeight));
 
 		JButton addRowBtn = new JButton("+ Add");
 		styleNotifButton(addRowBtn, Color.WHITE);
@@ -1068,7 +1110,7 @@ public class DetailView extends JPanel
 		btn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		btn.setForeground(fg);
 		btn.setFocusPainted(false);
-		btn.setFont(FontManager.getRunescapeSmallFont());
+		btn.setFont(smallFont());
 		btn.setMargin(new Insets(2, 5, 2, 5));
 		btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 	}
@@ -1147,7 +1189,7 @@ public class DetailView extends JPanel
 
 		JLabel label = new JLabel(title, SwingConstants.CENTER);
 		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		label.setFont(FontManager.getRunescapeBoldFont());
+		label.setFont(boldFont());
 
 		row.add(Box.createHorizontalStrut(popBtn.getPreferredSize().width), BorderLayout.WEST);
 		row.add(label, BorderLayout.CENTER);
@@ -1183,24 +1225,569 @@ public class DetailView extends JPanel
 
 		appliedSectionLayout = signature;
 
-		List<Integer> order = new ArrayList<>();
-		for (int i = 0; i < sections.length; i++)
+		if (viewLayout == Layout.DASHBOARD)
 		{
-			if (!slots[i].isNone())
-				order.add(i);
+			dashboardLeftColumn.removeAll();
+			dashboardMiddleColumn.removeAll();
+			dashboardRightColumn.removeAll();
+			fillDashboardColumn(dashboardLeftColumn, DASHBOARD_LEFT, sections, slots);
+			fillDashboardColumn(dashboardMiddleColumn, DASHBOARD_MIDDLE, sections, slots);
+			fillDashboardColumn(dashboardRightColumn, DASHBOARD_RIGHT, sections, slots);
 		}
-
-		order.sort(Comparator.comparingInt(i -> slots[i].ordinal()));
-
-		detailSectionsHost.removeAll();
-		for (int i : order)
+		else
 		{
-			sections[i].setVisible(true);
-			detailSectionsHost.add(sections[i]);
+			List<Integer> order = new ArrayList<>();
+			for (int i = 0; i < sections.length; i++)
+			{
+				if (!slots[i].isNone())
+					order.add(i);
+			}
+
+			order.sort(Comparator.comparingInt(i -> slots[i].ordinal()));
+
+			detailSectionsHost.removeAll();
+			for (int i : order)
+			{
+				sections[i].setVisible(true);
+				detailSectionsHost.add(sections[i]);
+			}
 		}
 
 		detailSectionsHost.revalidate();
 		detailSectionsHost.repaint();
+	}
+
+	/**
+	 * Adds the sections named by {@code indices} (in that fixed order) to a dashboard column, skipping any
+	 * the config has hidden. The dashboard uses a fixed three-column arrangement (#109) rather than the
+	 * config's sidebar ordering.
+	 */
+	private void fillDashboardColumn(JPanel column, int[] indices, JPanel[] sections, SectionSlot[] slots)
+	{
+		for (int i : indices)
+		{
+			if (slots[i].isNone())
+				continue;
+
+			sections[i].setVisible(true);
+			column.add(sections[i]);
+		}
+
+		column.add(Box.createVerticalGlue());
+	}
+
+	/**
+	 * A three-column horizontal layout for the dashboard body (#109). It splits the available width by
+	 * fixed weights (20% / 20% / 60%) when the window is wide enough, but never shrinks a column below its
+	 * content's minimum width &mdash; so a smaller window scales the columns to fit their contents rather
+	 * than truncating them with "&hellip;". Each column is given the full body height; a trailing glue in
+	 * the column keeps its sections at their natural heights.
+	 */
+	private static final class WeightedColumnsLayout implements LayoutManager
+	{
+		private final double[] weights;
+		private final int gap;
+
+		/**
+		 * @param weights per-column width weights (need not sum to one)
+		 * @param gap     horizontal pixels between adjacent columns
+		 */
+		WeightedColumnsLayout(double[] weights, int gap)
+		{
+			this.weights = weights;
+			this.gap = gap;
+		}
+
+		@Override
+		public void addLayoutComponent(String name, Component comp)
+		{
+		}
+
+		@Override
+		public void removeLayoutComponent(Component comp)
+		{
+		}
+
+		@Override
+		public Dimension preferredLayoutSize(Container parent)
+		{
+			return measure(parent, false);
+		}
+
+		@Override
+		public Dimension minimumLayoutSize(Container parent)
+		{
+			return measure(parent, true);
+		}
+
+		/** @return the summed column widths and tallest column height, using min or preferred sizes. */
+		private Dimension measure(Container parent, boolean minimum)
+		{
+			Insets in = parent.getInsets();
+			int n = parent.getComponentCount();
+			int width = in.left + in.right + gap * Math.max(0, n - 1);
+			int height = 0;
+			for (int i = 0; i < n; i++)
+			{
+				Component c = parent.getComponent(i);
+				Dimension d = minimum ? c.getMinimumSize() : c.getPreferredSize();
+				width += d.width;
+				height = Math.max(height, d.height);
+			}
+
+			return new Dimension(width, height + in.top + in.bottom);
+		}
+
+		@Override
+		public void layoutContainer(Container parent)
+		{
+			Insets in = parent.getInsets();
+			int n = parent.getComponentCount();
+			if (n == 0)
+				return;
+
+			int avail = Math.max(0, parent.getWidth() - in.left - in.right - gap * (n - 1));
+			int[] widths = new int[n];
+			boolean[] locked = new boolean[n];
+			int remaining = avail;
+
+			boolean changed = true;
+			while (changed)
+			{
+				changed = false;
+				double weightSum = unlockedWeight(locked);
+				if (weightSum <= 0)
+					break;
+
+				for (int i = 0; i < n; i++)
+				{
+					if (locked[i])
+						continue;
+
+					int share = (int) Math.round(remaining * weights[i] / weightSum);
+					Component col = parent.getComponent(i);
+					int min = col.getMinimumSize().width;
+					if (share < min)
+					{
+						widths[i] = min;
+						locked[i] = true;
+						remaining -= min;
+						changed = true;
+						break;
+					}
+				}
+			}
+
+			double weightSum = unlockedWeight(locked);
+			for (int i = 0; i < n; i++)
+			{
+				if (!locked[i])
+					widths[i] = weightSum > 0 ? Math.max(0, (int) Math.round(remaining * weights[i] / weightSum)) : 0;
+			}
+
+			int x = in.left;
+			int h = parent.getHeight() - in.top - in.bottom;
+			for (int i = 0; i < n; i++)
+			{
+				parent.getComponent(i).setBounds(x, in.top, widths[i], h);
+				x += widths[i] + gap;
+			}
+		}
+
+		/** @return the total weight of the columns not yet locked to their minimum width. */
+		private double unlockedWeight(boolean[] locked)
+		{
+			double sum = 0;
+			for (int i = 0; i < locked.length; i++)
+			{
+				if (!locked[i])
+					sum += weights[i];
+			}
+
+			return sum;
+		}
+	}
+
+	/**
+	 * Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row,
+	 * then the icon-and-title row, then the wrapping description &mdash; all stacked vertically.
+	 */
+	private void buildStackHeader(JPanel titleTextStack)
+	{
+		JButton backBtn = new JButton("Back", buildLeftArrowIcon());
+		backBtn.setIconTextGap(6);
+		backBtn.setVerticalAlignment(SwingConstants.CENTER);
+		backBtn.setHorizontalAlignment(SwingConstants.CENTER);
+		backBtn.setFocusPainted(false);
+		backBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		backBtn.setForeground(Color.WHITE);
+		backBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		backBtn.addActionListener(e -> host.onBack());
+
+		JPanel headerRow = new JPanel(new BorderLayout(6, 0))
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		headerRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		headerRow.add(backBtn, BorderLayout.WEST);
+
+		JPanel headerControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		headerControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		headerControls.add(detailTrackBtn);
+
+		detailPopOutBtn = buildPopoutButton(() -> host.popOut(boundItemId));
+		detailPopOutBtn.setToolTipText("Pop out into its own window");
+		headerControls.add(detailPopOutBtn);
+
+		headerRow.add(headerControls, BorderLayout.EAST);
+
+		JPanel titleRow = new JPanel(new BorderLayout(8, 0))
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		titleRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		titleRow.setBorder(new EmptyBorder(16, 0, 0, 0));
+		titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		titleRow.add(detailIconLabel, BorderLayout.WEST);
+		titleRow.add(titleTextStack, BorderLayout.CENTER);
+
+		topStack.add(headerRow);
+		topStack.add(titleRow);
+		topStack.add(detailDescriptionArea);
+	}
+
+	/**
+	 * Builds the dashboard (pop-out window) header as a single toolbar row (#109): the item identity
+	 * &mdash; icon, name, quantity and description &mdash; floats left, a width-capped search bar to
+	 * switch the shown item sits centre, and equal-width Wiki, Live Prices and Track/Untrack controls
+	 * float right. Everything is vertically centred; results are drawn in a floating popup that overlays
+	 * the dashboard rather than displacing it.
+	 */
+	private void buildDashboardToolbar(JPanel titleTextStack)
+	{
+		detailDescriptionArea.setMaximumSize(new Dimension(340, Integer.MAX_VALUE));
+		titleTextStack.add(detailDescriptionArea);
+
+		JPanel identity = new JPanel(new BorderLayout(8, 0));
+		identity.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		identity.add(detailIconLabel, BorderLayout.WEST);
+		identity.add(titleTextStack, BorderLayout.CENTER);
+
+		dashboardWikiBtn = buildLinkButton("Wiki", "Open the OSRS Wiki page for this item", this::openWikiLink);
+		dashboardPricesBtn = buildLinkButton("Live Prices", "Open the live prices page for this item",
+				this::openPricesLink);
+		styleToolbarButton(dashboardWikiBtn);
+		styleToolbarButton(dashboardPricesBtn);
+		styleToolbarButton(detailTrackBtn);
+
+		dashboardRightControls = new JPanel(new GridLayout(1, 3, 6, 0));
+		dashboardRightControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		JPanel rightControls = dashboardRightControls;
+		applyDashboardLinks(false);
+
+		JPanel toolbar = new JPanel(new GridBagLayout())
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		toolbar.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		toolbar.setAlignmentX(Component.LEFT_ALIGNMENT);
+		toolbar.setBorder(new EmptyBorder(0, 0, 4, 0));
+
+		GridBagConstraints gbc = new GridBagConstraints();
+		gbc.gridy = 0;
+		gbc.gridx = 0;
+		gbc.anchor = GridBagConstraints.WEST;
+		toolbar.add(identity, gbc);
+		gbc.gridx = 1;
+		toolbar.add(buildDashboardPad(), gbc);
+		gbc.gridx = 2;
+		gbc.weightx = 1;
+		gbc.fill = GridBagConstraints.HORIZONTAL;
+		gbc.anchor = GridBagConstraints.CENTER;
+		toolbar.add(buildDashboardSearch(), gbc);
+		gbc.gridx = 3;
+		gbc.weightx = 0;
+		gbc.fill = GridBagConstraints.NONE;
+		toolbar.add(buildDashboardPad(), gbc);
+		gbc.gridx = 4;
+		gbc.anchor = GridBagConstraints.EAST;
+		toolbar.add(rightControls, gbc);
+
+		topStack.add(toolbar);
+	}
+
+	/**
+	 * Lays out the dashboard toolbar's right-hand controls (#109). With an item shown, Wiki, Live Prices and
+	 * Track share three equal cells; in dashboard-home mode the Track button is dropped and Wiki + Live Prices
+	 * expand to fill the freed space, staying right-aligned.
+	 */
+	private void applyDashboardLinks(boolean home)
+	{
+		if (dashboardRightControls == null)
+			return;
+
+		dashboardRightControls.removeAll();
+		dashboardRightControls.setLayout(new GridLayout(1, home ? 2 : 3, 6, 0));
+		dashboardRightControls.add(dashboardWikiBtn);
+		dashboardRightControls.add(dashboardPricesBtn);
+		if (!home)
+			dashboardRightControls.add(detailTrackBtn);
+
+		dashboardRightControls.revalidate();
+		dashboardRightControls.repaint();
+	}
+
+	/**
+	 * @return a flexible horizontal spacer whose width tracks 10% of the view, used to pad the dashboard
+	 *         toolbar's centre search bar away from the identity block and the right-hand controls.
+	 */
+	private Component buildDashboardPad()
+	{
+		JPanel pad = new JPanel()
+		{
+			@Override
+			public Dimension getPreferredSize()
+			{
+				int viewWidth = DetailView.this.getWidth();
+				return new Dimension(viewWidth > 0 ? (int) (viewWidth * 0.10) : 24, 0);
+			}
+		};
+		pad.setOpaque(false);
+		return pad;
+	}
+
+	/** @return the base body font: monospace across the dashboard (#109), RuneScape small in the sidebar. */
+	private Font smallFont()
+	{
+		return viewLayout == Layout.DASHBOARD ? DASHBOARD_FONT : FontManager.getRunescapeSmallFont();
+	}
+
+	/** @return the emphasis font: bold monospace across the dashboard, RuneScape bold in the sidebar. */
+	private Font boldFont()
+	{
+		return viewLayout == Layout.DASHBOARD
+				? DASHBOARD_FONT.deriveFont(Font.BOLD)
+				: FontManager.getRunescapeBoldFont();
+	}
+
+	/** Styles a dashboard toolbar button: small font, a subtle border, and padding matching the search bar. */
+	private void styleToolbarButton(JButton button)
+	{
+		button.setFont(smallFont());
+		button.setMargin(new Insets(0, 0, 0, 0));
+		button.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR),
+				new EmptyBorder(3, 11, 3, 11)));
+	}
+
+	/**
+	 * Builds the dashboard toolbar's centre search control: a text field that fills the middle of the
+	 * toolbar, shows a faint "Search..." placeholder when empty, filters OSRS items as you type, and lists
+	 * matches in a floating popup whose rows switch the window to the chosen item.
+	 */
+	private JTextField buildDashboardSearch()
+	{
+		dashboardSearchPopup = new JPopupMenu();
+		dashboardSearchPopup.setFocusable(false);
+		dashboardSearchPopup.setBorder(BorderFactory.createLineBorder(ColorScheme.LIGHT_GRAY_COLOR));
+		dashboardSearchPopup.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		dashboardSearchField = new JTextField()
+		{
+			@Override
+			protected void paintComponent(Graphics g)
+			{
+				super.paintComponent(g);
+				if (!getText().isEmpty())
+					return;
+
+				Graphics2D g2 = (Graphics2D) g.create();
+				g2.setColor(SEARCH_PLACEHOLDER_COLOR);
+				g2.setFont(getFont().deriveFont(Font.ITALIC));
+				var fm = g2.getFontMetrics();
+				int ty = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+				g2.drawString("Search...", getInsets().left, ty);
+				g2.dispose();
+			}
+		};
+		dashboardSearchField.setToolTipText("Search for an item to show in this window");
+		dashboardSearchField.setFont(smallFont());
+		dashboardSearchField.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		dashboardSearchField.setForeground(Color.WHITE);
+		dashboardSearchField.setCaretColor(Color.WHITE);
+		dashboardSearchField.setBorder(new EmptyBorder(4, 8, 4, 8));
+		dashboardSearchField.getDocument().addDocumentListener(new DocumentListener()
+		{
+			@Override
+			public void insertUpdate(DocumentEvent e)
+			{
+				onDashboardSearch(dashboardSearchField.getText());
+			}
+
+			@Override
+			public void removeUpdate(DocumentEvent e)
+			{
+				onDashboardSearch(dashboardSearchField.getText());
+			}
+
+			@Override
+			public void changedUpdate(DocumentEvent e)
+			{
+				onDashboardSearch(dashboardSearchField.getText());
+			}
+		});
+		dashboardSearchField.addActionListener(e ->
+		{
+			if (firstSearchResultId >= 0)
+				selectDashboardSearch(firstSearchResultId);
+		});
+
+		return dashboardSearchField;
+	}
+
+	/** Filters the floating dashboard search popup to OSRS items matching {@code query} (min two characters). */
+	private void onDashboardSearch(String query)
+	{
+		if (dashboardSearchPopup == null)
+			return;
+
+		firstSearchResultId = -1;
+		dashboardSearchPopup.setVisible(false);
+		dashboardSearchPopup.removeAll();
+
+		if (query == null || query.trim().length() < 2)
+			return;
+
+		JPanel content = new JPanel();
+		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+		content.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		List<ItemPrice> results = host.itemManager().search(query);
+		int shown = 0;
+		for (ItemPrice item : results)
+		{
+			if (shown >= 25)
+				break;
+
+			if (item.getId() == boundItemId)
+				continue;
+
+			if (firstSearchResultId < 0)
+				firstSearchResultId = item.getId();
+
+			content.add(buildDashboardSearchRow(item.getId(), item.getName()));
+			shown++;
+		}
+
+		if (shown == 0)
+			return;
+
+		JScrollPane scroll = new JScrollPane(content,
+				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+				ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scroll.setBorder(null);
+		scroll.getVerticalScrollBar().setUnitIncrement(16);
+		dashboardSearchPopup.add(scroll);
+
+		int visibleRows = Math.min(shown, 5);
+		dashboardSearchPopup.setPopupSize(dashboardSearchField.getWidth(), visibleRows * 26 + 2);
+		dashboardSearchPopup.show(dashboardSearchField, 0, dashboardSearchField.getHeight());
+		dashboardSearchField.requestFocusInWindow();
+	}
+
+	/** Builds one clickable dashboard search-result row that switches the window to {@code itemId} when picked. */
+	private JPanel buildDashboardSearchRow(int itemId, String itemName)
+	{
+		JPanel row = new JPanel(new BorderLayout());
+		row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		row.setBorder(new EmptyBorder(4, 6, 4, 6));
+		row.setPreferredSize(new Dimension(10, 26));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+		JLabel nameLabel = new JLabel();
+		nameLabel.setForeground(Color.WHITE);
+		nameLabel.setFont(smallFont());
+		EllipsisText.set(nameLabel, itemName);
+		row.add(nameLabel, BorderLayout.CENTER);
+
+		MouseAdapter rowMouse = new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				row.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), row);
+				if (!row.contains(p))
+					row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			}
+
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				selectDashboardSearch(itemId);
+			}
+		};
+		row.addMouseListener(rowMouse);
+		nameLabel.addMouseListener(rowMouse);
+
+		return row;
+	}
+
+	/** Clears the dashboard search field and asks the host to switch this window to {@code itemId}. */
+	private void selectDashboardSearch(int itemId)
+	{
+		if (dashboardSearchField != null)
+			dashboardSearchField.setText("");
+
+		firstSearchResultId = -1;
+		dashboardSearchPopup.setVisible(false);
+		dashboardSearchPopup.removeAll();
+		host.switchDetailItem(itemId);
+	}
+
+	/**
+	 * Fixes a dashboard chart's height to {@code height} so it reads at a pop-out-like size rather than
+	 * the shrunk sidebar height, while leaving its width free to stretch to the column (#109).
+	 */
+	private void sizeDashboardGraph(PriceGraphPanel graph, int height)
+	{
+		graph.setPreferredSize(new Dimension(10, height));
+		graph.setMinimumSize(new Dimension(10, height));
+		graph.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+	}
+
+	/**
+	 * Builds one top-anchored dashboard column. Its content minimum width is honoured by
+	 * {@link WeightedColumnsLayout} so the column is never squeezed narrow enough to truncate its
+	 * contents (#109).
+	 */
+	private JPanel buildDashboardColumn()
+	{
+		JPanel column = new JPanel();
+		column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+		column.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		column.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return column;
 	}
 
 	/** Rebuilds the price overview grid to match the configured preset of time-window rows. */
@@ -1283,7 +1870,7 @@ public class DetailView extends JPanel
 		fourth.setForeground(COLOR_VOLUME);
 		for (JLabel l : new JLabel[]{high, low, avg, fourth})
 		{
-			l.setFont(FontManager.getRunescapeSmallFont());
+			l.setFont(smallFont());
 			JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
 			row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			row.add(l);
@@ -1293,7 +1880,7 @@ public class DetailView extends JPanel
 		if (profit != null)
 		{
 			profit.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-			profit.setFont(FontManager.getRunescapeSmallFont());
+			profit.setFont(smallFont());
 			JPanel profitRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 			profitRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			profitRow.add(profit);
@@ -1377,7 +1964,7 @@ public class DetailView extends JPanel
 	private void populateOverviewGrid(Set<TimeWindow> rows)
 	{
 		fillOverviewGrid(overviewGrid, overviewLabels, overviewWindowLabels, rows,
-				FontManager.getRunescapeSmallFont(), false);
+				smallFont(), false);
 	}
 
 	/** Lays out the overview grid's header and one row of price/volume labels per selected time window. */
@@ -1751,7 +2338,7 @@ public class DetailView extends JPanel
 		b.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		b.setForeground(fg);
 		b.setFocusPainted(false);
-		b.setFont(FontManager.getRunescapeSmallFont());
+		b.setFont(smallFont());
 		b.setMargin(new Insets(2, 5, 2, 5));
 		b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		return b;
@@ -1879,7 +2466,7 @@ public class DetailView extends JPanel
 	/** Wires the per-column cell editors/renderers on the notifications table to the current metric's input type. */
 	private void applyNotificationRenderers()
 	{
-		Font f = FontManager.getRunescapeSmallFont();
+		Font f = smallFont();
 		NotifCellRenderer renderer = new NotifCellRenderer();
 
 		JComboBox<NotificationMetric> metricCombo = new JComboBox<>(NotificationMetric.values());
@@ -1962,14 +2549,14 @@ public class DetailView extends JPanel
 
 		JLabel rangeTitle = new JLabel("30 Day Price Range", SwingConstants.CENTER);
 		rangeTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		rangeTitle.setFont(FontManager.getRunescapeSmallFont());
+		rangeTitle.setFont(smallFont());
 		rangeTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
 		rangeTitle.setMaximumSize(new Dimension(Integer.MAX_VALUE, rangeTitle.getPreferredSize().height));
 		block.add(rangeTitle);
 		block.add(Box.createVerticalStrut(4));
 
 		rangePositionLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		rangePositionLabel.setFont(FontManager.getRunescapeSmallFont());
+		rangePositionLabel.setFont(smallFont());
 		rangePositionLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		rangePositionLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE,
 				rangePositionLabel.getPreferredSize().height));
@@ -1990,14 +2577,14 @@ public class DetailView extends JPanel
 
 		JLabel pressureTitle = new JLabel("Buy/Sell Pressure", SwingConstants.CENTER);
 		pressureTitle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		pressureTitle.setFont(FontManager.getRunescapeSmallFont());
+		pressureTitle.setFont(smallFont());
 		pressureTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pressureTitle.setMaximumSize(new Dimension(Integer.MAX_VALUE, pressureTitle.getPreferredSize().height));
 		block.add(pressureTitle);
 		block.add(Box.createVerticalStrut(4));
 
 		pressureMarketLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		pressureMarketLabel.setFont(FontManager.getRunescapeSmallFont());
+		pressureMarketLabel.setFont(smallFont());
 		pressureMarketLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pressureMarketLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE,
 				pressureMarketLabel.getPreferredSize().height));
@@ -2008,9 +2595,9 @@ public class DetailView extends JPanel
 		block.add(buySellBar);
 		block.add(Box.createVerticalStrut(3));
 
-		buyPressureLabel.setFont(FontManager.getRunescapeSmallFont());
+		buyPressureLabel.setFont(smallFont());
 		buyPressureLabel.setForeground(StockpileColors.HIGH);
-		sellPressureLabel.setFont(FontManager.getRunescapeSmallFont());
+		sellPressureLabel.setFont(smallFont());
 		sellPressureLabel.setForeground(StockpileColors.LOW);
 		sellPressureLabel.setHorizontalAlignment(SwingConstants.RIGHT);
 
@@ -2038,14 +2625,14 @@ public class DetailView extends JPanel
 
 		JLabel lh = new JLabel(leftLabel, SwingConstants.CENTER);
 		lh.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		lh.setFont(FontManager.getRunescapeSmallFont());
+		lh.setFont(smallFont());
 		JLabel rh = new JLabel(rightLabel, SwingConstants.CENTER);
 		rh.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		rh.setFont(FontManager.getRunescapeSmallFont());
+		rh.setFont(smallFont());
 
-		leftValue.setFont(FontManager.getRunescapeSmallFont());
+		leftValue.setFont(smallFont());
 		leftValue.setForeground(Color.WHITE);
-		rightValue.setFont(FontManager.getRunescapeSmallFont());
+		rightValue.setFont(smallFont());
 		rightValue.setForeground(Color.WHITE);
 
 		c.gridx = 0;
@@ -2087,7 +2674,7 @@ public class DetailView extends JPanel
 	private JButton buildLinkButton(String text, String tooltip, Runnable onClick)
 	{
 		JButton button = new JButton(text);
-		button.setFont(FontManager.getRunescapeSmallFont());
+		button.setFont(smallFont());
 		button.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		button.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		button.setFocusPainted(false);
@@ -2098,9 +2685,15 @@ public class DetailView extends JPanel
 		return button;
 	}
 
-	/** Opens the OSRS Wiki page for the item currently shown in the detail view. */
+	/** Opens the OSRS Wiki page for the item currently shown, or the wiki home page in dashboard-home mode. */
 	private void openWikiLink()
 	{
+		if (dashboardHome)
+		{
+			LinkBrowser.browse(WIKI_HOME);
+			return;
+		}
+
 		TrackedItem item = currentDetailItem();
 		if (item == null)
 			return;
@@ -2109,9 +2702,15 @@ public class DetailView extends JPanel
 		LinkBrowser.browse(WIKI_BASE + name);
 	}
 
-	/** Opens the wiki realtime prices page for the item currently shown in the detail view. */
+	/** Opens the wiki realtime prices page for the item shown, or the prices home page in dashboard-home mode. */
 	private void openPricesLink()
 	{
+		if (dashboardHome)
+		{
+			LinkBrowser.browse(PRICES_HOME);
+			return;
+		}
+
 		TrackedItem item = currentDetailItem();
 		if (item == null)
 			return;
@@ -2156,8 +2755,8 @@ public class DetailView extends JPanel
 
 		JLabel estPrefix = new JLabel("Est. Profit:");
 		estPrefix.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		estPrefix.setFont(FontManager.getRunescapeSmallFont());
-		alchEstProfit.setFont(FontManager.getRunescapeSmallFont());
+		estPrefix.setFont(smallFont());
+		alchEstProfit.setFont(smallFont());
 		alchEstProfit.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 
 		alchEstProfitRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
@@ -2231,7 +2830,7 @@ public class DetailView extends JPanel
 			}
 		};
 		title.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setFont(boldFont());
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		if (withDivider)
 			title.setBorder(BorderFactory.createCompoundBorder(
@@ -2248,6 +2847,7 @@ public class DetailView extends JPanel
 	/** Switches to the detail card for an item, requesting its full data and populating the view. */
 	public void show(int itemId)
 	{
+		dashboardHome = false;
 		TrackedItem item = host.trackedItem(itemId);
 		if (item == null)
 			return;
@@ -2259,6 +2859,46 @@ public class DetailView extends JPanel
 		applyDetailCard();
 		if (onRequestDetailData != null)
 			onRequestDetailData.accept(itemId);
+	}
+
+	/**
+	 * Shows the item-less "dashboard home" state of the pop-out window (#109): the Stockpile icon and name
+	 * stand in for an item, the body is replaced by a centred "search for an item" prompt, and the
+	 * Track/Untrack control is hidden while the search bar stays live. Dashboard layout only.
+	 */
+	public void showDashboardHome()
+	{
+		dashboardHome = true;
+		previewItem = null;
+		boundItemId = -1;
+		detailLoadTimedOut = false;
+		stopDetailLoading();
+		applyDashboardHome();
+		cardLayout.show(this, CARD_CONTENT);
+	}
+
+	/**
+	 * Applies the dashboard-home identity and layout: Stockpile icon and name, the dashboard examine
+	 * caption, a hidden quantity line and Track button, the section columns hidden, and the centred
+	 * search prompt shown in their place.
+	 */
+	private void applyDashboardHome()
+	{
+		applyDashboardLinks(true);
+		detailQtyLabel.setVisible(false);
+		detailSectionsHost.setVisible(false);
+		if (dashboardEmptyMessage != null)
+			dashboardEmptyMessage.setVisible(true);
+
+		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
+		if (icon != null)
+			detailIconLabel.setIcon(new ImageIcon(ImageUtil.resizeImage(icon, 32, 32)));
+
+		EllipsisText.set(detailNameLabel, "Stockpile");
+
+		detailExamineText = "The Stockpile Dashboard View";
+		applyExamineWrap();
+		detailDescriptionArea.setVisible(true);
 	}
 
 	/**
@@ -2344,7 +2984,7 @@ public class DetailView extends JPanel
 
 		JLabel caption = new JLabel("Loading item data…");
 		caption.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		caption.setFont(FontManager.getRunescapeSmallFont());
+		caption.setFont(smallFont());
 		caption.setAlignmentX(Component.CENTER_ALIGNMENT);
 
 		inner.add(detailSpinner);
@@ -2375,6 +3015,14 @@ public class DetailView extends JPanel
 	private void populateDetail(TrackedItem item)
 	{
 		final boolean viewOnly = item.getMode() == TrackItemMode.VIEW;
+
+		if (viewLayout == Layout.DASHBOARD)
+		{
+			applyDashboardLinks(false);
+			detailSectionsHost.setVisible(true);
+			if (dashboardEmptyMessage != null)
+				dashboardEmptyMessage.setVisible(false);
+		}
 
 		detailItemTracked = !viewOnly;
 		detailTrackBtn.setText(viewOnly ? "Track" : "Untrack");
@@ -2833,7 +3481,7 @@ public class DetailView extends JPanel
 	 */
 	private void applyAcqRenderers(JTable table, AcquisitionsTableModel model, boolean expanded)
 	{
-		Font f = expanded ? new Font(Font.MONOSPACED, Font.PLAIN, 18) : FontManager.getRunescapeSmallFont();
+		Font f = expanded ? new Font(Font.MONOSPACED, Font.PLAIN, 18) : smallFont();
 		table.setFont(f);
 		table.setRowHeight(expanded ? 30 : 22);
 		table.getTableHeader().setFont(f);
@@ -2898,6 +3546,49 @@ public class DetailView extends JPanel
 			case 3: return "Profit";
 			default: return "";
 		}
+	}
+
+	/** @return this view's own preferred size as the preferred viewport size. */
+	@Override
+	public Dimension getPreferredScrollableViewportSize()
+	{
+		return getPreferredSize();
+	}
+
+	/** @return a fixed unit scroll increment matching the enclosing scroll pane's step. */
+	@Override
+	public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+	{
+		return 16;
+	}
+
+	/** @return a block scroll increment of one visible page along the scroll axis. */
+	@Override
+	public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+	{
+		return orientation == SwingConstants.VERTICAL ? visibleRect.height : visibleRect.width;
+	}
+
+	/**
+	 * @return {@code true} so the view always matches the viewport width and reflows its dashboard
+	 *         columns when the hosting window is resized &mdash; including shrinking back after a
+	 *         maximise/restore &mdash; rather than clipping at a stale wide preferred width (#109).
+	 */
+	@Override
+	public boolean getScrollableTracksViewportWidth()
+	{
+		return true;
+	}
+
+	/**
+	 * @return {@code true} in dashboard-home mode so the short header + centred prompt fill the viewport
+	 *         height (letting the prompt sit vertically centred); {@code false} otherwise so tall item
+	 *         content scrolls vertically instead of squashing.
+	 */
+	@Override
+	public boolean getScrollableTracksViewportHeight()
+	{
+		return dashboardHome;
 	}
 }
 

@@ -156,8 +156,11 @@ public class PriceGraphPanel extends JPanel
 		this(mode, false);
 	}
 
+	/** Default point size of the expanded (pop-out) monospace font. */
+	private static final int DEFAULT_EXPANDED_FONT_SIZE = 13;
+
 	/**
-	 * Builds the chart and its timeframe tab bar.
+	 * Builds the chart and its timeframe tab bar with the default expanded font size.
 	 *
 	 * @param mode     whether to chart price or volume
 	 * @param expanded {@code true} for the larger pop-out variant (bigger font,
@@ -165,10 +168,25 @@ public class PriceGraphPanel extends JPanel
 	 */
 	public PriceGraphPanel(Mode mode, boolean expanded)
 	{
+		this(mode, expanded, DEFAULT_EXPANDED_FONT_SIZE);
+	}
+
+	/**
+	 * Builds the chart and its timeframe tab bar.
+	 *
+	 * @param mode              whether to chart price or volume
+	 * @param expanded          {@code true} for the larger pop-out variant (bigger
+	 *                          font, denser axes, full tab labels); {@code false}
+	 *                          for the sidebar
+	 * @param expandedFontSize  point size of the expanded monospace font, letting an
+	 *                          embedded dashboard chart match its surrounding text
+	 */
+	public PriceGraphPanel(Mode mode, boolean expanded, int expandedFontSize)
+	{
 		this.mode = mode;
 		this.expanded = expanded;
 		this.baseFont = expanded
-				? new Font(Font.MONOSPACED, Font.PLAIN, 13)
+				? new Font(Font.MONOSPACED, Font.PLAIN, expandedFontSize)
 				: FontManager.getRunescapeSmallFont();
 
 		FontMetrics axisFm = getFontMetrics(baseFont);

@@ -29,6 +29,15 @@ public interface PanelActions
 	 */
 	void untrackToPreview(int itemId);
 
+	/**
+	 * Pops {@code itemId} out into its own standalone, resizable detail window (#109), or focuses the
+	 * existing window if one is already open for it. Both tracked items and read-only previews.
+	 */
+	void popOut(int itemId);
+
+	/** Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. */
+	void openDashboard();
+
 	/** Notifies the plugin that {@code itemId}'s acquisition lots were edited and must be persisted. */
 	void acquisitionsEdited(int itemId);
 

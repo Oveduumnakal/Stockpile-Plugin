@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -278,6 +279,24 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * button); not in {@link #trackedItems}.
 	 */
 	private TrackedItem previewItem;
+
+	/**
+	 * Open pop-out detail windows keyed by item id (#109). EDT-only: created, focused, refreshed and
+	 * disposed on the Swing thread. Its client-thread counterpart is {@link #windowItems}, which holds
+	 * the bound instances so pricing/lookup can reach them without touching Swing state off the EDT.
+	 */
+	private final Map<Integer, DetailWindow> detailWindows = new HashMap<>();
+
+	/**
+	 * The bound item instance backing each open pop-out window, keyed by item id (#109). Client-thread
+	 * state, mutated alongside the price maps so {@link #lookupItem}, {@link #applyGePrices} and the
+	 * per-detail request loop keep every popped-out item (tracked or preview) live.
+	 */
+	private final Map<Integer, TrackedItem> windowItems = new HashMap<>();
+
+	/** Latest nature/fire rune prices, cached for the pop-out windows' alch figures ({@link #requestDetailData}). */
+	private volatile long lastNatureRunePrice;
+	private volatile long lastFireRunePrice;
 
 	/** The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). */
 	private int currentGeItem = -1;
@@ -722,6 +741,18 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void popOut(int itemId)
+					{
+						popOutDetail(itemId);
+					}
+
+					@Override
+					public void openDashboard()
+					{
+						openDashboardWindow();
+					}
+
+					@Override
 					public void acquisitionsEdited(int itemId)
 					{
 						onAcquisitionsEdited(itemId);
@@ -964,6 +995,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		overlayManager.remove(groundOverlay);
 		screenOverlays.forEach(overlayManager::remove);
 		screenOverlays.clear();
+		SwingUtilities.invokeLater(this::closeAllDetailWindows);
+		windowItems.clear();
 		panel.shutdown();
 		closeAllGroundSuspensions();
 		groundItems.clear();
@@ -1220,10 +1253,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private TrackedItem lookupItem(int itemId)
 	{
 		TrackedItem tracked = trackedItems.get(itemId);
-		if (tracked == null && previewItem != null && previewItem.getItemId() == itemId)
+		if (tracked != null)
+			return tracked;
+
+		if (previewItem != null && previewItem.getItemId() == itemId)
 			return previewItem;
 
-		return tracked;
+		return windowItems.get(itemId);
 	}
 
 	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
@@ -1300,7 +1336,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			trackedItems.remove(itemId);
 			portfolioHistory.removeItem(itemId);
-			SwingUtilities.invokeLater(() -> panel.removeSessionBaseline(itemId));
+			SwingUtilities.invokeLater(() ->
+			{
+				panel.removeSessionBaseline(itemId);
+				closeDetailWindowFor(itemId);
+			});
 			persistTrackedItems();
 			persistPortfolioHistory();
 			refreshPanel();
@@ -1338,6 +1378,311 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			requestDetailData(itemId);
 			refreshGePrices();
 		});
+	}
+
+	/**
+	 * Pops {@code itemId} out into its own standalone detail window (#109), or focuses the existing one.
+	 * Invoked on the EDT from the detail header pop-out button. Resolves the bound instance on the
+	 * client thread &mdash; the live tracked item, the current sidebar preview when it matches, or a
+	 * freshly built preview &mdash; then opens the window on the EDT and kicks off a data fetch.
+	 */
+	private void popOutDetail(int itemId)
+	{
+		DetailWindow existing = detailWindows.get(itemId);
+		if (existing != null)
+		{
+			existing.focus();
+			return;
+		}
+
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			final TrackedItem item;
+			final boolean preview;
+			if (tracked != null)
+			{
+				item = tracked;
+				preview = false;
+			}
+			else
+			{
+				item = previewItem != null && previewItem.getItemId() == itemId
+						? previewItem
+						: buildPreview(itemId);
+				preview = true;
+			}
+
+			windowItems.put(itemId, item);
+			SwingUtilities.invokeLater(() -> openDetailWindow(item, preview));
+			requestDetailData(itemId);
+			if (preview)
+				refreshGePrices();
+		});
+	}
+
+	/** Builds a transient read-only preview item (name, tradeability, GE metadata) for an untracked id. */
+	private TrackedItem buildPreview(int itemId)
+	{
+		var composition = itemManager.getItemComposition(itemId);
+		TrackedItem preview = new TrackedItem(itemId, composition.getName());
+		preview.setTradeable(composition.isTradeable());
+		preview.setMode(TrackItemMode.VIEW);
+		applyItemMetadata(preview);
+		return preview;
+	}
+
+	/** Creates and registers a pop-out window for {@code item}, or focuses an existing one. Runs on the EDT. */
+	private void openDetailWindow(TrackedItem item, boolean preview)
+	{
+		DetailWindow existing = detailWindows.get(item.getItemId());
+		if (existing != null)
+		{
+			existing.focus();
+			return;
+		}
+
+		DetailWindow window = new DetailWindow(this::windowHost, item, preview, this::onDetailWindowClosed);
+		detailWindows.put(item.getItemId(), window);
+	}
+
+	/**
+	 * Opens the item-less Stockpile dashboard window (#109), or focuses the existing one. The window is
+	 * registered under the reserved id 0 (real item ids are always positive); searching an item from it
+	 * re-keys the registry to that item's id via {@link #switchWindowItem}. Runs on the EDT.
+	 */
+	private void openDashboardWindow()
+	{
+		DetailWindow existing = detailWindows.get(0);
+		if (existing != null)
+		{
+			existing.focus();
+			return;
+		}
+
+		DetailWindow window = new DetailWindow(this::windowHost, this::onDetailWindowClosed);
+		detailWindows.put(0, window);
+	}
+
+	/** Drops a closed pop-out window from both the EDT registry and its client-thread instance map. */
+	private void onDetailWindowClosed(int itemId)
+	{
+		detailWindows.remove(itemId);
+		clientThread.invokeLater(() -> windowItems.remove(itemId));
+	}
+
+	/**
+	 * Builds the {@link DetailViewHost} for a pop-out window. Shares the plugin's services and edit
+	 * callbacks, but resolves the tracked item from the window's own bound instance (never the live map
+	 * off the EDT), routes track/untrack through window-aware handlers so the transition stays in that
+	 * window, and disposes the window on Back.
+	 */
+	private DetailViewHost windowHost(DetailWindow window)
+	{
+		return new DetailViewHost()
+		{
+			@Override
+			public StockpileConfig config()
+			{
+				return config;
+			}
+
+			@Override
+			public ItemManager itemManager()
+			{
+				return itemManager;
+			}
+
+			@Override
+			public String examine(int id)
+			{
+				return examineFor(id);
+			}
+
+			@Override
+			public TrackedItem trackedItem(int id)
+			{
+				return !window.isPreview() && window.itemId() == id ? window.boundItem() : null;
+			}
+
+			@Override
+			public long natureRunePrice()
+			{
+				return lastNatureRunePrice;
+			}
+
+			@Override
+			public long fireRunePrice()
+			{
+				return lastFireRunePrice;
+			}
+
+			@Override
+			public void requestDetailData(int id)
+			{
+				StockpilePlugin.this.requestDetailData(id);
+			}
+
+			@Override
+			public void acquisitionsEdited(int id)
+			{
+				onAcquisitionsEdited(id);
+			}
+
+			@Override
+			public void clearAcquisitions(int id)
+			{
+				StockpilePlugin.this.clearAcquisitions(id);
+			}
+
+			@Override
+			public void notificationsEdited(int id)
+			{
+				onNotificationsEdited(id);
+			}
+
+			@Override
+			public void addItem(int id, TrackItemMode mode)
+			{
+				trackFromWindow(window, id, mode);
+			}
+
+			@Override
+			public void untrackToPreview(int id)
+			{
+				untrackWindowToPreview(window, id);
+			}
+
+			@Override
+			public void popOut(int id)
+			{
+				window.focus();
+			}
+
+			@Override
+			public void switchDetailItem(int id)
+			{
+				switchWindowItem(window, id);
+			}
+
+			@Override
+			public void onBack()
+			{
+				window.dispose();
+			}
+		};
+	}
+
+	/**
+	 * Rebinds a pop-out window to a different item chosen from its search bar (#109). Re-keys both the
+	 * EDT window registry and its client-thread instance map from the old id to the new one, resolves the
+	 * new item (the live tracked item, or a freshly built read-only preview when untracked), transitions
+	 * the window in place, and kicks off a data fetch. When another window already shows the target item,
+	 * that window is focused instead and this one is left unchanged.
+	 */
+	private void switchWindowItem(DetailWindow window, int newItemId)
+	{
+		int oldItemId = window.itemId();
+		if (newItemId == oldItemId)
+			return;
+
+		DetailWindow existing = detailWindows.get(newItemId);
+		if (existing != null && existing != window)
+		{
+			existing.focus();
+			return;
+		}
+
+		detailWindows.remove(oldItemId);
+		detailWindows.put(newItemId, window);
+
+		clientThread.invokeLater(() ->
+		{
+			windowItems.remove(oldItemId);
+
+			TrackedItem tracked = trackedItems.get(newItemId);
+			final TrackedItem item;
+			final boolean preview;
+			if (tracked != null)
+			{
+				item = tracked;
+				preview = false;
+			}
+			else
+			{
+				item = buildPreview(newItemId);
+				preview = true;
+			}
+
+			windowItems.put(newItemId, item);
+			SwingUtilities.invokeLater(() -> window.rebind(newItemId, item, preview));
+			requestDetailData(newItemId);
+			if (preview)
+				refreshGePrices();
+		});
+	}
+
+	/** Tracks {@code itemId} from a pop-out window's header (#138), then transitions that window to tracked. */
+	private void trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)
+	{
+		addTrackedItem(itemId, mode);
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+				return;
+
+			windowItems.put(itemId, tracked);
+			SwingUtilities.invokeLater(() -> window.syncTracked(tracked));
+		});
+	}
+
+	/**
+	 * Untracks {@code itemId} from a pop-out window's header (#138) but keeps that window open as a
+	 * read-only preview. Removes and persists exactly as {@link #untrackToPreview}, then rebinds the
+	 * window to a fresh preview instead of the sidebar.
+	 */
+	private void untrackWindowToPreview(DetailWindow window, int itemId)
+	{
+		clientThread.invokeLater(() ->
+		{
+			trackedItems.remove(itemId);
+			portfolioHistory.removeItem(itemId);
+			SwingUtilities.invokeLater(() -> panel.removeSessionBaseline(itemId));
+			persistTrackedItems();
+			persistPortfolioHistory();
+
+			TrackedItem preview = buildPreview(itemId);
+			windowItems.put(itemId, preview);
+
+			final TrackedItem shown = preview;
+			SwingUtilities.invokeLater(() -> window.showAsPreview(shown));
+			refreshPanel();
+			requestDetailData(itemId);
+			refreshGePrices();
+		});
+	}
+
+	/** Closes any open pop-out window for {@code itemId} (e.g. when the item is untracked). Runs on the EDT. */
+	private void closeDetailWindowFor(int itemId)
+	{
+		DetailWindow window = detailWindows.get(itemId);
+		if (window != null)
+			window.dispose();
+	}
+
+	/** Disposes every open pop-out window (on the EDT), e.g. at shutdown or when the whole list is cleared. */
+	private void closeAllDetailWindows()
+	{
+		for (DetailWindow window : new ArrayList<>(detailWindows.values()))
+			window.dispose();
+	}
+
+	/** Re-populates every open pop-out window with fresh data. Runs on the EDT. */
+	private void refreshDetailWindows()
+	{
+		for (DetailWindow window : new ArrayList<>(detailWindows.values()))
+			window.refreshData();
 	}
 
 	/** Wipes the portfolio value history (in memory and in config), e.g. when the whole tracked list is cleared. */
@@ -1849,7 +2194,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			trackedItems.clear();
 			clearPortfolioHistory();
-			SwingUtilities.invokeLater(panel::clearSessionBaseline);
+			SwingUtilities.invokeLater(() ->
+			{
+				panel.clearSessionBaseline();
+				closeAllDetailWindows();
+			});
 			persistTrackedItems();
 			refreshPanel();
 		});
@@ -1903,10 +2252,15 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 				final long nature = runePrice(NATURE_RUNE_ID);
 				final long fire = runePrice(FIRE_RUNE_ID);
+				lastNatureRunePrice = nature;
+				lastFireRunePrice = fire;
 				SwingUtilities.invokeLater(() ->
 				{
 					panel.setAlchRunePrices(nature, fire);
 					panel.refreshDetailData(itemId);
+					DetailWindow window = detailWindows.get(itemId);
+					if (window != null)
+						window.refreshData();
 				});
 				refreshPanel();
 			});
@@ -2032,6 +2386,18 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				previewItem.setPriceLoadFailed(true);
 		}
 
+		for (TrackedItem windowItem : windowItems.values())
+		{
+			if (trackedItems.containsKey(windowItem.getItemId()))
+				continue;
+
+			WikiRealtimePriceClient.ItemPrices prices = all.get(windowItem.getItemId());
+			if (prices != null)
+				applyLivePrices(windowItem, prices);
+			else if (!windowItem.hasPrices() && windowItem.isTradeable() && mappingsLoaded)
+				windowItem.setPriceLoadFailed(true);
+		}
+
 		if (fetchFailed)
 		{
 			refreshPanel();
@@ -2047,22 +2413,31 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		evaluateNotifications();
 		refreshPanel(true);
+		SwingUtilities.invokeLater(this::refreshDetailWindows);
 
-		final int detailId = panel.getDetailItemId();
+		final Set<Integer> detailIds = new HashSet<>(windowItems.keySet());
+		detailIds.add(panel.getDetailItemId());
 		for (TrackedItem item : trackedItems.values())
 		{
 			if (item.isTradeable() && item.hasPrices())
 			{
-				if (item.getItemId() == detailId)
+				if (detailIds.contains(item.getItemId()))
 					requestDetailData(item.getItemId());
 				else
 					requestSeries(item.getItemId(), false);
 			}
 		}
 
-		if (previewItem != null && previewItem.getItemId() == detailId
+		if (previewItem != null && detailIds.contains(previewItem.getItemId())
 				&& previewItem.isTradeable() && previewItem.hasPrices())
 			requestDetailData(previewItem.getItemId());
+
+		for (TrackedItem windowItem : windowItems.values())
+		{
+			if (!trackedItems.containsKey(windowItem.getItemId())
+					&& windowItem.isTradeable() && windowItem.hasPrices())
+				requestDetailData(windowItem.getItemId());
+		}
 	}
 
 	/**

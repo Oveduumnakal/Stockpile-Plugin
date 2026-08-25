@@ -52,6 +52,16 @@ public interface DetailViewHost
 	/** Untracks {@code itemId} but keeps it open as a read-only preview (#138). */
 	void untrackToPreview(int itemId);
 
+	/** Pops {@code itemId} out into its own standalone detail window, focusing an existing one (#109). */
+	void popOut(int itemId);
+
+	/**
+	 * Switches the detail view to show {@code itemId} in place, from the dashboard toolbar's search bar
+	 * (#109). A pop-out window rebinds itself to the new item (tracked, or a read-only preview when it is
+	 * not tracked); the sidebar shows the item's detail.
+	 */
+	void switchDetailItem(int itemId);
+
 	/**
 	 * Invoked by the detail view's Back control. The sidebar returns to the main list; the dashboard
 	 * window disposes itself.
