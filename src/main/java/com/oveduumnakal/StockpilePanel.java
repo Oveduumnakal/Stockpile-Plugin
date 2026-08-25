@@ -259,6 +259,19 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private List<TrackedItem> lastRenderItems = new ArrayList<>();
 	private PriceIndicatorMode lastRenderIndicatorMode = PriceIndicatorMode.OFF;
 
+	/**
+	 * Cached per-item row scaffolding (#275), keyed by item id in display order. When the structural
+	 * signature is unchanged, rows are updated in place through {@link #populateRow} instead of rebuilt,
+	 * avoiding a full {@code removeAll()} + reconstruction of every row on each price/inventory event.
+	 */
+	private final Map<Integer, RowView> rowViews = new LinkedHashMap<>();
+
+	/** Cached group-header total labels (#275), keyed by group key, so header totals refresh in place too. */
+	private final Map<String, JLabel> groupTotalLabels = new HashMap<>();
+
+	/** The last full render's structural signature (#275); an equal signature enables the in-place path. */
+	private String lastStructuralSig;
+
 	/** Item ids in current display order, kept in sync on each {@link #rebuild}, used to compute reorder targets. */
 	private final List<Integer> orderedItemIds = new ArrayList<>();
 
@@ -2352,38 +2365,57 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		lastRenderItems = items;
 		lastRenderIndicatorMode = indicatorMode;
-
-		trackedItemsPanel.removeAll();
+		loadingLabels.clear();
 
 		if (items.isEmpty())
 		{
-			PluginErrorPanel errorPanel = new PluginErrorPanel();
-			errorPanel.setContent("No items tracked", "Search above to add an item to track.");
+			renderEmptyState();
+			return;
+		}
 
-			JPanel emptyWrapper = new JPanel(new BorderLayout());
-			emptyWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
-			emptyWrapper.add(errorPanel, BorderLayout.CENTER);
-			trackedItemsPanel.add(emptyWrapper);
-		}
+		List<RowSection> sections = computeSections(items);
+		String sig = structuralSignature(sections);
+
+		if (!reorderMode && sig.equals(lastStructuralSig) && cacheCovers(sections))
+			updateRowsInPlace(sections, indicatorMode);
 		else
-		{
-			renderGroupedRows(items, indicatorMode);
-		}
+			fullRebuild(sections, indicatorMode, sig);
+
+		trackedItemsPanel.revalidate();
+		trackedItemsPanel.repaint();
+	}
+
+	/** Clears the list to the "no items tracked" placeholder and resets the render cache (#275). */
+	private void renderEmptyState()
+	{
+		trackedItemsPanel.removeAll();
+		rowViews.clear();
+		groupTotalLabels.clear();
+		lastStructuralSig = "EMPTY";
+
+		PluginErrorPanel errorPanel = new PluginErrorPanel();
+		errorPanel.setContent("No items tracked", "Search above to add an item to track.");
+
+		JPanel emptyWrapper = new JPanel(new BorderLayout());
+		emptyWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		emptyWrapper.add(errorPanel, BorderLayout.CENTER);
+		trackedItemsPanel.add(emptyWrapper);
 
 		trackedItemsPanel.revalidate();
 		trackedItemsPanel.repaint();
 	}
 
 	/**
-	 * Renders the tracked rows into {@link #trackedItemsPanel}, grouped into the Favorites
-	 * pseudo-group (pinned on top), then each user category in order, then Uncategorized.
-	 * Falls back to a flat, header-less list when no favorites and no categories exist, so
-	 * users who don't use grouping see the list exactly as before. Empty groups are skipped.
+	 * Computes the ordered, filtered display sections (#275): a single flat section when no grouping is
+	 * active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then
+	 * Uncategorized. Empty groups are skipped. Also refreshes {@link #groupingActive}.
 	 */
-	private void renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)
+	private List<RowSection> computeSections(List<TrackedItem> items)
 	{
 		boolean hasFavorites = items.stream().anyMatch(TrackedItem::isFavorite);
 		groupingActive = hasFavorites || !categories.isEmpty();
+
+		List<RowSection> sections = new ArrayList<>();
 
 		if (!groupingActive)
 		{
@@ -2392,10 +2424,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				if (matchesFilter(item))
 					visible.add(item);
 
-			for (TrackedItem item : visible)
-				addItemRow(item, indicatorMode, visible);
+			if (!visible.isEmpty())
+				sections.add(new RowSection(null, null, false, visible));
 
-			return;
+			return sections;
 		}
 
 		Set<String> categoryNames = new HashSet<>();
@@ -2407,7 +2439,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			if (item.isFavorite() && matchesFilter(item))
 				favorites.add(item);
 
-		renderGroup("★ Favorites", CategoryState.FAVORITES_KEY, favoritesCollapsed, favorites, indicatorMode);
+		if (!favorites.isEmpty())
+			sections.add(new RowSection("★ Favorites", CategoryState.FAVORITES_KEY, favoritesCollapsed, favorites));
 
 		for (CategoryState cat : categories)
 		{
@@ -2416,7 +2449,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				if (!item.isFavorite() && cat.getName().equals(item.getCategory()) && matchesFilter(item))
 					inCategory.add(item);
 
-			renderGroup(cat.getName(), cat.getName(), cat.isCollapsed(), inCategory, indicatorMode);
+			if (!inCategory.isEmpty())
+				sections.add(new RowSection(cat.getName(), cat.getName(), cat.isCollapsed(), inCategory));
 		}
 
 		List<TrackedItem> uncategorized = new ArrayList<>();
@@ -2428,8 +2462,136 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				uncategorized.add(item);
 		}
 
-		renderGroup("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed,
-				uncategorized, indicatorMode);
+		if (!uncategorized.isEmpty())
+			sections.add(new RowSection("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed,
+					uncategorized));
+
+		return sections;
+	}
+
+	/**
+	 * @return a signature of the render's structure (scaffolding globals, group order/collapse, and each
+	 *         rendered row's id and compact shape) for the in-place gate (#275); value-only data such as
+	 *         prices, quantities, deltas and group totals is excluded so it can be refreshed in place.
+	 */
+	private String structuralSignature(List<RowSection> sections)
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append('G')
+				.append(config.showQuantityValue() ? 1 : 0)
+				.append(config.showScreenOverlay() ? 1 : 0)
+				.append(config.compactView() ? 1 : 0)
+				.append(groupingActive ? 1 : 0)
+				.append(reorderMode ? 1 : 0);
+
+		for (RowSection s : sections)
+		{
+			sb.append(";H:")
+					.append(s.title)
+					.append(':')
+					.append(s.key)
+					.append(':')
+					.append(s.collapsed);
+			if (s.collapsed)
+				continue;
+
+			for (TrackedItem item : s.items)
+				sb.append(";I:").append(item.getItemId())
+						.append(':').append(config.compactView() || item.isCompact() ? 1 : 0);
+		}
+
+		return sb.toString();
+	}
+
+	/** @return whether every row the plan will render already has a cached {@link RowView} (#275). */
+	private boolean cacheCovers(List<RowSection> sections)
+	{
+		for (RowSection s : sections)
+		{
+			if (s.collapsed)
+				continue;
+
+			for (TrackedItem item : s.items)
+				if (!rowViews.containsKey(item.getItemId()))
+					return false;
+		}
+
+		return true;
+	}
+
+	/** Rebuilds the whole list from scratch, repopulating the row/header caches and storing the signature (#275). */
+	private void fullRebuild(List<RowSection> sections, PriceIndicatorMode indicatorMode, String sig)
+	{
+		trackedItemsPanel.removeAll();
+		rowViews.clear();
+		groupTotalLabels.clear();
+
+		for (RowSection s : sections)
+		{
+			if (s.title != null)
+			{
+				trackedItemsPanel.add(buildGroupHeader(s.title, s.key, s.collapsed, sectionTotal(s)));
+				trackedItemsPanel.add(Box.createVerticalStrut(4));
+				if (s.collapsed)
+					continue;
+			}
+
+			for (TrackedItem item : s.items)
+			{
+				if (reorderMode)
+				{
+					trackedItemsPanel.add(buildManageRow(item, s.items));
+				}
+				else
+				{
+					RowView rv = buildRowView(item, indicatorMode, s.items);
+					rowViews.put(item.getItemId(), rv);
+					trackedItemsPanel.add(rv.card);
+				}
+
+				trackedItemsPanel.add(Box.createVerticalStrut(4));
+			}
+		}
+
+		lastStructuralSig = sig;
+	}
+
+	/** Refreshes group-header totals and each row's values in place against the cached scaffolding (#275). */
+	private void updateRowsInPlace(List<RowSection> sections, PriceIndicatorMode indicatorMode)
+	{
+		for (RowSection s : sections)
+		{
+			if (s.title != null)
+			{
+				JLabel totalLabel = groupTotalLabels.get(s.key);
+				if (totalLabel != null)
+				{
+					long total = sectionTotal(s);
+					totalLabel.setText(GpFormat.shortValue(total));
+					totalLabel.setToolTipText(NUMBER_FORMAT.format(total) + " gp");
+				}
+
+				if (s.collapsed)
+					continue;
+			}
+
+			for (TrackedItem item : s.items)
+			{
+				RowView rv = rowViews.get(item.getItemId());
+				if (rv != null)
+					populateRow(rv, item, indicatorMode);
+			}
+		}
+	}
+
+	/** @return the sum of average values across a section's items, for its group-header total (#275). */
+	private static long sectionTotal(RowSection s)
+	{
+		long total = 0;
+		for (TrackedItem item : s.items)
+			total += item.getAvgValue();
+
+		return total;
 	}
 
 	/** @return whether the item matches the active tracked-list name filter (always true when the filter is empty). */
@@ -2621,37 +2783,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return new ImageIcon(img);
 	}
 
-	/**
-	 * Renders one collapsible group: a clickable header plus its rows, unless empty
-	 * (skipped) or collapsed (header only).
-	 */
-	private void renderGroup(String title, String groupKey, boolean collapsed,
-			List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)
-	{
-		if (groupItems.isEmpty())
-			return;
-
-		long groupTotal = 0;
-		for (TrackedItem item : groupItems)
-			groupTotal += item.getAvgValue();
-
-		trackedItemsPanel.add(buildGroupHeader(title, groupKey, collapsed, groupTotal));
-		trackedItemsPanel.add(Box.createVerticalStrut(4));
-
-		if (collapsed)
-			return;
-
-		for (TrackedItem item : groupItems)
-			addItemRow(item, indicatorMode, groupItems);
-	}
-
-	/** Adds a single tracked-item row plus its trailing spacer; {@code groupItems} scopes reorder within the group. */
-	private void addItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)
-	{
-		trackedItemsPanel.add(buildTrackedItemRow(item, indicatorMode, groupItems));
-		trackedItemsPanel.add(Box.createVerticalStrut(4));
-	}
-
 	/** @return the position of {@code itemId} within {@code list}, or -1 if absent. */
 	private static int indexOfItem(List<TrackedItem> list, int itemId)
 	{
@@ -2698,6 +2829,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		totalLabel.setForeground(StockpileColors.MUTED);
 		totalLabel.setFont(FontManager.getRunescapeSmallFont());
 		totalLabel.setToolTipText(NUMBER_FORMAT.format(groupTotal) + " gp");
+		groupTotalLabels.put(groupKey, totalLabel);
 
 		header.add(left, BorderLayout.WEST);
 		header.add(totalLabel, BorderLayout.EAST);
@@ -3463,24 +3595,67 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/**
-	 * Builds one row of the main list for a tracked item: icon, name, quantity,
-	 * the configured data rows (prices/value/volume/profit), hover affordances,
-	 * and a click handler that opens the item's detail view.
+	 * One display section of the tracked list (#275): an optional group header ({@code title}/{@code key}/
+	 * {@code collapsed}) and its filtered items. A flat, header-less list is a single section with a null title.
 	 */
-	private JPanel buildTrackedItemRow(TrackedItem item, PriceIndicatorMode indicatorMode,
-			List<TrackedItem> groupItems)
+	private static final class RowSection
 	{
-		if (reorderMode)
-			return buildManageRow(item, groupItems);
+		private final String title;
+		private final String key;
+		private final boolean collapsed;
+		private final List<TrackedItem> items;
 
-		final PriceIndicatorMode itemIndicatorMode = item.isHasDeltas() ? indicatorMode : PriceIndicatorMode.OFF;
+		private RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)
+		{
+			this.title = title;
+			this.key = key;
+			this.collapsed = collapsed;
+			this.items = items;
+		}
+	}
+
+	/**
+	 * Cached scaffolding for one tracked-item row (#275): the reusable card, identity labels and favourite
+	 * star built once, plus the {@link #contentSlot} whose price/compact/loading content is refilled by
+	 * {@link #populateRow} on a value change, and the {@link #hoverListener} re-attached to that new content.
+	 */
+	private static final class RowView
+	{
+		private final int itemId;
+		private final JPanel card;
+		private final JLabel iconLabel;
+		private final JLabel nameLabel;
+		private final JLabel qtyLabel;
+		private final JLabel favStar;
+		private final JPanel contentSlot;
+		private final MouseAdapter hoverListener;
+
+		private RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel,
+				JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)
+		{
+			this.itemId = itemId;
+			this.card = card;
+			this.iconLabel = iconLabel;
+			this.nameLabel = nameLabel;
+			this.qtyLabel = qtyLabel;
+			this.favStar = favStar;
+			this.contentSlot = contentSlot;
+			this.hoverListener = hoverListener;
+		}
+	}
+
+	/**
+	 * Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty)
+	 * and the hover buttons, plus an empty content slot filled by {@link #populateRow}. A later value change
+	 * refreshes the row in place against this scaffolding rather than reconstructing it. Returns the
+	 * {@link RowView} the caller caches by item id.
+	 */
+	private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)
+	{
 		final boolean hovered = item.getItemId() == hoveredItemId;
-		final List<TimeWindow> rowWindows = Arrays.asList(config.row1Data(), config.row2Data(), config.row3Data());
-		final boolean showColHigh = config.showColHigh();
-		final boolean showColLow = config.showColLow();
-		final boolean showColAvg = config.showColAvg();
-		final boolean showColVolume = config.showColVolume();
 		final boolean showQty = config.showQuantityValue();
+		final boolean rowCompact = config.compactView() || item.isCompact();
+
 		JPanel card = new JPanel(new BorderLayout(0, 0))
 		{
 			@Override
@@ -3496,7 +3671,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		JLabel iconLabel = new JLabel();
 		iconLabel.setVerticalAlignment(SwingConstants.CENTER);
 		iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		applyRowIcon(iconLabel, item);
 
 		JButton removeBtn = new JButton("✕");
 		removeBtn.setPreferredSize(new Dimension(20, 20));
@@ -3517,7 +3691,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
 		final JLabel compactBtn = config.compactView() ? null : buildRowCompactToggle(item);
 		final JLabel dashboardBtn = buildRowDashboardButton(item);
-		final boolean rowCompact = config.compactView() || item.isCompact();
 
 		JPanel eastPanel = new JPanel()
 		{
@@ -3601,36 +3774,73 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		JLabel nameLabel = new JLabel();
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
-		EllipsisText.set(nameLabel, item.getName());
 
-		JLabel qtyLabel = new JLabel("Qty: " + GpFormat.shortValue(item.getQuantity()));
+		JLabel qtyLabel = new JLabel();
 		qtyLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		qtyLabel.setFont(FontManager.getRunescapeSmallFont());
-		qtyLabel.setToolTipText(NUMBER_FORMAT.format(item.getQuantity()));
 
 		JPanel nameRow = new JPanel(new BorderLayout(6, 0));
 		nameRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		nameRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		nameRow.add(iconLabel, BorderLayout.WEST);
 		nameRow.add(nameLabel, BorderLayout.CENTER);
-
 		if (showQty)
 			nameRow.add(qtyLabel, BorderLayout.EAST);
 
 		centerPanel.add(nameRow);
 
+		JPanel contentSlot = new JPanel();
+		contentSlot.setLayout(new BoxLayout(contentSlot, BoxLayout.Y_AXIS));
+		contentSlot.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		contentSlot.setAlignmentX(Component.LEFT_ALIGNMENT);
+		centerPanel.add(contentSlot);
+
+		card.add(centerPanel, BorderLayout.CENTER);
+
+		MouseAdapter hoverListener = installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn,
+				dashboardBtn, REMOVE_COLOR, STAR_HIDDEN);
+
+		RowView rv = new RowView(item.getItemId(), card, iconLabel, nameLabel, qtyLabel, favStar,
+				contentSlot, hoverListener);
+		populateRow(rv, item, indicatorMode);
+		return rv;
+	}
+
+	/**
+	 * Refreshes a cached row's mutable content in place (#275): icon, name, quantity, the favourite star's
+	 * resting state, and the price/compact/loading content slot (rebuilt cheaply and re-wired to the row's
+	 * hover listener). No scaffolding is reconstructed.
+	 */
+	private void populateRow(RowView rv, TrackedItem item, PriceIndicatorMode indicatorMode)
+	{
+		applyRowIcon(rv.iconLabel, item);
+		EllipsisText.set(rv.nameLabel, item.getName());
+		rv.qtyLabel.setText("Qty: " + GpFormat.shortValue(item.getQuantity()));
+		rv.qtyLabel.setToolTipText(NUMBER_FORMAT.format(item.getQuantity()));
+		refreshFavoriteStar(rv.favStar, item.isFavorite());
+
+		rv.contentSlot.removeAll();
+		buildRowContent(rv.contentSlot, item, indicatorMode);
+		for (Component child : rv.contentSlot.getComponents())
+			addListenerRecursively(child, rv.hoverListener);
+
+		rv.contentSlot.revalidate();
+		rv.contentSlot.repaint();
+	}
+
+	/**
+	 * Fills a row's content slot (#275) with the price grid, compact value line, or loading placeholder for
+	 * the item's current state, plus the optional per-item profit row. Rebuilt cheaply on each value change.
+	 */
+	private void buildRowContent(JPanel slot, TrackedItem item, PriceIndicatorMode indicatorMode)
+	{
 		if (config.compactView() || item.isCompact())
 		{
-			centerPanel.add(buildCompactValueRow(item));
-			card.add(centerPanel, BorderLayout.CENTER);
-			installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, dashboardBtn,
-					REMOVE_COLOR, STAR_HIDDEN);
-			return card;
+			slot.add(buildCompactValueRow(item));
+			return;
 		}
 
-		final JLabel highLabel;
-		final JLabel lowLabel;
-		final JLabel avgLabel;
+		final PriceIndicatorMode itemIndicatorMode = item.isHasDeltas() ? indicatorMode : PriceIndicatorMode.OFF;
 
 		if (!item.hasPrices())
 		{
@@ -3658,191 +3868,183 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			loadingRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			loadingRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 			loadingRow.add(loading);
-			centerPanel.add(loadingRow);
-			highLabel = null;
-			lowLabel = null;
-			avgLabel = null;
+			slot.add(loadingRow);
+			return;
 		}
-		else
+
+		final List<TimeWindow> rowWindows = Arrays.asList(config.row1Data(), config.row2Data(), config.row3Data());
+		final boolean showColHigh = config.showColHigh();
+		final boolean showColLow = config.showColLow();
+		final boolean showColAvg = config.showColAvg();
+		final boolean showColVolume = config.showColVolume();
+
+		JPanel pricesPanel = new JPanel(new GridBagLayout());
+		pricesPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		pricesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		pricesPanel.setBorder(new EmptyBorder(0, PRICES_LEFT_PAD, 0, PRICES_RIGHT_PAD));
+
+		GridBagConstraints c = new GridBagConstraints();
+		c.fill = GridBagConstraints.HORIZONTAL;
+		c.insets = new Insets(1, 0, 1, 4);
+
+		int gridy = 0;
+		for (TimeWindow window : rowWindows)
 		{
-			JPanel pricesPanel = new JPanel(new GridBagLayout());
-			pricesPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-			pricesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-			pricesPanel.setBorder(new EmptyBorder(0, PRICES_LEFT_PAD, 0, PRICES_RIGHT_PAD));
+			if (window == TimeWindow.NONE)
+				continue;
 
-			GridBagConstraints c = new GridBagConstraints();
-			c.fill = GridBagConstraints.HORIZONTAL;
-			c.insets = new Insets(1, 0, 1, 4);
-
-			int gridy = 0;
-			for (TimeWindow window : rowWindows)
+			PriceStats stats = item.getWindowStats().get(window);
+			long h, l, a, vol;
+			if (window == TimeWindow.LIVE || stats == null)
 			{
-				if (window == TimeWindow.NONE)
-					continue;
+				h = item.getHighPrice();
+				l = item.getLowPrice();
+				a = item.getAvgPrice();
+				vol = stats != null ? stats.getVolume() : 0;
+			}
+			else
+			{
+				h = stats.getHigh();
+				l = stats.getLow();
+				a = stats.getAvg();
+				vol = stats.getVolume();
+			}
 
-				PriceStats stats = item.getWindowStats().get(window);
-				long h, l, a, vol;
-				if (window == TimeWindow.LIVE || stats == null)
-				{
-					h = item.getHighPrice();
-					l = item.getLowPrice();
-					a = item.getAvgPrice();
-					vol = stats != null ? stats.getVolume() : 0;
-				}
-				else
-				{
-					h = stats.getHigh();
-					l = stats.getLow();
-					a = stats.getAvg();
-					vol = stats.getVolume();
-				}
+			boolean isLive = window == TimeWindow.LIVE;
 
-				boolean isLive = window == TimeWindow.LIVE;
+			JLabel windowLbl = new JLabel(window.toString());
+			windowLbl.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+			windowLbl.setFont(FontManager.getRunescapeSmallFont());
+			if (isLive)
+				windowLbl.setToolTipText("Buy: " + formatAge(item.getLatestHighTime())
+						+ ", Sell: " + formatAge(item.getLatestLowTime()));
 
-				JLabel windowLbl = new JLabel(window.toString());
-				windowLbl.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-				windowLbl.setFont(FontManager.getRunescapeSmallFont());
+			c.gridx = 0;
+			c.gridy = gridy;
+			c.weightx = 0;
+			c.anchor = GridBagConstraints.WEST;
+			pricesPanel.add(windowLbl, c);
+
+			List<JLabel> visibleCells = new ArrayList<>(4);
+			if (showColHigh)
+			{
+				JLabel cell = new JLabel("", SwingConstants.CENTER);
+				cell.setFont(FontManager.getRunescapeSmallFont());
+				cell.setForeground(COLOR_HIGH);
+				installItemValue(cell, h, "", "High", TINT_HIGH);
 				if (isLive)
-					windowLbl.setToolTipText("Buy: " + formatAge(item.getLatestHighTime())
-							+ ", Sell: " + formatAge(item.getLatestLowTime()));
+					applyLiveStaleness(cell, h, "High", "Last Buy", item.getLatestHighTime(),
+							COLOR_HIGH, COLOR_HIGH_STALE);
 
-				c.gridx = 0;
-				c.gridy = gridy;
-				c.weightx = 0;
-				c.anchor = GridBagConstraints.WEST;
-				pricesPanel.add(windowLbl, c);
-
-				List<JLabel> visibleCells = new ArrayList<>(4);
-				if (showColHigh)
-				{
-					JLabel cell = new JLabel("", SwingConstants.CENTER);
-					cell.setFont(FontManager.getRunescapeSmallFont());
-					cell.setForeground(COLOR_HIGH);
-					installItemValue(cell, h, "", "High", TINT_HIGH);
-					if (isLive)
-						applyLiveStaleness(cell, h, "High", "Last Buy", item.getLatestHighTime(),
-								COLOR_HIGH, COLOR_HIGH_STALE);
-
-					visibleCells.add(cell);
-				}
-
-				if (showColLow)
-				{
-					JLabel cell = new JLabel("", SwingConstants.CENTER);
-					cell.setFont(FontManager.getRunescapeSmallFont());
-					cell.setForeground(COLOR_LOW);
-					installItemValue(cell, l, "", "Low", TINT_LOW);
-					if (isLive)
-						applyLiveStaleness(cell, l, "Low", "Last Sell", item.getLatestLowTime(),
-								COLOR_LOW, COLOR_LOW_STALE);
-
-					visibleCells.add(cell);
-				}
-
-				if (showColAvg)
-				{
-					JLabel cell = new JLabel("", SwingConstants.CENTER);
-					cell.setFont(FontManager.getRunescapeSmallFont());
-					cell.setForeground(COLOR_AVG);
-					installItemValue(cell, a, "", "Avg", TINT_AVG);
-					visibleCells.add(cell);
-				}
-
-				if (showColVolume)
-				{
-					JLabel cell = new JLabel("", SwingConstants.CENTER);
-					cell.setForeground(COLOR_VOLUME);
-					cell.setFont(FontManager.getRunescapeSmallFont());
-					String volText = window == TimeWindow.LIVE ? "-" : GpFormat.shortValue(vol);
-					cell.setText(volText);
-					if (window != TimeWindow.LIVE)
-						cell.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
-
-					HoverTintListener volListener = new HoverTintListener(cell, volText, TINT_VOLUME);
-					cell.addMouseListener(volListener);
-					SwingUtilities.invokeLater(volListener::applyIfHovered);
-					visibleCells.add(cell);
-				}
-
-				int col = 1;
-				for (JLabel cell : visibleCells)
-				{
-					c.gridx = col++;
-					c.weightx = 1;
-					c.anchor = GridBagConstraints.CENTER;
-					pricesPanel.add(cell, c);
-				}
-
-				JLabel pulse = createDeltaLabel();
-				if (itemIndicatorMode != PriceIndicatorMode.OFF)
-					pulseIfShown(pulse, item.getAvgDelta(), itemIndicatorMode);
-
-				c.gridx = col++;
-				c.weightx = 0;
-				c.anchor = GridBagConstraints.WEST;
-				pricesPanel.add(pulse, c);
-
-				for (int i = visibleCells.size(); i < 4; i++)
-				{
-					c.gridx = col++;
-					c.weightx = 1;
-					c.anchor = GridBagConstraints.CENTER;
-					pricesPanel.add(new JLabel(), c);
-				}
-
-				gridy++;
+				visibleCells.add(cell);
 			}
 
-			highLabel = null;
-			lowLabel = null;
-			avgLabel = null;
-
-			centerPanel.add(pricesPanel);
-
-			if (config.showItemProfitRow()
-					&& item.isCostBasisInitialized() && item.hasPrices())
+			if (showColLow)
 			{
-				long itemProfit = item.getProfitAt(item.getAvgPrice());
-				String sign = itemProfit > 0 ? "+" : "";
-				ValueFormat fmt = config.geEstimatesFormat();
+				JLabel cell = new JLabel("", SwingConstants.CENTER);
+				cell.setFont(FontManager.getRunescapeSmallFont());
+				cell.setForeground(COLOR_LOW);
+				installItemValue(cell, l, "", "Low", TINT_LOW);
+				if (isLive)
+					applyLiveStaleness(cell, l, "Low", "Last Sell", item.getLatestLowTime(),
+							COLOR_LOW, COLOR_LOW_STALE);
 
-				JLabel itemProfitPrefix = new JLabel("Est. Profit:");
-				itemProfitPrefix.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-				itemProfitPrefix.setFont(FontManager.getRunescapeSmallFont());
-				itemProfitPrefix.setToolTipText("Realized profit from sold lots plus unrealized "
-						+ "gain/loss on held lots (marked to the current average price)");
-
-				JLabel itemProfitValue = new JLabel(sign + formatTotalGp(itemProfit, fmt));
-				itemProfitValue.setFont(FontManager.getRunescapeSmallFont());
-				itemProfitValue.setForeground(itemProfit == 0 ? ColorScheme.LIGHT_GRAY_COLOR
-						: (itemProfit > 0 ? COLOR_HIGH : COLOR_LOW));
-				applyTotalTooltip(itemProfitValue, itemProfit, fmt);
-
-				JPanel itemProfitRow = new JPanel(new BorderLayout(6, 0));
-				itemProfitRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-				itemProfitRow.add(itemProfitPrefix, BorderLayout.WEST);
-				itemProfitRow.add(itemProfitValue, BorderLayout.CENTER);
-
-				JPanel itemProfitSection = new JPanel(new BorderLayout());
-				itemProfitSection.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-				itemProfitSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-				itemProfitSection.setBorder(BorderFactory.createCompoundBorder(
-						BorderFactory.createCompoundBorder(
-								new EmptyBorder(4, 0, 0, 0),
-								new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)
-						),
-						new EmptyBorder(4, 10, 0, 0)
-				));
-				itemProfitSection.add(itemProfitRow, BorderLayout.CENTER);
-				centerPanel.add(itemProfitSection);
+				visibleCells.add(cell);
 			}
+
+			if (showColAvg)
+			{
+				JLabel cell = new JLabel("", SwingConstants.CENTER);
+				cell.setFont(FontManager.getRunescapeSmallFont());
+				cell.setForeground(COLOR_AVG);
+				installItemValue(cell, a, "", "Avg", TINT_AVG);
+				visibleCells.add(cell);
+			}
+
+			if (showColVolume)
+			{
+				JLabel cell = new JLabel("", SwingConstants.CENTER);
+				cell.setForeground(COLOR_VOLUME);
+				cell.setFont(FontManager.getRunescapeSmallFont());
+				String volText = window == TimeWindow.LIVE ? "-" : GpFormat.shortValue(vol);
+				cell.setText(volText);
+				if (window != TimeWindow.LIVE)
+					cell.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
+
+				HoverTintListener volListener = new HoverTintListener(cell, volText, TINT_VOLUME);
+				cell.addMouseListener(volListener);
+				SwingUtilities.invokeLater(volListener::applyIfHovered);
+				visibleCells.add(cell);
+			}
+
+			int col = 1;
+			for (JLabel cell : visibleCells)
+			{
+				c.gridx = col++;
+				c.weightx = 1;
+				c.anchor = GridBagConstraints.CENTER;
+				pricesPanel.add(cell, c);
+			}
+
+			JLabel pulse = createDeltaLabel();
+			if (itemIndicatorMode != PriceIndicatorMode.OFF)
+				pulseIfShown(pulse, item.getAvgDelta(), itemIndicatorMode);
+
+			c.gridx = col++;
+			c.weightx = 0;
+			c.anchor = GridBagConstraints.WEST;
+			pricesPanel.add(pulse, c);
+
+			for (int i = visibleCells.size(); i < 4; i++)
+			{
+				c.gridx = col++;
+				c.weightx = 1;
+				c.anchor = GridBagConstraints.CENTER;
+				pricesPanel.add(new JLabel(), c);
+			}
+
+			gridy++;
 		}
 
-		card.add(centerPanel, BorderLayout.CENTER);
-		installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn, dashboardBtn,
-				REMOVE_COLOR, STAR_HIDDEN);
+		slot.add(pricesPanel);
 
-		return card;
+		if (config.showItemProfitRow()
+				&& item.isCostBasisInitialized() && item.hasPrices())
+		{
+			long itemProfit = item.getProfitAt(item.getAvgPrice());
+			String sign = itemProfit > 0 ? "+" : "";
+			ValueFormat fmt = config.geEstimatesFormat();
+
+			JLabel itemProfitPrefix = new JLabel("Est. Profit:");
+			itemProfitPrefix.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+			itemProfitPrefix.setFont(FontManager.getRunescapeSmallFont());
+			itemProfitPrefix.setToolTipText("Realized profit from sold lots plus unrealized "
+					+ "gain/loss on held lots (marked to the current average price)");
+
+			JLabel itemProfitValue = new JLabel(sign + formatTotalGp(itemProfit, fmt));
+			itemProfitValue.setFont(FontManager.getRunescapeSmallFont());
+			itemProfitValue.setForeground(itemProfit == 0 ? ColorScheme.LIGHT_GRAY_COLOR
+					: (itemProfit > 0 ? COLOR_HIGH : COLOR_LOW));
+			applyTotalTooltip(itemProfitValue, itemProfit, fmt);
+
+			JPanel itemProfitRow = new JPanel(new BorderLayout(6, 0));
+			itemProfitRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			itemProfitRow.add(itemProfitPrefix, BorderLayout.WEST);
+			itemProfitRow.add(itemProfitValue, BorderLayout.CENTER);
+
+			JPanel itemProfitSection = new JPanel(new BorderLayout());
+			itemProfitSection.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			itemProfitSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+			itemProfitSection.setBorder(BorderFactory.createCompoundBorder(
+					BorderFactory.createCompoundBorder(
+							new EmptyBorder(4, 0, 0, 0),
+							new MatteBorder(1, 0, 0, 0, DIVIDER_COLOR)
+					),
+					new EmptyBorder(4, 10, 0, 0)
+			));
+			itemProfitSection.add(itemProfitRow, BorderLayout.CENTER);
+			slot.add(itemProfitSection);
+		}
 	}
 
 	/**
@@ -3850,8 +4052,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	 * (other than the remove button, favorite star, overlay button, or compact button) opens
 	 * the detail view, and entering/leaving the card tracks {@link #hoveredItemId} and reveals/hides
 	 * the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons.
+	 *
+	 * @return the installed hover listener, so it can be re-attached to a row's rebuilt content slot (#275)
 	 */
-	private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar,
+	private MouseAdapter installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar,
 			JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)
 	{
 		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -3908,6 +4112,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			}
 		};
 		addListenerRecursively(card, hoverListener);
+		return hoverListener;
 	}
 
 	/**
