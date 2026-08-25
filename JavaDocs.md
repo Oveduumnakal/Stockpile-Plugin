@@ -10610,6 +10610,9 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final long` | `PULSE_DURATION_MS` |  |
 | `private static final Color` | `REMOVE_COLOR` |  |
 | `private static final String` | `ROW_ITEM_ID` | Client property on each row card holding its item id, used to map drag positions to list indices. |
+| `private static final int` | `SEARCH_MAX_RESULTS` | How many search matches the floating popup lists at most (scrollable beyond `#SEARCH_VISIBLE_ROWS`). |
+| `private static final int` | `SEARCH_ROW_HEIGHT` | Fixed height of a floating add-item search result row (#279), for sizing the popup. |
+| `private static final int` | `SEARCH_VISIBLE_ROWS` | How many search rows are visible before the floating popup scrolls (#279). |
 | `private static final Color` | `STAR_DIM` |  |
 | `private static final Color` | `STAR_HIDDEN` |  |
 | `private static final String` | `STAR_HOVERED` |  |
@@ -10705,7 +10708,10 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JLabel` | `reorderToggle` | Header toggle that enters/exits reorder mode. |
 | `private final Map<Long,ImageIcon>` | `rowIconCache` | 18px row icons keyed by `#iconCacheKey` (item id + rendered stack size), so quantity-aware sprites are cached per stack. |
 | `private final IconTextField` | `searchField` |  |
-| `private final JPanel` | `searchResultsPanel` |  |
+| `private int` | `searchFirstResultId` |  |
+| `private int` | `searchPopupHeight` |  |
+| `private JPanel` | `searchResultsContent` |  |
+| `private JPopupMenu` | `searchResultsPopup` |  |
 | `private final JLabel` | `sessionLabel` | Static grey "Session:" prefix; never recoloured, mirroring the profit row's prefix. |
 | `private JPanel` | `sessionRow` | The row wrapping `#sessionLabel`; toggled as a whole so no empty row lingers when hidden. |
 | `private final SessionStats` | `sessionStats` | In-memory session tracking; baseline captured on the first priced render after a reset. |
@@ -10807,6 +10813,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static String` | `formatAge(long epochSeconds)` | Formats an epoch-second timestamp's age as a compact relative string, e.g. |
 | `static String` | `formatTotalGp(long value, ValueFormat fmt)` | Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`. |
 | `public int` | `getDetailItemId()` |  |
+| `private void` | `hideSearchResults()` | Hides the floating search-results popup and clears its rows. |
 | `private static long` | `iconCacheKey(TrackedItem item)` |  |
 | `private void` | `importTrackedList()` | Prompts for a tracked-list code, merges it into the current profile, and reports the outcome. |
 | `private static int` | `indexOfItem(List<TrackedItem> list, int itemId)` |  |
@@ -10829,7 +10836,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public long` | `natureRunePrice()` | {@inheritDoc} Returns the nature-rune price the panel currently holds. |
 | `public void` | `notificationsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's notifications-edited callback when present. |
 | `public void` | `onBack()` | {@inheritDoc} Returns the sidebar panel to the main tracked-item list. |
-| `private void` | `onSearch(String query)` | Filters the add-item search dropdown to items matching the typed query. |
+| `private void` | `onSearch(String query)` | Filters the add-item search to items matching the typed query and lists the matches in a floating popup below the search field (#279), overlaying the panel rather than pushing the list down &mdash; matching the pop-out Dashboard search. |
 | `private void` | `onTrackedFilterChanged()` | Re-renders the rows against the updated tracked-list filter text. |
 | `private void` | `openChangelogWindow()` | Opens the changelog window; the first open of a new release quiets the "What's New" indicator. |
 | `private void` | `openIssueForm(String dialogTitle, String template, String titlePrefix, List<IssueField> fields)` | Shows a modal form for an issue template, then opens the GitHub issue form in the browser with the entered title/fields pre-filled (via query params) so the user only has to review and click Submit on GitHub. |
@@ -10872,6 +10879,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `switchDetailItem(int itemId)` | {@inheritDoc} The sidebar has no dashboard search bar, so this fires only via the shared host contract; it shows the requested item's detail in place. |
 | `private void` | `toggleReorderMode()` | Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. |
 | `private void` | `toggleTrackedFilter()` | Toggles the tracked-list filter field via the header filter button, focusing it when shown. |
+| `private void` | `trackFirstSearchResult()` | Tracks the first search hit (Enter in the search field), then clears the field and popup (#279). |
 | `public TrackedItem` | `trackedItem(int itemId)` | {@inheritDoc} Reads from the panel's current tracked-item map. |
 | `public void` | `untrackToPreview(int itemId)` | {@inheritDoc} Delegates to the panel's untrack-to-preview callback. |
 | `private void` | `updateCoinsIcon(long value)` | Updates the totals coin icon to the stack sprite for the given gp value, loading it asynchronously and caching per quantity. |
@@ -11065,6 +11073,24 @@ A markdown link `[label](url)` used for the changelog's issue references.
 `private static final String ROW_ITEM_ID`
 
 Client property on each row card holding its item id, used to map drag positions to list indices.
+
+#### SEARCH_MAX_RESULTS
+
+`private static final int SEARCH_MAX_RESULTS`
+
+How many search matches the floating popup lists at most (scrollable beyond `#SEARCH_VISIBLE_ROWS`).
+
+#### SEARCH_ROW_HEIGHT
+
+`private static final int SEARCH_ROW_HEIGHT`
+
+Fixed height of a floating add-item search result row (#279), for sizing the popup.
+
+#### SEARCH_VISIBLE_ROWS
+
+`private static final int SEARCH_VISIBLE_ROWS`
+
+How many search rows are visible before the floating popup scrolls (#279).
 
 #### STAR_DIM
 
@@ -11535,9 +11561,21 @@ quantity-aware sprites are cached per stack.
 
 `private final IconTextField searchField`
 
-#### searchResultsPanel
+#### searchFirstResultId
 
-`private final JPanel searchResultsPanel`
+`private int searchFirstResultId`
+
+#### searchPopupHeight
+
+`private int searchPopupHeight`
+
+#### searchResultsContent
+
+`private JPanel searchResultsContent`
+
+#### searchResultsPopup
+
+`private JPopupMenu searchResultsPopup`
 
 #### sessionLabel
 
@@ -12104,6 +12142,12 @@ Formats a totals value as either full or abbreviated gp per the configured `Valu
 
 - **Returns:** the item id whose detail view is open, or a non-positive value when on the main list.
 
+#### hideSearchResults
+
+`private void hideSearchResults()`
+
+Hides the floating search-results popup and clears its rows.
+
 #### iconCacheKey
 
 `private static long iconCacheKey(TrackedItem item)`
@@ -12258,7 +12302,9 @@ Moves the selected dialog category by `delta` and forwards the new index to the 
 
 `private void onSearch(String query)`
 
-Filters the add-item search dropdown to items matching the typed query.
+Filters the add-item search to items matching the typed query and lists the matches in a floating
+popup below the search field (#279), overlaying the panel rather than pushing the list down &mdash;
+matching the pop-out Dashboard search. Records the first hit so Enter can track it.
 
 #### onTrackedFilterChanged
 
@@ -12545,6 +12591,12 @@ Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a 
 `private void toggleTrackedFilter()`
 
 Toggles the tracked-list filter field via the header filter button, focusing it when shown.
+
+#### trackFirstSearchResult
+
+`private void trackFirstSearchResult()`
+
+Tracks the first search hit (Enter in the search field), then clears the field and popup (#279).
 
 #### trackedItem
 

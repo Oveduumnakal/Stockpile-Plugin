@@ -121,6 +121,7 @@ import javax.swing.JTextField;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -360,7 +361,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 
 	private final IconTextField searchField;
-	private final JPanel searchResultsPanel;
+	private JPopupMenu searchResultsPopup;
+	private JPanel searchResultsContent;
+	private int searchFirstResultId = -1;
+	private int searchPopupHeight = -1;
 
 	/** Name filter over the tracked list, shown only when the list overflows into scrolling. */
 	private IconTextField trackedFilterField;
@@ -478,6 +482,15 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Timer loadingGlowTimer;
 
 	private static final long PULSE_DURATION_MS = 1000;
+	/** Fixed height of a floating add-item search result row (#279), for sizing the popup. */
+	private static final int SEARCH_ROW_HEIGHT = 36;
+
+	/** How many search rows are visible before the floating popup scrolls (#279). */
+	private static final int SEARCH_VISIBLE_ROWS = 5;
+
+	/** How many search matches the floating popup lists at most (scrollable beyond {@link #SEARCH_VISIBLE_ROWS}). */
+	private static final int SEARCH_MAX_RESULTS = 25;
+
 	private static final int PRICES_LEFT_PAD = 10;
 	private static final int PRICES_RIGHT_PAD = 0;
 	private static final Color COLOR_VOLUME = new Color(200, 200, 200);
@@ -562,10 +575,21 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		titleWrapper.add(title, BorderLayout.CENTER);
 		titleWrapper.add(changelogButton, BorderLayout.EAST);
 
-		searchResultsPanel = new JPanel();
-		searchResultsPanel.setLayout(new BoxLayout(searchResultsPanel, BoxLayout.Y_AXIS));
-		searchResultsPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		searchResultsPanel.setVisible(false);
+		searchResultsPopup = new JPopupMenu();
+		searchResultsPopup.setFocusable(false);
+		searchResultsPopup.setBorder(BorderFactory.createLineBorder(ColorScheme.LIGHT_GRAY_COLOR));
+		searchResultsPopup.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		searchResultsContent = new JPanel();
+		searchResultsContent.setLayout(new BoxLayout(searchResultsContent, BoxLayout.Y_AXIS));
+		searchResultsContent.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		JScrollPane searchScroll = new JScrollPane(searchResultsContent,
+				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+				ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		searchScroll.setBorder(null);
+		searchScroll.getVerticalScrollBar().setUnitIncrement(16);
+		searchResultsPopup.add(searchScroll);
 
 		searchField = new IconTextField();
 		searchField.setIcon(IconTextField.Icon.SEARCH);
@@ -573,7 +597,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		searchField.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		searchField.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
 		searchField.setMinimumSize(new Dimension(0, 30));
-		searchField.addClearListener(() -> searchResultsPanel.setVisible(false));
+		searchField.addClearListener(this::hideSearchResults);
+		searchField.addActionListener(e -> trackFirstSearchResult());
 		searchField.getDocument().addDocumentListener(new DocumentListener()
 		{
 			public void insertUpdate(DocumentEvent e)
@@ -945,7 +970,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		topPanel.add(titleWrapper);
 		topPanel.add(searchField);
 		topPanel.add(Box.createVerticalStrut(4));
-		topPanel.add(searchResultsPanel);
 		topPanel.add(geEstimatesSlotTop);
 		topPanel.add(trackedLabelWrapper);
 		topPanel.add(trackedFilterField);
@@ -2041,36 +2065,80 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		}
 	}
 
-	/** Filters the add-item search dropdown to items matching the typed query. */
+	/**
+	 * Filters the add-item search to items matching the typed query and lists the matches in a floating
+	 * popup below the search field (#279), overlaying the panel rather than pushing the list down &mdash;
+	 * matching the pop-out Dashboard search. Records the first hit so Enter can track it.
+	 */
 	private void onSearch(String query)
 	{
+		searchFirstResultId = -1;
+		searchResultsContent.removeAll();
+
 		if (query == null || query.trim().length() < 2)
 		{
-			searchResultsPanel.setVisible(false);
+			hideSearchResults();
 			return;
 		}
 
 		List<ItemPrice> results = itemManager.search(query);
-		searchResultsPanel.removeAll();
-
 		int shown = 0;
 		for (ItemPrice item : results)
 		{
-			if (shown >= 5)
+			if (shown >= SEARCH_MAX_RESULTS)
 				break;
 
 			if (trackedItemIds.contains(item.getId()))
 				continue;
 
-			JPanel row = buildSearchResultRow(item.getId(), item.getName());
-			searchResultsPanel.add(row);
-			searchResultsPanel.add(Box.createVerticalStrut(2));
+			if (searchFirstResultId < 0)
+				searchFirstResultId = item.getId();
+
+			searchResultsContent.add(buildSearchResultRow(item.getId(), item.getName()));
 			shown++;
 		}
 
-		searchResultsPanel.setVisible(shown > 0);
-		searchResultsPanel.revalidate();
-		searchResultsPanel.repaint();
+		if (shown == 0)
+		{
+			hideSearchResults();
+			return;
+		}
+
+		int height = Math.min(shown, SEARCH_VISIBLE_ROWS) * SEARCH_ROW_HEIGHT + 2;
+
+		if (searchResultsPopup.isVisible() && height == searchPopupHeight)
+		{
+			searchResultsContent.revalidate();
+			searchResultsContent.repaint();
+			return;
+		}
+
+		searchPopupHeight = height;
+		searchResultsPopup.setPopupSize(searchField.getWidth(), height);
+		searchResultsPopup.show(searchField, 0, searchField.getHeight());
+		searchField.requestFocusInWindow();
+	}
+
+	/** Hides the floating search-results popup and clears its rows. */
+	private void hideSearchResults()
+	{
+		if (searchResultsPopup == null)
+			return;
+
+		searchResultsPopup.setVisible(false);
+		searchResultsContent.removeAll();
+		searchPopupHeight = -1;
+	}
+
+	/** Tracks the first search hit (Enter in the search field), then clears the field and popup (#279). */
+	private void trackFirstSearchResult()
+	{
+		if (searchFirstResultId <= 0)
+			return;
+
+		onAddItem.accept(searchFirstResultId, TrackItemMode.TRACK);
+		searchField.setText("");
+		hideSearchResults();
 	}
 
 	/** Builds one clickable row in the search-results dropdown that adds the item when clicked. */
@@ -2079,7 +2147,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		JPanel row = new JPanel(new BorderLayout());
 		row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		row.setBorder(new EmptyBorder(4, 6, 4, 6));
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+		row.setPreferredSize(new Dimension(10, SEARCH_ROW_HEIGHT));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, SEARCH_ROW_HEIGHT));
 
 		JLabel nameLabel = new JLabel();
 		nameLabel.setForeground(Color.WHITE);
@@ -2099,7 +2168,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		{
 			onAddItem.accept(itemId, TrackItemMode.VIEW);
 			searchField.setText("");
-			searchResultsPanel.setVisible(false);
+			hideSearchResults();
 		});
 
 		Color addGreen = new Color(0, 153, 0);
@@ -2116,18 +2185,18 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		{
 			onAddItem.accept(itemId, TrackItemMode.TRACK);
 			searchField.setText("");
-			searchResultsPanel.setVisible(false);
+			hideSearchResults();
 		});
 
 		JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-		buttonRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		buttonRow.setOpaque(false);
 		buttonRow.add(viewBtn);
 		buttonRow.add(addBtn);
 
 		row.add(nameLabel, BorderLayout.CENTER);
 		row.add(buttonRow, BorderLayout.EAST);
 
-		row.addMouseListener(new MouseAdapter()
+		MouseAdapter rowHover = new MouseAdapter()
 		{
 			@Override
 			public void mouseEntered(MouseEvent e)
@@ -2138,9 +2207,12 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			@Override
 			public void mouseExited(MouseEvent e)
 			{
-				row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+				Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), row);
+				if (!row.contains(p))
+					row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			}
-		});
+		};
+		addListenerRecursively(row, rowHover);
 		row.setCursor(Cursor.getDefaultCursor());
 
 		return row;
