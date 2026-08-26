@@ -52,6 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -337,6 +338,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private static final int STOCKPILE_GE_SPRITE_ID = -21140;
 	/** Rendered size, in pixels, of the Stockpile icon on the GE button (#140). */
 	private static final int GE_ICON_SIZE = 25;
+	/** The native "Actively traded price" segment of the GE info block, rewritten every tick (#288). */
+	private static final Pattern GE_ACTIVE_PRICE_LINE =
+		Pattern.compile("(?: / |<br>)?Actively traded price:[^<]*");
 
 	private final Map<Integer, Map<Integer, Integer>> containerCounts = new HashMap<>();
 
@@ -3503,7 +3507,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			return desc;
 
 		String replacement = Matcher.quoteReplacement("<br>" + priceLines());
-		return desc.replaceAll("(?: / |<br>)?Actively traded price:[^<]*", replacement);
+		return GE_ACTIVE_PRICE_LINE.matcher(desc).replaceAll(replacement);
 	}
 
 	/**
