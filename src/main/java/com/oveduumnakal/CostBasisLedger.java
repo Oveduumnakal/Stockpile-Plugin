@@ -750,8 +750,11 @@ class CostBasisLedger
 	 */
 	int consumeCarriedOutput(TrackedItem tracked, int qty, Map<Integer, Long> carried, AcquisitionSource source)
 	{
+		if (qty <= 0)
+			return qty;
+
 		Long totalCost = carried.remove(tracked.getItemId());
-		if (qty <= 0 || totalCost == null)
+		if (totalCost == null)
 			return qty;
 
 		long base = totalCost / qty;
