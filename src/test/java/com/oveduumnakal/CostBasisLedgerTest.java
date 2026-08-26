@@ -20,6 +20,7 @@ import net.runelite.api.GrandExchangeOffer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Unit net for {@link CostBasisLedger} (#255): the FIFO lot engine, GE buy ledger, sell
@@ -384,6 +385,48 @@ public class CostBasisLedgerTest
 		ledger.reconcileSuspendedFromOffers();
 
 		assertEquals("the classic path holds no suspensions", 0, t.getSuspended(SuspensionSource.SELL));
+	}
+
+	private static AcquisitionRecord firstOpenWithSource(TrackedItem t, AcquisitionSource source)
+	{
+		for (AcquisitionRecord r : t.getAcquisitions())
+			if (r.getSoldAt() == null && r.sourceOrUnknown() == source)
+				return r;
+
+		return null;
+	}
+
+	/**
+	 * #287 regression: a decant output's transferred basis, queued the same tick an earlier source (here a
+	 * sell-unsuspend) fully absorbs the positive delta, must survive the zero-qty consumeDecantOutput call and
+	 * still price the real output when it lands a later tick — not fall through to the fallback. The 500 avg
+	 * fallback differs from the 100 gp/unit carried basis so the two outcomes are distinguishable.
+	 */
+	@Test
+	public void queuedDecantBasisSurvivesAFullyConsumedTickAndPricesTheLaterOutput()
+	{
+		TrackedItem t = item(10, 500, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+
+		ledger.onGeOffer(1, ITEM, false, false, false, 3, 0, 0);
+		ledger.applyDelta(t, -3);
+		assertEquals("a 3-unit sell suspends", 3, t.getSuspended(SuspensionSource.SELL));
+
+		ledger.queueDecantOutput(ITEM, 300);
+
+		ledger.onGeOffer(1, ITEM, false, true, false, 3, 0, 0);
+		ledger.applyDelta(t, 3);
+		assertEquals("the cancel's +3 is fully eaten by the sell-unsuspend before consumeDecantOutput ran", 0,
+				t.getSuspended(SuspensionSource.SELL));
+		assertTrue("the queued decant basis is still parked, not discarded",
+				ledger.hasDecantOrConsumedOutput(ITEM));
+
+		host.tick++;
+		ledger.applyDelta(t, 3);
+
+		AcquisitionRecord decant = firstOpenWithSource(t, AcquisitionSource.DECANT);
+		assertEquals("the real output lands a later tick as a DECANT lot", 3, decant.getQuantity());
+		assertEquals("priced at the carried basis, not the 500 avg fallback", 100, decant.getBoughtAt());
+		assertFalse("the basis is consumed by the landing output", ledger.hasDecantOrConsumedOutput(ITEM));
 	}
 
 	@Test
