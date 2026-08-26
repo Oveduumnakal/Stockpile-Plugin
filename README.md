@@ -57,6 +57,20 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   <a href="docs/img/09-portfolio-history.gif" title="Click to play the animation"><img src="docs/img/09-portfolio-history-still.png" alt="The portfolio value history chart showing the collection's worth over several weeks" width="700"></a>
 
+### Dashboard
+
+- **Pop an item out into its own window**
+
+  Open any item's detail view as a standalone, resizable window that lives outside the side panel. It lays everything out across columns — current values, market info, alchemy, collection log, and the price and volume charts side by side — so you get the full picture at a glance, and it keeps updating live while you play. Open as many as you like to watch several items at once.
+
+  <img src="docs/img/23-dashboard.png" alt="An item popped out into the standalone dashboard window showing its values, market info, collection log, and charts across columns" width="700">
+
+- **A home base for looking things up**
+
+  Open the dashboard on its own from the panel's toolbar and search for any item to pull up its full detail — no need to track it first. Pick a different item and the window switches to it in place.
+
+  <img src="docs/img/24-dashboard-home.png" alt="The dashboard window's home view with the search bar, ready to look up any item" width="700">
+
 ### Detailed market information
 
 - **Know the market before you trade**
@@ -114,6 +128,12 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
   Opening a Grand Exchange offer can open that item in Stockpile automatically, or add a "View in Stockpile" button to the offer screen.
 
   <a href="docs/img/20-ge-integration.gif" title="Click to play the animation"><img src="docs/img/20-ge-integration-still.png" alt="Clicking the View in Stockpile button on a Grand Exchange offer, opening the item in the panel" width="700"></a>
+
+- **Right-click straight into Stockpile**
+
+  Shift + right-click an item anywhere in the game for a "Stockpile" menu that lets you track or untrack it, view it in the panel, or open it straight in the dashboard — without hunting for it first. Which entries appear, and the key used, are up to you in the settings.
+
+  <img src="docs/img/25-context-menu.png" alt="The Shift right-click Stockpile submenu with Track, View in Stockpile, and Open in Dashboard entries" width="400">
 
 ### Price alerts
 
