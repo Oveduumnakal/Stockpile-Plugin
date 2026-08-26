@@ -89,6 +89,8 @@
 - [com.oveduumnakal.StockpileHighlightOverlay](#comoveduumnakalstockpilehighlightoverlay)
 - [com.oveduumnakal.StockpilePanel](#comoveduumnakalstockpilepanel)
 - [com.oveduumnakal.StockpilePanel.ChangelogSection](#comoveduumnakalstockpilepanelchangelogsection)
+- [com.oveduumnakal.StockpilePanel.RowSection](#comoveduumnakalstockpilepanelrowsection)
+- [com.oveduumnakal.StockpilePanel.RowView](#comoveduumnakalstockpilepanelrowview)
 - [com.oveduumnakal.StockpilePersistence](#comoveduumnakalstockpilepersistence)
 - [com.oveduumnakal.StockpilePersistence.CachedPrice](#comoveduumnakalstockpilepersistencecachedprice)
 - [com.oveduumnakal.StockpilePersistence.CategoryData](#comoveduumnakalstockpilepersistencecategorydata)
@@ -10615,6 +10617,8 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | Type | Description |
 |---|---|
 | _class_ [`ChangelogSection`](#comoveduumnakalstockpilepanelchangelogsection) | One navigable changelog section: heading depth (0 for `##`, 1 for `###`), text, and anchor. |
+| _class_ [`RowSection`](#comoveduumnakalstockpilepanelrowsection) | One display section of the tracked list (#275): an optional group header (`title`/`key`/ `collapsed`) and its filtered items. |
+| _class_ [`RowView`](#comoveduumnakalstockpilepanelrowview) | Cached scaffolding for one tracked-item row (#275): the reusable card, identity labels and favourite star built once, plus the `#contentSlot` whose price/compact/loading content is refilled by `#populateRow` on a value change, and the `#hoverListener` re-attached to that new content. |
 
 ### Field Summary
 
@@ -10707,6 +10711,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final JPanel` | `footerPanel` |  |
 | `private final JPanel` | `geEstimatesSlotBottom` |  |
 | `private final JPanel` | `geEstimatesSlotTop` |  |
+| `private final Map<String,JLabel>` | `groupTotalLabels` | Cached group-header total labels (#275), keyed by group key, so header totals refresh in place too. |
 | `private boolean` | `groupingActive` | Whether the list is currently grouped (favorites or categories active); disables drag reorder, which is global-order only. |
 | `private int` | `hoveredItemId` |  |
 | `private final ItemManager` | `itemManager` |  |
@@ -10715,6 +10720,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final JLabel` | `lastRefreshLabel` |  |
 | `private PriceIndicatorMode` | `lastRenderIndicatorMode` |  |
 | `private List<TrackedItem>` | `lastRenderItems` | Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full plugin refresh, and so a session reset (`#resetSession()`) re-primes from the same list. |
+| `private String` | `lastStructuralSig` | The last full render's structural signature (#275); an equal signature enables the in-place path. |
 | `private final Timer` | `loadingGlowTimer` |  |
 | `private final List<JLabel>` | `loadingLabels` |  |
 | `private JPanel` | `loggedOutCard` | The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport while it shows. |
@@ -10757,6 +10763,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private boolean` | `reorderMode` | Whether the list is in reorder mode, which reveals the per-row drag/arrow strip. |
 | `private JLabel` | `reorderToggle` | Header toggle that enters/exits reorder mode. |
 | `private final Map<Long,ImageIcon>` | `rowIconCache` | 18px row icons keyed by `#iconCacheKey` (item id + rendered stack size), so quantity-aware sprites are cached per stack. |
+| `private final Map<Integer,RowView>` | `rowViews` | Cached per-item row scaffolding (#275), keyed by item id in display order. |
 | `private final IconTextField` | `searchField` |  |
 | `private int` | `searchFirstResultId` |  |
 | `private int` | `searchPopupHeight` |  |
@@ -10799,7 +10806,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `acquisitionsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's acquisitions-edited callback when present. |
 | `private void` | `addFormRow(JPanel form, String label, JComponent field)` | Adds a labelled row (label above the field) to a vertical form panel. |
 | `public void` | `addItem(int itemId, TrackItemMode mode)` | {@inheritDoc} Delegates to the panel's add-item callback. |
-| `private void` | `addItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Adds a single tracked-item row plus its trailing spacer; `groupItems` scopes reorder within the group. |
 | `private void` | `addListenerRecursively(Component c, MouseListener listener)` | Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one. |
 | `private static void` | `appendChangelogAnchor(StringBuilder sb, int sectionIndex)` | Appends a named scroll anchor (`sec `) matching the ids `#extractSections` hands the nav. |
 | `private static void` | `appendChangelogDiv(StringBuilder sb, String style, int indentLevel, String html)` | Appends a ` ` with the given inline CSS `style` and left indent, wrapping `html`. |
@@ -10831,11 +10837,13 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JLabel` | `buildOverlayToggle(TrackedItem item)` | Builds the overlay-select control beneath the favorite star: a painted monitor icon that toggles whether the item appears in the on-screen overlay. |
 | `private JPanel` | `buildReorderStrip(TrackedItem item, List<TrackedItem> groupItems)` | Builds the left reorder column (up/down, plus a drag handle when the list isn't grouped) for the manage row. |
 | `private JLabel` | `buildRowCompactToggle(TrackedItem item)` | Builds the per-item compact toggle beneath the overlay button (#210): a painted "≣" glyph that flips this row between the standard and compact two-row layouts, independent of the global compact toggle. |
+| `private void` | `buildRowContent(JPanel slot, TrackedItem item, PriceIndicatorMode indicatorMode)` | Fills a row's content slot (#275) with the price grid, compact value line, or loading placeholder for the item's current state, plus the optional per-item profit row. |
 | `private JLabel` | `buildRowDashboardButton(TrackedItem item)` | Builds a row hover button (dashboard icon) that opens this item in its own dashboard window (#109). |
 | `private JLabel` | `buildRowIcon(TrackedItem item)` | Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously on a miss. |
+| `private RowView` | `buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty) and the hover buttons, plus an empty content slot filled by `#populateRow`. |
 | `private JPanel` | `buildSearchResultRow(int itemId, String itemName)` | Builds one clickable row in the search-results dropdown that adds the item when clicked. |
 | `private JPanel` | `buildTotalsRow(JLabel valueLabel, JLabel pulseLabel)` | Builds one estimate row pairing a totals value label with its pulse-indicator label. |
-| `private JPanel` | `buildTrackedItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Builds one row of the main list for a tracked item: icon, name, quantity, the configured data rows (prices/value/volume/profit), hover affordances, and a click handler that opens the item's detail view. |
+| `private boolean` | `cacheCovers(List<RowSection> sections)` |  |
 | `private static Icon` | `categoriesIcon(Color color)` | Draws a bulleted-list glyph — three dots, each followed by a line — tinted `color`. |
 | `private String` | `changelogButtonText()` |  |
 | `public void` | `clearAcquisitions(int itemId)` | {@inheritDoc} Delegates to the panel's clear-acquisitions callback when present. |
@@ -10843,6 +10851,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
 | `private void` | `commitDrag()` | Commits the in-progress drag: places the dragged item at its new slot within its own group and rewrites the full tracked order accordingly (kept within-group, since groups render in global order). |
 | `private List<Integer>` | `computeDragGroup(int itemId)` | Determines the dragged item's group as the contiguous run of item rows between accordion headers in the rendered list (the whole list when ungrouped), returning its item ids in visual order. |
+| `private List<RowSection>` | `computeSections(List<TrackedItem> items)` | Computes the ordered, filtered display sections (#275): a single flat section when no grouping is active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized. |
 | `public StockpileConfig` | `config()` | {@inheritDoc} Supplies the panel's live plugin config to the detail view. |
 | `private void` | `confirmAndClearAll()` | Prompts for confirmation, then clears all tracked items via the plugin callback. |
 | `private static boolean` | `containsIgnoreCase(DefaultListModel<String> model, String value)` |  |
@@ -10862,6 +10871,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public long` | `fireRunePrice()` | {@inheritDoc} Returns the fire-rune price the panel currently holds. |
 | `static String` | `formatAge(long epochSeconds)` | Formats an epoch-second timestamp's age as a compact relative string, e.g. |
 | `static String` | `formatTotalGp(long value, ValueFormat fmt)` | Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`. |
+| `private void` | `fullRebuild(List<RowSection> sections, PriceIndicatorMode indicatorMode, String sig)` | Rebuilds the whole list from scratch, repopulating the row/header caches and storing the signature (#275). |
 | `public int` | `getDetailItemId()` |  |
 | `private void` | `hideSearchResults()` | Hides the floating search-results popup and clears its rows. |
 | `private static long` | `iconCacheKey(TrackedItem item)` |  |
@@ -10873,7 +10883,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `installDragHandle(JLabel handle, int itemId)` | Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging updates the drop indicator and edge autoscroll, and releasing commits the move. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, Color tint)` | Installs a compact gp value on a label with no tooltip caption. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)` | Installs a prefixed compact gp value on a label via `#installShortValue`. |
-| `private void` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
+| `private MouseAdapter` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
 | `static void` | `installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)` | Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint. |
 | `private static void` | `installToggleHover(JLabel button, BooleanSupplier selected, Consumer<Color> apply, Runnable restore)` | Installs grey↔gold hover colouring on a header toggle: an unselected (grey) button turns gold while hovered, a selected (gold) button turns grey, and its resting state colour is repainted on exit. |
 | `public boolean` | `isEditingNotifications()` |  |
@@ -10898,6 +10908,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private int` | `overlayCount()` |  |
 | `private static Icon` | `overlayIcon(Color color)` | Paints a small monochrome monitor (on-screen overlay) icon in the given colour. |
 | `public void` | `popOut(int itemId)` | {@inheritDoc} Delegates to the panel's pop-out callback. |
+| `private void` | `populateRow(RowView rv, TrackedItem item, PriceIndicatorMode indicatorMode)` | Refreshes a cached row's mutable content in place (#275): icon, name, quantity, the favourite star's resting state, and the price/compact/loading content slot (rebuilt cheaply and re-wired to the row's hover listener). |
 | `public void` | `promptCategoryForItem(int itemId)` | Category prompt shown at track time (#211): a modal dropdown of the existing categories plus Uncategorized and a create-new option. |
 | `private void` | `pulseIfShown(JLabel label, int delta, PriceIndicatorMode mode)` | Starts a price pulse on the label unless the configured indicator mode suppresses it. |
 | `public void` | `rebuild(List<TrackedItem> rawItems, Instant newLastPriceRefresh, PriceIndicatorMode indicatorMode, boolean loggedIn, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed)` | Rebuilds the main item list from the latest tracked items and totals. |
@@ -10907,12 +10918,12 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static void` | `removeHoverTint(JLabel label)` | Detaches any hover-tint listener from a label before its value is replaced. |
 | `public void` | `removeSessionBaseline(int itemId)` | Drops one item's session-baseline entry when it is untracked, so removal is session-neutral. |
 | `private String` | `renderChangelogBody(String body)` | Renders a release's markdown body to HTML for the changelog window: `##`/`###`/`####` headings become sized/weighted/coloured headers that each indent one level deeper, their content indents one level further still, and `[#12](url)` issue links become clickable anchors. |
-| `private void` | `renderGroup(String title, String groupKey, boolean collapsed, List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)` | Renders one collapsible group: a clickable header plus its rows, unless empty (skipped) or collapsed (header only). |
-| `private void` | `renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)` | Renders the tracked rows into `#trackedItemsPanel`, grouped into the Favorites pseudo-group (pinned on top), then each user category in order, then Uncategorized. |
+| `private void` | `renderEmptyState()` | Clears the list to the "no items tracked" placeholder and resets the render cache (#275). |
 | `private String` | `renderReleaseHtml(Changelog.Release release)` |  |
 | `private void` | `renderTrackedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)` | Clears and re-renders the tracked-item rows (empty placeholder, or the grouped rows), retaining the inputs so `#toggleReorderMode()` can re-render the manage layout without a full plugin refresh. |
 | `public void` | `requestDetailData(int itemId)` | {@inheritDoc} Delegates to the panel's detail-data request callback when present. |
 | `public void` | `resetSession()` | Re-baselines the session to the current holdings, so "Session:" restarts from zero. |
+| `private static long` | `sectionTotal(RowSection s)` |  |
 | `public void` | `setAlchRunePrices(long naturePrice, long firePrice)` | Supplies the latest nature/fire rune prices used to compute high-alch profit in the detail view. |
 | `private void` | `setTrackedFilterVisible(boolean visible)` | Sets the filter field's visibility, clearing any active filter when it is hidden. |
 | `private void` | `showDetail(int itemId)` | Reveals the tracked detail card for `itemId` in the card stack and binds the detail view to it. |
@@ -10925,6 +10936,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static Icon` | `sparkleIcon(Color color)` | Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge. |
 | `private void` | `startPulse(JLabel label, int delta)` | Begins a color pulse on a label (green up / red down) reflecting the sign of a price change. |
 | `private void` | `stopDragAutoscroll()` | Stops the edge-autoscroll timer, if running. |
+| `private String` | `structuralSignature(List<RowSection> sections)` |  |
 | `private JButton` | `styledFooterButton(String text, String tooltip)` | Shared styling for the footer's link and dropdown buttons. |
 | `public void` | `switchDetailItem(int itemId)` | {@inheritDoc} The sidebar has no dashboard search bar, so this fires only via the shared host contract; it shows the requested item's detail in place. |
 | `private void` | `toggleReorderMode()` | Toggles reorder mode, showing or hiding the per-row drag/arrow strips without a full rebuild. |
@@ -10944,6 +10956,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `updatePulses()` | Timer tick that advances every active pulse's color toward its base, retiring finished ones. |
 | `private void` | `updateRefreshLabel()` | Updates the footer's "updated N ago" text from the last price-refresh timestamp. |
 | `private void` | `updateReorderToggle()` | Highlights the header reorder toggle and reveals the manage-categories button when manage mode is active. |
+| `private void` | `updateRowsInPlace(List<RowSection> sections, PriceIndicatorMode indicatorMode)` | Refreshes group-header totals and each row's values in place against the cached scaffolding (#275). |
 | `private void` | `updateSessionLine(List<TrackedItem> items, boolean hasPrices)` | Renders the "Session:" line: the value gained/lost since the baseline, coloured green/red, with a tooltip splitting the change into price movement vs. |
 | `private void` | `updateSortToggle()` | Reflects the active sort on the header toggle: the effective direction arrow (highlighted) or the neutral glyph. |
 
@@ -11350,6 +11363,12 @@ Header toggle that shows/hides the tracked-list filter field.
 
 `private final JPanel geEstimatesSlotTop`
 
+#### groupTotalLabels
+
+`private final Map<String,JLabel> groupTotalLabels`
+
+Cached group-header total labels (#275), keyed by group key, so header totals refresh in place too.
+
 #### groupingActive
 
 `private boolean groupingActive`
@@ -11387,6 +11406,12 @@ reorder, which is global-order only.
 
 Last-rendered items/mode, retained so toggling manage mode can re-render rows without a full
 plugin refresh, and so a session reset (`#resetSession()`) re-primes from the same list.
+
+#### lastStructuralSig
+
+`private String lastStructuralSig`
+
+The last full render's structural signature (#275); an equal signature enables the in-place path.
 
 #### loadingGlowTimer
 
@@ -11607,6 +11632,14 @@ Header toggle that enters/exits reorder mode.
 18px row icons keyed by `#iconCacheKey` (item id + rendered stack size), so
 quantity-aware sprites are cached per stack.
 
+#### rowViews
+
+`private final Map<Integer,RowView> rowViews`
+
+Cached per-item row scaffolding (#275), keyed by item id in display order. When the structural
+signature is unchanged, rows are updated in place through `#populateRow` instead of rebuilt,
+avoiding a full `removeAll()` + reconstruction of every row on each price/inventory event.
+
 #### searchField
 
 `private final IconTextField searchField`
@@ -11772,12 +11805,6 @@ Adds a labelled row (label above the field) to a vertical form panel.
 `public void addItem(int itemId, TrackItemMode mode)`
 
 {@inheritDoc} Delegates to the panel's add-item callback.
-
-#### addItemRow
-
-`private void addItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)`
-
-Adds a single tracked-item row plus its trailing spacer; `groupItems` scopes reorder within the group.
 
 #### addListenerRecursively
 
@@ -11991,6 +12018,13 @@ Builds the per-item compact toggle beneath the overlay button (#210): a painted 
 that flips this row between the standard and compact two-row layouts, independent of the
 global compact toggle. Gold when this row's compact override is on, grey otherwise.
 
+#### buildRowContent
+
+`private void buildRowContent(JPanel slot, TrackedItem item, PriceIndicatorMode indicatorMode)`
+
+Fills a row's content slot (#275) with the price grid, compact value line, or loading placeholder for
+the item's current state, plus the optional per-item profit row. Rebuilt cheaply on each value change.
+
 #### buildRowDashboardButton
 
 `private JLabel buildRowDashboardButton(TrackedItem item)`
@@ -12004,6 +12038,15 @@ Dim at rest, gold while hovered, mirroring the other row hover affordances.
 
 Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously on a miss.
 
+#### buildRowView
+
+`private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)`
+
+Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty)
+and the hover buttons, plus an empty content slot filled by `#populateRow`. A later value change
+refreshes the row in place against this scaffolding rather than reconstructing it. Returns the
+`RowView` the caller caches by item id.
+
 #### buildSearchResultRow
 
 `private JPanel buildSearchResultRow(int itemId, String itemName)`
@@ -12016,13 +12059,11 @@ Builds one clickable row in the search-results dropdown that adds the item when 
 
 Builds one estimate row pairing a totals value label with its pulse-indicator label.
 
-#### buildTrackedItemRow
+#### cacheCovers
 
-`private JPanel buildTrackedItemRow(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)`
+`private boolean cacheCovers(List<RowSection> sections)`
 
-Builds one row of the main list for a tracked item: icon, name, quantity,
-the configured data rows (prices/value/volume/profit), hover affordances,
-and a click handler that opens the item's detail view.
+- **Returns:** whether every row the plan will render already has a cached `RowView` (#275).
 
 #### categoriesIcon
 
@@ -12070,6 +12111,14 @@ render in global order). A no-op drop is ignored.
 Determines the dragged item's group as the contiguous run of item rows between accordion
 headers in the rendered list (the whole list when ungrouped), returning its item ids in
 visual order.
+
+#### computeSections
+
+`private List<RowSection> computeSections(List<TrackedItem> items)`
+
+Computes the ordered, filtered display sections (#275): a single flat section when no grouping is
+active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then
+Uncategorized. Empty groups are skipped. Also refreshes `#groupingActive`.
 
 #### config
 
@@ -12186,6 +12235,12 @@ e.g. `"5s"`, `"5m"`, `"3hr"`, `"2d ago"`.
 
 Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`.
 
+#### fullRebuild
+
+`private void fullRebuild(List<RowSection> sections, PriceIndicatorMode indicatorMode, String sig)`
+
+Rebuilds the whole list from scratch, repopulating the row/header caches and storing the signature (#275).
+
 #### getDetailItemId
 
 `public int getDetailItemId()`
@@ -12258,12 +12313,14 @@ Installs a prefixed compact gp value on a label via `#installShortValue`.
 
 #### installRowHover
 
-`private void installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)`
+`private MouseAdapter installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)`
 
 Wires the shared row hover behaviour onto a tracked-item card: clicking the row
 (other than the remove button, favorite star, overlay button, or compact button) opens
 the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides
 the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons.
+
+- **Returns:** the installed hover listener, so it can be re-attached to a row's rebuilt content slot (#275)
 
 #### installShortValue
 
@@ -12428,6 +12485,14 @@ Paints a small monochrome monitor (on-screen overlay) icon in the given colour.
 
 {@inheritDoc} Delegates to the panel's pop-out callback.
 
+#### populateRow
+
+`private void populateRow(RowView rv, TrackedItem item, PriceIndicatorMode indicatorMode)`
+
+Refreshes a cached row's mutable content in place (#275): icon, name, quantity, the favourite star's
+resting state, and the price/compact/loading content slot (rebuilt cheaply and re-wired to the row's
+hover listener). No scaffolding is reconstructed.
+
 #### promptCategoryForItem
 
 `public void promptCategoryForItem(int itemId)`
@@ -12497,21 +12562,11 @@ headings become sized/weighted/coloured headers that each indent one level deepe
 one level further still, and `[#12](url)` issue links become clickable anchors. Deliberately minimal
 — it only covers the constructs the bundled changelog uses, since Swing's HTML renderer is HTML-3.2-era.
 
-#### renderGroup
+#### renderEmptyState
 
-`private void renderGroup(String title, String groupKey, boolean collapsed, List<TrackedItem> groupItems, PriceIndicatorMode indicatorMode)`
+`private void renderEmptyState()`
 
-Renders one collapsible group: a clickable header plus its rows, unless empty
-(skipped) or collapsed (header only).
-
-#### renderGroupedRows
-
-`private void renderGroupedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)`
-
-Renders the tracked rows into `#trackedItemsPanel`, grouped into the Favorites
-pseudo-group (pinned on top), then each user category in order, then Uncategorized.
-Falls back to a flat, header-less list when no favorites and no categories exist, so
-users who don't use grouping see the list exactly as before. Empty groups are skipped.
+Clears the list to the "no items tracked" placeholder and resets the render cache (#275).
 
 #### renderReleaseHtml
 
@@ -12538,6 +12593,12 @@ without a full plugin refresh.
 `public void resetSession()`
 
 Re-baselines the session to the current holdings, so "Session:" restarts from zero.
+
+#### sectionTotal
+
+`private static long sectionTotal(RowSection s)`
+
+- **Returns:** the sum of average values across a section's items, for its group-header total (#275).
 
 #### setAlchRunePrices
 
@@ -12616,6 +12677,14 @@ Begins a color pulse on a label (green up / red down) reflecting the sign of a p
 `private void stopDragAutoscroll()`
 
 Stops the edge-autoscroll timer, if running.
+
+#### structuralSignature
+
+`private String structuralSignature(List<RowSection> sections)`
+
+- **Returns:** a signature of the render's structure (scaffolding globals, group order/collapse, and each
+        rendered row's id and compact shape) for the in-place gate (#275); value-only data such as
+        prices, quantities, deltas and group totals is excluded so it can be refreshed in place.
 
 #### styledFooterButton
 
@@ -12737,6 +12806,12 @@ Updates the footer's "updated N ago" text from the last price-refresh timestamp.
 
 Highlights the header reorder toggle and reveals the manage-categories button when manage mode is active.
 
+#### updateRowsInPlace
+
+`private void updateRowsInPlace(List<RowSection> sections, PriceIndicatorMode indicatorMode)`
+
+Refreshes group-header totals and each row's values in place against the cached scaffolding (#275).
+
 #### updateSessionLine
 
 `private void updateSessionLine(List<TrackedItem> items, boolean hasPrices)`
@@ -12784,6 +12859,127 @@ One navigable changelog section: heading depth (0 for `##`, 1 for `###`), text, 
 #### text
 
 `String text`
+
+---
+
+## com.oveduumnakal.StockpilePanel.RowSection
+
+_class_
+
+`private static final class RowSection`
+
+One display section of the tracked list (#275): an optional group header (`title`/`key`/
+`collapsed`) and its filtered items. A flat, header-less list is a single section with a null title.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final boolean` | `collapsed` |  |
+| `private final List<TrackedItem>` | `items` |  |
+| `private final String` | `key` |  |
+| `private final String` | `title` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)` |  |
+
+### Field Detail
+
+#### collapsed
+
+`private final boolean collapsed`
+
+#### items
+
+`private final List<TrackedItem> items`
+
+#### key
+
+`private final String key`
+
+#### title
+
+`private final String title`
+
+### Constructor Detail
+
+#### RowSection
+
+`private RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)`
+
+---
+
+## com.oveduumnakal.StockpilePanel.RowView
+
+_class_
+
+`private static final class RowView`
+
+Cached scaffolding for one tracked-item row (#275): the reusable card, identity labels and favourite
+star built once, plus the `#contentSlot` whose price/compact/loading content is refilled by
+`#populateRow` on a value change, and the `#hoverListener` re-attached to that new content.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final JPanel` | `card` |  |
+| `private final JPanel` | `contentSlot` |  |
+| `private final JLabel` | `favStar` |  |
+| `private final MouseAdapter` | `hoverListener` |  |
+| `private final JLabel` | `iconLabel` |  |
+| `private final int` | `itemId` |  |
+| `private final JLabel` | `nameLabel` |  |
+| `private final JLabel` | `qtyLabel` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)` |  |
+
+### Field Detail
+
+#### card
+
+`private final JPanel card`
+
+#### contentSlot
+
+`private final JPanel contentSlot`
+
+#### favStar
+
+`private final JLabel favStar`
+
+#### hoverListener
+
+`private final MouseAdapter hoverListener`
+
+#### iconLabel
+
+`private final JLabel iconLabel`
+
+#### itemId
+
+`private final int itemId`
+
+#### nameLabel
+
+`private final JLabel nameLabel`
+
+#### qtyLabel
+
+`private final JLabel qtyLabel`
+
+### Constructor Detail
+
+#### RowView
+
+`private RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)`
 
 ---
 
