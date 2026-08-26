@@ -2581,7 +2581,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	 * Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title
 	 * bar and three content columns, echoing the pop-out dashboard's panel layout (#109).
 	 */
-	private static Icon dashboardIcon(Color color)
+	static Icon dashboardIcon(Color color)
 	{
 		int size = 16;
 		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
