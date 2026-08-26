@@ -13387,7 +13387,6 @@ executor.
 | `private static final String` | `LOOT_SACK_OPTION` | Menu option and target substring for the Huntsman's loot sack, whose contents land in the inventory with no reward `ItemContainer` to observe. |
 | `private static final String` | `LOOT_SACK_TARGET` |  |
 | `private static final double` | `MAX_DELTA_PCT` | Maximum plausible Δ% for a notification: changes beyond this magnitude indicate a sparse/stale window average (a near-zero denominator) rather than a real move, and are ignored so a one-shot rule isn't fired on noise. |
-| `private static final String` | `MENU_DIVIDER_LINE` | The blank spacer entry that brackets the Stockpile context-menu section (#285). |
 | `private static final int` | `NATURE_RUNE_ID` |  |
 | `static final int` | `OVERLAY_MAX` | Maximum number of items shown in the on-screen overlay (fixed for now). |
 | `private static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
@@ -13408,7 +13407,7 @@ executor.
 | `private static final int[]` | `RUNE_POUCH_TYPE_VARBITS` |  |
 | `private static final ImmutableSet<Integer>` | `RUNE_POUCH_VARBITS` |  |
 | `private static final Set<String>` | `SECTION_SLOT_KEYS` |  |
-| `private static final int` | `STOCKPILE_GE_SPRITE_ID` |  |
+| `private static final int` | `STOCKPILE_GE_SPRITE_ID` | Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). |
 | `private static final ImmutableSet<Integer>` | `TRACKED_CONTAINERS` |  |
 | `private static final int` | `TRADE_OTHER_CONTAINER` | The partner-side trade container: the offer container id with the "other player" bit set. |
 | `private static final Duration` | `WHATS_NEW_WINDOW` | How long after first launching a new release the "What's New" indicator stays highlighted. |
@@ -13423,6 +13422,7 @@ executor.
 | `private int` | `contextHeldKeyCode` | The key code that set `#contextKeyHeld`, so its release clears the flag even if the bind changes. |
 | `private volatile boolean` | `contextKeyHeld` | True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). |
 | `private final KeyListener` | `contextMenuKeyListener` | Tracks the Context Menu Key so `#onMenuOpened` can offer the section; (un)registered in start/shutdown. |
+| `private final MouseListener` | `contextMenuMouseListener` | Re-syncs `#contextKeyHeld` from the real modifier state carried on each mouse press, so the right-click gate can never stay latched after a missed key release &mdash; e.g. |
 | `private int` | `currentGeItem` | The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). |
 | `private final Map<Integer,DetailWindow>` | `detailWindows` | Open pop-out detail windows keyed by item id (#109). |
 | `private final Set<Integer>` | `doseSwapClaimedIds` | Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). |
@@ -13453,6 +13453,7 @@ executor.
 | `private CostBasisLedger` | `ledger` | The cost-basis / GE trade ledger (#255); this plugin is its `LedgerHost` seam. |
 | `private int` | `magicXpTick` | The tick of the most recent Magic XP gain, marking removed runes as burned by a spellcast (#235). |
 | `private volatile boolean` | `mappingsLoaded` |  |
+| `private MouseManager` | `mouseManager` |  |
 | `private final Map<TileItem,Integer>` | `myDrops` | Ground items this player dropped: the `TileItem` → how many of its units are ours. |
 | `private final Map<Integer,Integer>` | `myTradeOffer` | Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). |
 | `private NavigationButton` | `navButton` |  |
@@ -13490,8 +13491,7 @@ executor.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private void` | `addMenuDivider()` | Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285). |
-| `private void` | `addStockpileMenuSection(int canonicalId, boolean tracked)` | Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. |
+| `private void` | `addStockpileMenuSection(int canonicalId, boolean tracked)` | Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: a single "Stockpile" parent entry whose submenu holds the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard). |
 | `private void` | `addTrackedItem(int itemId)` | Tracks an item by id with defaults (full tracking mode, no preset cost basis). |
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
@@ -13626,6 +13626,7 @@ executor.
 | `private void` | `rebucketScreenOverlays()` | Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. |
 | `private void` | `recomputeWindowStats(TrackedItem tracked)` | Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series. |
 | `private void` | `reconcileAllQuantities()` | Recounts every tracked item from scratch across all containers plus the rune pouch, and reconciles each item's lots to match the true on-hand total (opening or closing lots as needed). |
+| `private void` | `reconcileContextKeyFromMouse(MouseEvent e)` | Sets `#contextKeyHeld` from a mouse event's live modifier state when the Context Menu Key is a modifier (or modifier combo); leaves the flag untouched for a non-modifier keybind, which mouse events cannot report. |
 | `private void` | `recordPortfolioSnapshot()` | Records a portfolio snapshot into the history (persisting throttled): the running value — owned units (held plus suspended) marked to the current average plus sold lots at their actual sale price — against the invested cost basis of every logged lot, which stays fixed as lots sell. |
 | `private void` | `refreshDetailWindows()` | Re-populates every open pop-out window with fresh data. |
 | `private void` | `refreshGePrices()` | Fetches the latest prices for all items in the background, then applies them on the client thread. |
@@ -13807,14 +13808,6 @@ Maximum plausible Δ% for a notification: changes beyond this magnitude
 indicate a sparse/stale window average (a near-zero denominator) rather than
 a real move, and are ignored so a one-shot rule isn't fired on noise.
 
-#### MENU_DIVIDER_LINE
-
-`private static final String MENU_DIVIDER_LINE`
-
-The blank spacer entry that brackets the Stockpile context-menu section (#285). A rendered rule was
-dropped &mdash; the in-game RuneScape font has no box-drawing glyphs and dashes look broken &mdash; so
-an empty option simply leaves a gap above and below the section.
-
 #### NATURE_RUNE_ID
 
 `private static final int NATURE_RUNE_ID`
@@ -13948,6 +13941,8 @@ so suppressing the delta here avoids the phantom login acquisition (#237).
 
 `private static final int STOCKPILE_GE_SPRITE_ID`
 
+Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140).
+
 #### TRACKED_CONTAINERS
 
 `private static final ImmutableSet<Integer> TRACKED_CONTAINERS`
@@ -14010,13 +14005,26 @@ The key code that set `#contextKeyHeld`, so its release clears the flag even if 
 
 `private volatile boolean contextKeyHeld`
 
-True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285).
+True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). Driven by
+`#contextMenuKeyListener`, and &mdash; for a modifier keybind &mdash; re-synced from the actual mouse
+modifier state on every press by `#contextMenuMouseListener`, so a missed key release cannot latch
+it (#292).
 
 #### contextMenuKeyListener
 
 `private final KeyListener contextMenuKeyListener`
 
 Tracks the Context Menu Key so `#onMenuOpened` can offer the section; (un)registered in start/shutdown.
+
+#### contextMenuMouseListener
+
+`private final MouseListener contextMenuMouseListener`
+
+Re-syncs `#contextKeyHeld` from the real modifier state carried on each mouse press, so the right-click
+gate can never stay latched after a missed key release &mdash; e.g. with the bank open, where the canvas keeps
+focus and `focusLost()` never fires (#292). Only meaningful for a modifier-based Context Menu Key (the
+default, Shift); a non-modifier keybind is not reflected in mouse modifiers, so its state is left to the
+`#contextMenuKeyListener`. The event is always returned unchanged.
 
 #### currentGeItem
 
@@ -14172,6 +14180,10 @@ into lava runes) are a genuine recipe input whose basis belongs on the product.
 #### mappingsLoaded
 
 `private volatile boolean mappingsLoaded`
+
+#### mouseManager
+
+`private MouseManager mouseManager`
 
 #### myDrops
 
@@ -14344,19 +14356,14 @@ per-detail request loop keep every popped-out item (tracked or preview) live.
 
 ### Method Detail
 
-#### addMenuDivider
-
-`private void addMenuDivider()`
-
-Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285).
-
 #### addStockpileMenuSection
 
 `private void addStockpileMenuSection(int canonicalId, boolean tracked)`
 
-Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options
-(Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. Entries are inserted so
-they read top-to-bottom in that order; each option is individually toggleable in the config.
+Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: a single "Stockpile"
+parent entry whose submenu holds the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard).
+The children are added so they read top-to-bottom in that order; each option is individually toggleable in
+the config.
 
 #### addTrackedItem
 
@@ -15259,9 +15266,10 @@ Records a ground item and its tile so the ground overlay can outline it, bufferi
 
 `public void onMenuOpened(MenuOpened event)`
 
-Adds Stockpile right-click options to item menu entries, when enabled (#285). A shift+right-click
-shows a bottom section &mdash; Track/Untrack, View in Stockpile, Open in Dashboard &mdash; while a
-plain right-click keeps the single Track/Untrack entry.
+Adds Stockpile right-click options to item menu entries, when enabled (#285). While the Context Menu Key is
+held, a right-click shows a single "Stockpile" entry whose submenu holds Track/Untrack, View in Stockpile,
+and Open in Dashboard. Runs at a negative priority so it fires after default-priority plugins (e.g. the
+menu-entry swapper), keeping the Stockpile entry grouped near the bottom of the menu (#292).
 
 #### onMenuOptionClicked
 
@@ -15472,6 +15480,15 @@ Recounts every tracked item from scratch across all containers plus the rune
 pouch, and reconciles each item's lots to match the true on-hand total
 (opening or closing lots as needed). Used to catch up after login when full
 container state first becomes available.
+
+#### reconcileContextKeyFromMouse
+
+`private void reconcileContextKeyFromMouse(MouseEvent e)`
+
+Sets `#contextKeyHeld` from a mouse event's live modifier state when the Context Menu Key is a modifier
+(or modifier combo); leaves the flag untouched for a non-modifier keybind, which mouse events cannot report.
+
+- **Parameter** `e` — the mouse event whose modifier state to read
 
 #### recordPortfolioSnapshot
 
