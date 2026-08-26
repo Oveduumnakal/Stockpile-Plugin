@@ -24,6 +24,8 @@
  */
 package com.oveduumnakal;
 
+import java.awt.Color;
+import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.time.Duration;
 import java.time.Instant;
@@ -110,12 +112,13 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.input.KeyListener;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
@@ -170,6 +173,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 	/** Client-free persistence layer (#111); built in {@link #startUp()} once gson/config are injected. */
 	private StockpilePersistence persistence;
+
+	@Inject
+	private KeyManager keyManager;
 
 	@Inject
 	private OverlayManager overlayManager;
@@ -320,6 +326,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** The GE offer title/heading orange used for the Track button text, same for both states (#139). */
 	private static final int GE_TITLE_ORANGE = 0xff981f;
 	/** Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). */
+	/**
+	 * The blank spacer entry that brackets the Stockpile context-menu section (#285). A rendered rule was
+	 * dropped &mdash; the in-game RuneScape font has no box-drawing glyphs and dashes look broken &mdash; so
+	 * an empty option simply leaves a gap above and below the section.
+	 */
+	private static final String MENU_DIVIDER_LINE = " ";
+
 	private static final int STOCKPILE_GE_SPRITE_ID = -21140;
 	/** Rendered size, in pixels, of the Stockpile icon on the GE button (#140). */
 	private static final int GE_ICON_SIZE = 25;
@@ -467,6 +480,50 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 	/** Ground items this player dropped: the {@code TileItem} → how many of its units are ours. */
 	private final Map<TileItem, Integer> myDrops = new HashMap<>();
+
+	/** True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). */
+	private volatile boolean contextKeyHeld;
+
+	/** The key code that set {@link #contextKeyHeld}, so its release clears the flag even if the bind changes. */
+	private int contextHeldKeyCode = KeyEvent.VK_UNDEFINED;
+
+	/** Tracks the Context Menu Key so {@link #onMenuOpened} can offer the section; (un)registered in start/shutdown. */
+	private final KeyListener contextMenuKeyListener = new KeyListener()
+	{
+		@Override
+		public boolean isEnabledOnLoginScreen()
+		{
+			return false;
+		}
+
+		@Override
+		public void keyTyped(KeyEvent e)
+		{
+		}
+
+		@Override
+		public void keyPressed(KeyEvent e)
+		{
+			if (config.contextMenuKey().matches(e))
+			{
+				contextKeyHeld = true;
+				contextHeldKeyCode = e.getKeyCode();
+			}
+		}
+
+		@Override
+		public void keyReleased(KeyEvent e)
+		{
+			if (contextKeyHeld && e.getKeyCode() == contextHeldKeyCode)
+				contextKeyHeld = false;
+		}
+
+		@Override
+		public void focusLost()
+		{
+			contextKeyHeld = false;
+		}
+	};
 
 	private StockpilePanel panel;
 	private NavigationButton navButton;
@@ -892,6 +949,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				.build();
 
 		clientToolbar.addNavigation(navButton);
+		keyManager.registerKeyListener(contextMenuKeyListener);
 		clientThread.invokeLater(() -> registerGeButtonSprite(icon));
 		overlayManager.add(highlightOverlay);
 		overlayManager.add(groundOverlay);
@@ -991,6 +1049,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	protected void shutDown() throws Exception
 	{
 		clientToolbar.removeNavigation(navButton);
+		keyManager.unregisterKeyListener(contextMenuKeyListener);
 		overlayManager.remove(highlightOverlay);
 		overlayManager.remove(groundOverlay);
 		screenOverlays.forEach(overlayManager::remove);
@@ -2687,11 +2746,15 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		return high ? composition.getHaPrice() : Math.round(composition.getPrice() * 0.4);
 	}
 
-	/** Adds a "Track Item" / "Stop Tracking" right-click option to item menu entries, when enabled. */
+	/**
+	 * Adds Stockpile right-click options to item menu entries, when enabled (#285). A shift+right-click
+	 * shows a bottom section &mdash; Track/Untrack, View in Stockpile, Open in Dashboard &mdash; while a
+	 * plain right-click keeps the single Track/Untrack entry.
+	 */
 	@Subscribe
 	public void onMenuOpened(MenuOpened event)
 	{
-		if (!config.addContextMenuOption())
+		if (!config.contextMenuEnabled() || !contextKeyHeld)
 			return;
 
 		final MenuEntry[] entries = event.getMenuEntries();
@@ -2704,22 +2767,83 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 			final int canonicalId = itemManager.canonicalize(itemId);
 			final boolean tracked = trackedItems.containsKey(canonicalId);
-
-			client.getMenu().createMenuEntry(1)
-					.setOption(tracked
-							? ColorUtil.prependColorTag("Stop Tracking", config.stopTrackingColor())
-							: ColorUtil.prependColorTag("Track Item", config.trackItemColor()))
-					.setTarget(entry.getTarget())
-					.setType(MenuAction.RUNELITE)
-					.onClick(e ->
-					{
-						if (tracked)
-							removeTrackedItem(canonicalId);
-						else
-							addTrackedItem(canonicalId);
-					});
+			addStockpileMenuSection(canonicalId, tracked);
 			return;
 		}
+	}
+
+	/**
+	 * Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options
+	 * (Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. Entries are inserted so
+	 * they read top-to-bottom in that order; each option is individually toggleable in the config.
+	 */
+	private void addStockpileMenuSection(int canonicalId, boolean tracked)
+	{
+		if (!config.contextMenuTrack() && !config.contextMenuView() && !config.contextMenuDashboard())
+			return;
+
+		addMenuDivider();
+
+		if (config.contextMenuTrack())
+		{
+			client.getMenu().createMenuEntry(1)
+					.setOption(tracked ? "Stop Tracking" : "Track")
+					.setType(MenuAction.RUNELITE)
+					.onClick(e -> toggleTracked(canonicalId, tracked));
+		}
+
+		if (config.contextMenuView())
+		{
+			client.getMenu().createMenuEntry(1)
+					.setOption("View in Stockpile")
+					.setType(MenuAction.RUNELITE)
+					.onClick(e -> viewInStockpile(canonicalId));
+		}
+
+		if (config.contextMenuDashboard())
+		{
+			client.getMenu().createMenuEntry(1)
+					.setOption("Open in Dashboard")
+					.setType(MenuAction.RUNELITE)
+					.onClick(e -> SwingUtilities.invokeLater(() -> popOutDetail(canonicalId)));
+		}
+
+		addMenuDivider();
+	}
+
+	/** Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285). */
+	private void addMenuDivider()
+	{
+		client.getMenu().createMenuEntry(1)
+				.setOption(MENU_DIVIDER_LINE)
+				.setType(MenuAction.RUNELITE);
+	}
+
+	/** Tracks or untracks {@code canonicalId} from a right-click menu action. */
+	private void toggleTracked(int canonicalId, boolean tracked)
+	{
+		if (tracked)
+			removeTrackedItem(canonicalId);
+		else
+			addTrackedItem(canonicalId);
+	}
+
+	/**
+	 * Opens {@code itemId}'s detailed view in the sidebar panel (a preview when untracked) and focuses the
+	 * Stockpile panel &mdash; the "View in Stockpile" menu action (#285).
+	 */
+	private void viewInStockpile(int itemId)
+	{
+		if (itemId <= 0)
+			return;
+
+		int canonicalId = itemManager.canonicalize(itemId);
+		if (trackedItems.containsKey(canonicalId))
+			SwingUtilities.invokeLater(() -> panel.openTrackedDetail(canonicalId));
+		else
+			previewItem(canonicalId);
+
+		SwingUtilities.invokeLater(() -> clientToolbar.openPanel(navButton));
 	}
 
 	/** @return the item id behind a menu entry (ground item or inventory/bank widget), or -1 if none. */

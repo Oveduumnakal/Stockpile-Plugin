@@ -178,6 +178,12 @@ public class DetailView extends JPanel implements Scrollable
 	private static final String PRICES_BASE = "https://prices.runescape.wiki/osrs/item/";
 	private static final String WIKI_HOME = "https://oldschool.runescape.wiki/";
 	private static final String PRICES_HOME = "https://prices.runescape.wiki/osrs/";
+
+	/** Foreground of the detail header's Track button (green) — a preview can be tracked. */
+	private static final Color TRACK_BTN_COLOR = new Color(0xd8, 0xfb, 0xd4);
+
+	/** Foreground of the detail header's Untrack button (red) — a tracked item can be dropped. */
+	private static final Color UNTRACK_BTN_COLOR = new Color(0xfb, 0xd4, 0xd4);
 	private static final TimeWindow[] OVERVIEW_WINDOWS = {
 			TimeWindow.LIVE, TimeWindow.M5, TimeWindow.H1, TimeWindow.H3, TimeWindow.H6, TimeWindow.H12,
 			TimeWindow.H24, TimeWindow.WEEK, TimeWindow.MONTH, TimeWindow.MONTH3,
@@ -3027,7 +3033,7 @@ public class DetailView extends JPanel implements Scrollable
 
 		detailItemTracked = !viewOnly;
 		detailTrackBtn.setText(viewOnly ? "Track" : "Untrack");
-		detailTrackBtn.setForeground(viewOnly ? config.trackItemColor() : config.stopTrackingColor());
+		detailTrackBtn.setForeground(viewOnly ? TRACK_BTN_COLOR : UNTRACK_BTN_COLOR);
 
 		rebuildOverviewGrid();
 		applyDetailSectionLayout();
