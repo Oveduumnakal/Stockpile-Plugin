@@ -5,6 +5,7 @@
 package com.oveduumnakal;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,7 +163,7 @@ public final class PortfolioHistory
 				agg[2] += p[2];
 			}
 
-		aggregateCache = new ArrayList<>(byEpoch.values());
+		aggregateCache = Collections.unmodifiableList(new ArrayList<>(byEpoch.values()));
 		aggregateDirty = false;
 		return aggregateCache;
 	}
