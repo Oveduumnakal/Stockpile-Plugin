@@ -26,6 +26,7 @@ package com.oveduumnakal;
 
 import java.awt.Color;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.time.Duration;
 import java.time.Instant;
@@ -71,6 +72,7 @@ import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Skill;
@@ -107,6 +109,7 @@ import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -114,6 +117,8 @@ import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
+import net.runelite.client.input.MouseListener;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -176,6 +181,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 	@Inject
 	private KeyManager keyManager;
+
+	@Inject
+	private MouseManager mouseManager;
 
 	@Inject
 	private OverlayManager overlayManager;
@@ -326,13 +334,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** The GE offer title/heading orange used for the Track button text, same for both states (#139). */
 	private static final int GE_TITLE_ORANGE = 0xff981f;
 	/** Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). */
-	/**
-	 * The blank spacer entry that brackets the Stockpile context-menu section (#285). A rendered rule was
-	 * dropped &mdash; the in-game RuneScape font has no box-drawing glyphs and dashes look broken &mdash; so
-	 * an empty option simply leaves a gap above and below the section.
-	 */
-	private static final String MENU_DIVIDER_LINE = " ";
-
 	private static final int STOCKPILE_GE_SPRITE_ID = -21140;
 	/** Rendered size, in pixels, of the Stockpile icon on the GE button (#140). */
 	private static final int GE_ICON_SIZE = 25;
@@ -481,7 +482,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** Ground items this player dropped: the {@code TileItem} → how many of its units are ours. */
 	private final Map<TileItem, Integer> myDrops = new HashMap<>();
 
-	/** True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). */
+	/**
+	 * True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). Driven by
+	 * {@link #contextMenuKeyListener}, and &mdash; for a modifier keybind &mdash; re-synced from the actual mouse
+	 * modifier state on every press by {@link #contextMenuMouseListener}, so a missed key release cannot latch
+	 * it (#292).
+	 */
 	private volatile boolean contextKeyHeld;
 
 	/** The key code that set {@link #contextKeyHeld}, so its release clears the flag even if the bind changes. */
@@ -524,6 +530,76 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			contextKeyHeld = false;
 		}
 	};
+
+	/**
+	 * Re-syncs {@link #contextKeyHeld} from the real modifier state carried on each mouse press, so the right-click
+	 * gate can never stay latched after a missed key release &mdash; e.g. with the bank open, where the canvas keeps
+	 * focus and {@code focusLost()} never fires (#292). Only meaningful for a modifier-based Context Menu Key (the
+	 * default, Shift); a non-modifier keybind is not reflected in mouse modifiers, so its state is left to the
+	 * {@link #contextMenuKeyListener}. The event is always returned unchanged.
+	 */
+	private final MouseListener contextMenuMouseListener = new MouseListener()
+	{
+		@Override
+		public MouseEvent mousePressed(MouseEvent e)
+		{
+			reconcileContextKeyFromMouse(e);
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseClicked(MouseEvent e)
+		{
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseReleased(MouseEvent e)
+		{
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseEntered(MouseEvent e)
+		{
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseExited(MouseEvent e)
+		{
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseDragged(MouseEvent e)
+		{
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseMoved(MouseEvent e)
+		{
+			return e;
+		}
+	};
+
+	/**
+	 * Sets {@link #contextKeyHeld} from a mouse event's live modifier state when the Context Menu Key is a modifier
+	 * (or modifier combo); leaves the flag untouched for a non-modifier keybind, which mouse events cannot report.
+	 *
+	 * @param e the mouse event whose modifier state to read
+	 */
+	private void reconcileContextKeyFromMouse(MouseEvent e)
+	{
+		final Keybind bind = config.contextMenuKey();
+		final Integer keyMask = Keybind.getModifierForKeyCode(bind.getKeyCode());
+		if (keyMask == null)
+			return;
+
+		final int required = keyMask | bind.getModifiers();
+		contextKeyHeld = (e.getModifiersEx() & required) == required;
+	}
 
 	private StockpilePanel panel;
 	private NavigationButton navButton;
@@ -950,6 +1026,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		clientToolbar.addNavigation(navButton);
 		keyManager.registerKeyListener(contextMenuKeyListener);
+		mouseManager.registerMouseListener(contextMenuMouseListener);
 		clientThread.invokeLater(() -> registerGeButtonSprite(icon));
 		overlayManager.add(highlightOverlay);
 		overlayManager.add(groundOverlay);
@@ -1050,6 +1127,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	{
 		clientToolbar.removeNavigation(navButton);
 		keyManager.unregisterKeyListener(contextMenuKeyListener);
+		mouseManager.unregisterMouseListener(contextMenuMouseListener);
 		overlayManager.remove(highlightOverlay);
 		overlayManager.remove(groundOverlay);
 		screenOverlays.forEach(overlayManager::remove);
@@ -2747,11 +2825,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * Adds Stockpile right-click options to item menu entries, when enabled (#285). A shift+right-click
-	 * shows a bottom section &mdash; Track/Untrack, View in Stockpile, Open in Dashboard &mdash; while a
-	 * plain right-click keeps the single Track/Untrack entry.
+	 * Adds Stockpile right-click options to item menu entries, when enabled (#285). While the Context Menu Key is
+	 * held, a right-click shows a single "Stockpile" entry whose submenu holds Track/Untrack, View in Stockpile,
+	 * and Open in Dashboard. Runs at a negative priority so it fires after default-priority plugins (e.g. the
+	 * menu-entry swapper), keeping the Stockpile entry grouped near the bottom of the menu (#292).
 	 */
-	@Subscribe
+	@Subscribe(priority = -1f)
 	public void onMenuOpened(MenuOpened event)
 	{
 		if (!config.contextMenuEnabled() || !contextKeyHeld)
@@ -2773,20 +2852,25 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options
-	 * (Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. Entries are inserted so
-	 * they read top-to-bottom in that order; each option is individually toggleable in the config.
+	 * Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: a single "Stockpile"
+	 * parent entry whose submenu holds the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard).
+	 * The children are added so they read top-to-bottom in that order; each option is individually toggleable in
+	 * the config.
 	 */
 	private void addStockpileMenuSection(int canonicalId, boolean tracked)
 	{
 		if (!config.contextMenuTrack() && !config.contextMenuView() && !config.contextMenuDashboard())
 			return;
 
-		addMenuDivider();
+		final Menu submenu = client.getMenu()
+				.createMenuEntry(1)
+				.setOption("Stockpile")
+				.setType(MenuAction.RUNELITE)
+				.createSubMenu();
 
 		if (config.contextMenuTrack())
 		{
-			client.getMenu().createMenuEntry(1)
+			submenu.createMenuEntry(0)
 					.setOption(tracked ? "Stop Tracking" : "Track")
 					.setType(MenuAction.RUNELITE)
 					.onClick(e -> toggleTracked(canonicalId, tracked));
@@ -2794,7 +2878,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		if (config.contextMenuView())
 		{
-			client.getMenu().createMenuEntry(1)
+			submenu.createMenuEntry(0)
 					.setOption("View in Stockpile")
 					.setType(MenuAction.RUNELITE)
 					.onClick(e -> viewInStockpile(canonicalId));
@@ -2802,21 +2886,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		if (config.contextMenuDashboard())
 		{
-			client.getMenu().createMenuEntry(1)
+			submenu.createMenuEntry(0)
 					.setOption("Open in Dashboard")
 					.setType(MenuAction.RUNELITE)
 					.onClick(e -> SwingUtilities.invokeLater(() -> popOutDetail(canonicalId)));
 		}
-
-		addMenuDivider();
-	}
-
-	/** Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285). */
-	private void addMenuDivider()
-	{
-		client.getMenu().createMenuEntry(1)
-				.setOption(MENU_DIVIDER_LINE)
-				.setType(MenuAction.RUNELITE);
 	}
 
 	/** Tracks or untracks {@code canonicalId} from a right-click menu action. */
