@@ -13374,6 +13374,7 @@ executor.
 | `private static final String` | `EMPTY_CONTAINERS_MESSAGE` |  |
 | `private static final int` | `FIRE_RUNE_ID` |  |
 | `private static final Set<Skill>` | `GATHERING_SKILLS` | Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213). |
+| `private static final Pattern` | `GE_ACTIVE_PRICE_LINE` | The native "Actively traded price" segment of the GE info block, rewritten every tick (#288). |
 | `private static final int` | `GE_DESC_HEIGHT` | Height the GE info-block text widget is grown to so its fourth row is not self-clipped (#142). |
 | `private static final int` | `GE_ICON_SIZE` | Rendered size, in pixels, of the Stockpile icon on the GE button (#140). |
 | `private static final int` | `GE_LOGIN_SYNC_TICKS` | Ticks after login during which `GrandExchangeOfferChanged` events are treated as the login offer sync (pre-existing offers) rather than user actions. |
@@ -13732,6 +13733,12 @@ terminal-consumption tick, bounded to the number of vessels emptied.
 `private static final Set<Skill> GATHERING_SKILLS`
 
 Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213).
+
+#### GE_ACTIVE_PRICE_LINE
+
+`private static final Pattern GE_ACTIVE_PRICE_LINE`
+
+The native "Actively traded price" segment of the GE info block, rewritten every tick (#288).
 
 #### GE_DESC_HEIGHT
 
