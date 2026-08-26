@@ -17,7 +17,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   View-only mode lets you look up any item's prices and charts without adding it to your list.
 
-  <img src="docs/img/01-tracked-list.gif" alt="The Stockpile panel showing a tracked list with live prices, values, and daily changes" width="270"> <img src="docs/img/02-view-only.gif" alt="Looking up an item's prices and charts in view-only mode without tracking it" width="270">
+  <a href="docs/img/01-tracked-list.gif" title="Click to play the animation"><img src="docs/img/01-tracked-list-still.png" alt="The Stockpile panel showing a tracked list with live prices, values, and daily changes" width="270"></a> <a href="docs/img/02-view-only.gif" title="Click to play the animation"><img src="docs/img/02-view-only-still.png" alt="Looking up an item's prices and charts in view-only mode without tracking it" width="270"></a>
 
 ### Track your items and your profit
 
@@ -35,7 +35,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Each item has its own collection log showing every batch you gained or lost, where it came from — Grand Exchange, shop, trade, ground, and so on — and what it cost. If something looks off, you can edit the entries yourself to correct or fill in your history.
 
-  <img src="docs/img/05-collection-log.gif" alt="An item's collection log listing batches from the Grand Exchange, shops, trades, and the ground">
+  <a href="docs/img/05-collection-log.gif" title="Click to play the animation"><img src="docs/img/05-collection-log-still.png" alt="An item's collection log listing batches from the Grand Exchange, shops, trades, and the ground"></a>
 
 - **Session stats**
 
@@ -49,13 +49,13 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Every item has graphs of its price and how much of it is being traded, from one day back to a full year. Hover to read exact values, or pop a graph out into its own window for a bigger look.
 
-  <img src="docs/img/07-price-volume-charts.png" alt="Price and volume graphs in an item's detail view" width="30%"> <img src="docs/img/08-chart-popout.gif" alt="A price chart popped out into its own resizable window next to the client" width="68%">
+  <img src="docs/img/07-price-volume-charts.png" alt="Price and volume graphs in an item's detail view" width="30%"> <a href="docs/img/08-chart-popout.gif" title="Click to play the animation"><img src="docs/img/08-chart-popout-still.png" alt="A price chart popped out into its own resizable window next to the client" width="68%"></a>
 
 - **Watch your collection grow**
 
   A chart of your whole collection's value over time, with a line for how you've done since login. If you remove an item, the chart's history corrects itself too.
 
-  <img src="docs/img/09-portfolio-history.gif" alt="The portfolio value history chart showing the collection's worth over several weeks" width="700">
+  <a href="docs/img/09-portfolio-history.gif" title="Click to play the animation"><img src="docs/img/09-portfolio-history-still.png" alt="The portfolio value history chart showing the collection's worth over several weeks" width="700"></a>
 
 ### Detailed market information
 
@@ -81,19 +81,19 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Pin your favourites to the top, group items into your own collapsible categories, or let the plugin sort everything into sensible groups with one click. You can also sort by name, value, profit, or how much the price moved today, or simply drag items into any order you like.
 
-  <img src="docs/img/13-categories-favourites.png" alt="The tracked list grouped into collapsible categories with favourites pinned on top" width="30%"> <img src="docs/img/14-auto-categorize.gif" alt="One click on auto-categorize reorganizing the list into sensible groups" width="68%">
+  <img src="docs/img/13-categories-favourites.png" alt="The tracked list grouped into collapsible categories with favourites pinned on top" width="30%"> <a href="docs/img/14-auto-categorize.gif" title="Click to play the animation"><img src="docs/img/14-auto-categorize-still.png" alt="One click on auto-categorize reorganizing the list into sensible groups" width="68%"></a>
 
 - **Handle long lists**
 
   A compact layout fits more items on screen, and a filter box narrows a long list down to what you're looking for in a couple of keystrokes.
 
-  <img src="docs/img/15-compact-vs-standard.gif" alt="The same list in compact and standard layouts"> <img src="docs/img/16-filter-box.gif" alt="Typing in the filter box narrowing the list">
+  <a href="docs/img/15-compact-vs-standard.gif" title="Click to play the animation"><img src="docs/img/15-compact-vs-standard-still.png" alt="The same list in compact and standard layouts"></a> <a href="docs/img/16-filter-box.gif" title="Click to play the animation"><img src="docs/img/16-filter-box-still.png" alt="Typing in the filter box narrowing the list"></a>
 
 - **Share and back up**
 
   Export your history to a spreadsheet, or share your tracked list with a friend (or back it up) using a short code.
 
-  <img src="docs/img/17-share-export.gif" alt="The share and export dialog with the list's share code">
+  <a href="docs/img/17-share-export.gif" title="Click to play the animation"><img src="docs/img/17-share-export-still.png" alt="The share and export dialog with the list's share code"></a>
 
 ### On-screen overlays and game integration
 
@@ -107,13 +107,13 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Tracked items are highlighted on the ground and in your inventory so they stand out.
 
-  <img src="docs/img/19-item-highlights.gif" alt="A tracked item highlighted on the ground and in the inventory">
+  <a href="docs/img/19-item-highlights.gif" title="Click to play the animation"><img src="docs/img/19-item-highlights-still.png" alt="A tracked item highlighted on the ground and in the inventory"></a>
 
 - **Jump in from the Grand Exchange**
 
   Opening a Grand Exchange offer can open that item in Stockpile automatically, or add a "View in Stockpile" button to the offer screen.
 
-  <img src="docs/img/20-ge-integration.gif" alt="Clicking the View in Stockpile button on a Grand Exchange offer, opening the item in the panel" width="700">
+  <a href="docs/img/20-ge-integration.gif" title="Click to play the animation"><img src="docs/img/20-ge-integration-still.png" alt="Clicking the View in Stockpile button on a Grand Exchange offer, opening the item in the panel" width="700"></a>
 
 ### Price alerts
 
@@ -121,7 +121,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   Set alerts per item — for example "tell me when the price goes above 1,000" — on price, percent change, trade volume, or market ratings. Alerts arrive through RuneLite's normal notifications, and they can re-arm so you're told again the next time it happens.
 
-  <img src="docs/img/21-alert-editor.png" alt="The alert rule editor with a price threshold rule being set up" width="30%"> <img src="docs/img/22-alert-firing.gif" alt="A RuneLite notification for a triggered price alert" width="68%">
+  <img src="docs/img/21-alert-editor.png" alt="The alert rule editor with a price threshold rule being set up" width="30%"> <a href="docs/img/22-alert-firing.gif" title="Click to play the animation"><img src="docs/img/22-alert-firing-still.png" alt="A RuneLite notification for a triggered price alert" width="68%"></a>
 
 ## Links
 
