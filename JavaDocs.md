@@ -1273,6 +1273,7 @@ smoke-test — unit-testable in isolation.
 | `private int` | `realizeOpenLots(List<AcquisitionRecord> records, int remaining, long soldAtPrice, AcquisitionSource sellSource, AcquisitionSource onlySource)` | Realizes up to `remaining` units across the open lots oldest-first, closing (or splitting) each at `soldAtPrice` with `sellSource` and merging into a matching closed lot where possible. |
 | `private void` | `realizeSell(int itemId, int qty, long unitPrice)` | Realizes a completed GE sell fill against its SELL suspension, then debounces a GE-state save. |
 | `void` | `realizeTradeSale(int itemId, int qty, long unitPrice)` | Realizes a completed player trade against its `SuspensionSource#TRADE` suspension — the same shortfall-parking race fix the GE sell path carries (#175), so a same-tick offer+accept that outruns the offer's inventory decrease no longer drops the sale. |
+| `private void` | `reconcileBuyLedgerFromOffers(GrandExchangeOffer[] offers)` | Reconciles the durable GE buy ledger against the live buy offers at login (#259): sums the filled-but-still-in-GE quantity of every open BUY offer per item and prunes durable claims beyond it, dropping orphaned buys that were collected long ago and would otherwise misprice later FIFO collections. |
 | `void` | `reconcileSuspendedFromOffers()` | Rewrites `suspendedQuantity` from the live open sell offers plus the pending cancelled-sell returns (units cancelled but not yet collected, which are still the player's), so offline fills or cancels self-heal at login; released units are then re-priced by the caller's reconcile. |
 | `private void` | `recordBuyLimit(int itemId, int qty)` | Accumulates a GE purchase into the item's rolling buy-limit window, rolling the window over when it expires. |
 | `void` | `resetForLogin()` | Clears the transient session ledger state carried at login (matches the pre-#255 login reset). |
@@ -1933,6 +1934,16 @@ Realizes a completed GE sell fill against its SELL suspension, then debounces a 
 Realizes a completed player trade against its `SuspensionSource#TRADE` suspension —
 the same shortfall-parking race fix the GE sell path carries (#175), so a same-tick offer+accept
 that outruns the offer's inventory decrease no longer drops the sale.
+
+#### reconcileBuyLedgerFromOffers
+
+`private void reconcileBuyLedgerFromOffers(GrandExchangeOffer[] offers)`
+
+Reconciles the durable GE buy ledger against the live buy offers at login (#259): sums the
+filled-but-still-in-GE quantity of every open BUY offer per item and prunes durable claims beyond it,
+dropping orphaned buys that were collected long ago and would otherwise misprice later FIFO
+collections. An uncollected buy keeps its offer open across logins, so its claim is preserved.
+Persists the trimmed ledger when anything was pruned.
 
 #### reconcileSuspendedFromOffers
 
@@ -8970,9 +8981,10 @@ pricing is the caller's legacy policy.
 mis-price an unrelated later change. GE buys instead register `#claimDurable durable` claims (#180): a GE fill and its collected inventory
 gain can be many ticks apart and must survive a logout, so durable claims
 carry no TTL, are matched by their own `#attributeDurable` path, and
-`#exportDurable serialize` as the persisted GE buy ledger. All
-operations are O(open claims) with no allocation when idle, keeping the
-per-tick cost negligible; the class touches no client types, so it is
+`#exportDurable serialize` as the persisted GE buy ledger. They live
+in a separate deque, so the per-tick `#attribute`/`#expire` scans stay
+O(ordinary open claims) no matter how many uncollected buys are outstanding (#259),
+with no allocation when idle; the class touches no client types, so it is
 unit-testable in isolation.
 
 ### Nested Type Summary
@@ -8988,6 +9000,7 @@ unit-testable in isolation.
 |---|---|---|
 | `static final int` | `CLAIM_TTL_TICKS` | How many ticks a claim stays valid before `#expire` discards it. |
 | `private final Deque<Claim>` | `claims` |  |
+| `private final Deque<Claim>` | `durableClaims` | Durable (GE buy) claims, kept apart from `#claims` so the per-tick `#attribute` and `#expire` scans never walk them &mdash; an uncollected buy can outlive many ticks without inflating the per-tick cost (#259). |
 
 ### Method Summary
 
@@ -9002,6 +9015,7 @@ unit-testable in isolation.
 | `void` | `expire(int currentTick)` | Discards expired ordinary claims; call once per tick. |
 | `Map<Integer,List<long[]>>` | `exportDurable()` | Serializes the open durable (GE buy) claims as the persisted GE buy ledger: item id to a FIFO list of `{quantity, unitPrice`} chunks. |
 | `void` | `importDurable(Map<Integer,List<long[]>> ledger)` | Rebuilds the durable (GE buy) claims from a persisted ledger; the reloaded chunks are GE trades. |
+| `boolean` | `reconcileDurable(Map<Integer,Integer> outstandingByItem)` | Prunes orphaned durable (GE buy) claims (#259): caps each item's durable claims, oldest-first, to the quantity still outstanding in the live GE buy offers (`outstandingByItem`). |
 
 ### Field Detail
 
@@ -9014,6 +9028,14 @@ How many ticks a claim stays valid before `#expire` discards it.
 #### claims
 
 `private final Deque<Claim> claims`
+
+#### durableClaims
+
+`private final Deque<Claim> durableClaims`
+
+Durable (GE buy) claims, kept apart from `#claims` so the per-tick `#attribute` and
+`#expire` scans never walk them &mdash; an uncollected buy can outlive many ticks without
+inflating the per-tick cost (#259). Matched only by `#attributeDurable`.
 
 ### Method Detail
 
@@ -9086,6 +9108,19 @@ always written, so no schema change results from folding the ledger into the cor
 
 Rebuilds the durable (GE buy) claims from a persisted ledger; the reloaded chunks are GE
 trades. Call after `#clearDurable` so a login replaces rather than duplicates them.
+
+#### reconcileDurable
+
+`boolean reconcileDurable(Map<Integer,Integer> outstandingByItem)`
+
+Prunes orphaned durable (GE buy) claims (#259): caps each item's durable claims, oldest-first, to the
+quantity still outstanding in the live GE buy offers (`outstandingByItem`). A buy that was never
+collected keeps its offer open across logins, so its claim survives; buys collected long ago (their offer
+slot now empty) leave orphaned claims that would misprice a later FIFO collection, so the excess beyond
+what is still outstanding is dropped. Items absent from `outstandingByItem` are treated as zero
+outstanding. Idempotent: re-running with the same offers prunes nothing further.
+
+- **Returns:** `true` if any durable claim quantity was pruned
 
 ---
 
@@ -9164,7 +9199,6 @@ One registered expectation of a quantity change.
 
 | Modifier and Type | Field | Description |
 |---|---|---|
-| `final boolean` | `durable` |  |
 | `final int` | `expiryTick` |  |
 | `final int` | `itemId` |  |
 | `int` | `quantity` |  |
@@ -9175,13 +9209,9 @@ One registered expectation of a quantity change.
 
 | Constructor | Description |
 |---|---|
-| `Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick, boolean durable)` |  |
+| `Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick)` |  |
 
 ### Field Detail
-
-#### durable
-
-`final boolean durable`
 
 #### expiryTick
 
@@ -9207,7 +9237,7 @@ One registered expectation of a quantity change.
 
 #### Claim
 
-`Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick, boolean durable)`
+`Claim(AcquisitionSource source, int itemId, int quantity, long unitPrice, int expiryTick)`
 
 ---
 

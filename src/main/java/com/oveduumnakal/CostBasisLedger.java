@@ -852,6 +852,37 @@ class CostBasisLedger
 		pendingRealize.clear();
 		seedCancelledSellReturns(offers);
 		reconcileSuspendedFromOffers();
+		reconcileBuyLedgerFromOffers(offers);
+	}
+
+	/**
+	 * Reconciles the durable GE buy ledger against the live buy offers at login (#259): sums the
+	 * filled-but-still-in-GE quantity of every open BUY offer per item and prunes durable claims beyond it,
+	 * dropping orphaned buys that were collected long ago and would otherwise misprice later FIFO
+	 * collections. An uncollected buy keeps its offer open across logins, so its claim is preserved.
+	 * Persists the trimmed ledger when anything was pruned.
+	 */
+	private void reconcileBuyLedgerFromOffers(GrandExchangeOffer[] offers)
+	{
+		Map<Integer, Integer> outstanding = new HashMap<>();
+		if (offers != null)
+		{
+			for (GrandExchangeOffer offer : offers)
+			{
+				if (offer == null)
+					continue;
+
+				GrandExchangeOfferState state = offer.getState();
+				boolean openBuy = state == GrandExchangeOfferState.BUYING
+						|| state == GrandExchangeOfferState.BOUGHT
+						|| state == GrandExchangeOfferState.CANCELLED_BUY;
+				if (openBuy && offer.getQuantitySold() > 0)
+					outstanding.merge(offer.getItemId(), offer.getQuantitySold(), Integer::sum);
+			}
+		}
+
+		if (sourceAttribution.reconcileDurable(outstanding))
+			scheduleGeStateSave();
 	}
 
 	/**

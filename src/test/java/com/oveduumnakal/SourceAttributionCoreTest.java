@@ -11,6 +11,7 @@ import java.util.Map;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -177,5 +178,81 @@ public class SourceAttributionCoreTest
 		core.importDurable(empty);
 
 		assertTrue(core.attributeDurable(560, 10).isEmpty());
+	}
+
+	@Test
+	public void reconcileDropsOrphanedOldestBuysBeyondOutstanding()
+	{
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 100, 705);
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 1, 727);
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 1, 695);
+
+		Map<Integer, Integer> outstanding = new HashMap<>();
+		outstanding.put(383, 2);
+
+		assertTrue("the 100-unit orphan is pruned", core.reconcileDurable(outstanding));
+
+		List<long[]> chunks = core.attributeDurable(383, 2);
+		assertEquals("only the two recent buys remain", 2, chunks.size());
+		assertEquals(727, chunks.get(0)[1]);
+		assertEquals(695, chunks.get(1)[1]);
+		assertTrue("nothing is left behind the recent buys", core.attributeDurable(383, 1).isEmpty());
+	}
+
+	@Test
+	public void reconcileWithNoOutstandingPrunesEveryClaimForItem()
+	{
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 100, 705);
+
+		assertTrue(core.reconcileDurable(new HashMap<>()));
+		assertTrue("a fully-collected item's ledger is emptied", core.attributeDurable(383, 100).isEmpty());
+	}
+
+	@Test
+	public void reconcileKeepsClaimsFullyBackedByOpenOffers()
+	{
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 5, 700);
+
+		Map<Integer, Integer> outstanding = new HashMap<>();
+		outstanding.put(383, 5);
+
+		assertFalse("nothing is pruned when the ledger matches the outstanding qty",
+				core.reconcileDurable(outstanding));
+		assertEquals(5, core.attributeDurable(383, 5).get(0)[0]);
+	}
+
+	@Test
+	public void reconcileIsIdempotent()
+	{
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 100, 705);
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 2, 720);
+
+		Map<Integer, Integer> outstanding = new HashMap<>();
+		outstanding.put(383, 2);
+
+		assertTrue("the first pass prunes the orphan", core.reconcileDurable(outstanding));
+		assertFalse("a second pass with the same offers prunes nothing further",
+				core.reconcileDurable(outstanding));
+		assertEquals(2, core.attributeDurable(383, 2).get(0)[0]);
+	}
+
+	@Test
+	public void reconcileIsPerItemAndLeavesBackedItemsAlone()
+	{
+		core.claimDurable(AcquisitionSource.GE_TRADE, 383, 100, 705);
+		core.claimDurable(AcquisitionSource.GE_TRADE, 560, 4, 90);
+
+		Map<Integer, Integer> outstanding = new HashMap<>();
+		outstanding.put(560, 4);
+
+		assertTrue(core.reconcileDurable(outstanding));
+		assertTrue("the orphaned item is pruned", core.attributeDurable(383, 100).isEmpty());
+		assertEquals("the backed item is untouched", 90, core.attributeDurable(560, 4).get(0)[1]);
+	}
+
+	@Test
+	public void reconcileEmptyLedgerReturnsFalse()
+	{
+		assertFalse(core.reconcileDurable(new HashMap<>()));
 	}
 }
