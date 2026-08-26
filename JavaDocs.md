@@ -13161,8 +13161,7 @@ executor.
 | `private static final String` | `LOOT_SACK_OPTION` | Menu option and target substring for the Huntsman's loot sack, whose contents land in the inventory with no reward `ItemContainer` to observe. |
 | `private static final String` | `LOOT_SACK_TARGET` |  |
 | `private static final double` | `MAX_DELTA_PCT` | Maximum plausible Δ% for a notification: changes beyond this magnitude indicate a sparse/stale window average (a near-zero denominator) rather than a real move, and are ignored so a one-shot rule isn't fired on noise. |
-| `private static final Color` | `MENU_DIVIDER_COLOR` | Muted colour of a Stockpile context-menu divider line (#285). |
-| `private static final String` | `MENU_DIVIDER_LINE` | The line drawn for a Stockpile context-menu divider (#285). |
+| `private static final String` | `MENU_DIVIDER_LINE` | The blank spacer entry that brackets the Stockpile context-menu section (#285). |
 | `private static final int` | `NATURE_RUNE_ID` |  |
 | `static final int` | `OVERLAY_MAX` | Maximum number of items shown in the on-screen overlay (fixed for now). |
 | `private static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
@@ -13265,7 +13264,7 @@ executor.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private void` | `addMenuDivider()` | Adds a non-interactive divider line to bracket the Stockpile context-menu section (#285). |
+| `private void` | `addMenuDivider()` | Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285). |
 | `private void` | `addStockpileMenuSection(int canonicalId, boolean tracked)` | Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. |
 | `private void` | `addTrackedItem(int itemId)` | Tracks an item by id with defaults (full tracking mode, no preset cost basis). |
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
@@ -13582,17 +13581,13 @@ Maximum plausible Δ% for a notification: changes beyond this magnitude
 indicate a sparse/stale window average (a near-zero denominator) rather than
 a real move, and are ignored so a one-shot rule isn't fired on noise.
 
-#### MENU_DIVIDER_COLOR
-
-`private static final Color MENU_DIVIDER_COLOR`
-
-Muted colour of a Stockpile context-menu divider line (#285).
-
 #### MENU_DIVIDER_LINE
 
 `private static final String MENU_DIVIDER_LINE`
 
-The line drawn for a Stockpile context-menu divider (#285).
+The blank spacer entry that brackets the Stockpile context-menu section (#285). A rendered rule was
+dropped &mdash; the in-game RuneScape font has no box-drawing glyphs and dashes look broken &mdash; so
+an empty option simply leaves a gap above and below the section.
 
 #### NATURE_RUNE_ID
 
@@ -14127,7 +14122,7 @@ per-detail request loop keep every popped-out item (tracked or preview) live.
 
 `private void addMenuDivider()`
 
-Adds a non-interactive divider line to bracket the Stockpile context-menu section (#285).
+Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285).
 
 #### addStockpileMenuSection
 

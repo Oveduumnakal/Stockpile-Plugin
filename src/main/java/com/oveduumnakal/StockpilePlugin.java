@@ -119,7 +119,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
@@ -327,11 +326,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** The GE offer title/heading orange used for the Track button text, same for both states (#139). */
 	private static final int GE_TITLE_ORANGE = 0xff981f;
 	/** Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). */
-	/** The line drawn for a Stockpile context-menu divider (#285). */
-	private static final String MENU_DIVIDER_LINE = "──────────";
-
-	/** Muted colour of a Stockpile context-menu divider line (#285). */
-	private static final Color MENU_DIVIDER_COLOR = new Color(0x5f, 0x5f, 0x5f);
+	/**
+	 * The blank spacer entry that brackets the Stockpile context-menu section (#285). A rendered rule was
+	 * dropped &mdash; the in-game RuneScape font has no box-drawing glyphs and dashes look broken &mdash; so
+	 * an empty option simply leaves a gap above and below the section.
+	 */
+	private static final String MENU_DIVIDER_LINE = " ";
 
 	private static final int STOCKPILE_GE_SPRITE_ID = -21140;
 	/** Rendered size, in pixels, of the Stockpile icon on the GE button (#140). */
@@ -2811,11 +2811,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		addMenuDivider();
 	}
 
-	/** Adds a non-interactive divider line to bracket the Stockpile context-menu section (#285). */
+	/** Adds a non-interactive blank spacer entry to bracket the Stockpile context-menu section (#285). */
 	private void addMenuDivider()
 	{
 		client.getMenu().createMenuEntry(1)
-				.setOption(ColorUtil.prependColorTag(MENU_DIVIDER_LINE, MENU_DIVIDER_COLOR))
+				.setOption(MENU_DIVIDER_LINE)
 				.setType(MenuAction.RUNELITE);
 	}
 
