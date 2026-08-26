@@ -1440,8 +1440,9 @@ public class DetailView extends JPanel implements Scrollable
 		headerControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		headerControls.add(detailTrackBtn);
 
-		detailPopOutBtn = buildPopoutButton(() -> host.popOut(boundItemId));
-		detailPopOutBtn.setToolTipText("Pop out into its own window");
+		detailPopOutBtn = StockpilePanel.buildIconButton(
+				StockpilePanel.dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR),
+				"Open in Dashboard View", () -> host.popOut(boundItemId));
 		headerControls.add(detailPopOutBtn);
 
 		headerRow.add(headerControls, BorderLayout.EAST);

@@ -10798,7 +10798,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static boolean` | `containsIgnoreCase(DefaultListModel<String> model, String value)` |  |
 | `private void` | `copyToClipboard(String text)` |  |
 | `private JLabel` | `createDeltaLabel()` | Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value. |
-| `private static Icon` | `dashboardIcon(Color color)` | Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title bar and three content columns, echoing the pop-out dashboard's panel layout (#109). |
+| `static Icon` | `dashboardIcon(Color color)` | Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title bar and three content columns, echoing the pop-out dashboard's panel layout (#109). |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
@@ -12051,7 +12051,7 @@ Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a v
 
 #### dashboardIcon
 
-`private static Icon dashboardIcon(Color color)`
+`static Icon dashboardIcon(Color color)`
 
 Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title
 bar and three content columns, echoing the pop-out dashboard's panel layout (#109).
