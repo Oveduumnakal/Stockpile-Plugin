@@ -54,22 +54,15 @@ javadoc {
 
 check.dependsOn javadoc
 
-tasks.register('generateJavaDocs', docs.GenerateJavaDocsTask) {
-	group = 'documentation'
-	description = 'Generates JavaDocs.md at the repo root from the source Javadoc.'
-	sourceRoot.set(layout.projectDirectory.dir('src/main/java'))
-	outputFile.set(layout.projectDirectory.file('JavaDocs.md'))
-}
-
-tasks.register('checkJavaDocs', docs.CheckJavaDocsTask) {
-	group = 'verification'
-	description = 'Fails if JavaDocs.md is stale or a public/protected member lacks Javadoc.'
-	sourceRoot.set(layout.projectDirectory.dir('src/main/java'))
-	outputFile.set(layout.projectDirectory.file('JavaDocs.md'))
-	excludeOverrides.set(project.hasProperty('excludeOverrideDocs'))
-}
-
-check.dependsOn checkJavaDocs
+/*
+ * The JavaDocs.md generator and freshness gate live in the standalone ./javadoc-tools build so
+ * their javaparser dependency stays out of this build (the RuneLite plugin-hub compiles it under
+ * dependency verification, which forbids unlisted deps). Run the gate with:
+ *   ./gradlew -p javadoc-tools checkJavaDocs
+ * and regenerate with:
+ *   ./gradlew -p javadoc-tools generateJavaDocs
+ * CI enforces it in the JavaDocs workflow.
+ */
 
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath

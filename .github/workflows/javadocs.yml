@@ -19,4 +19,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Verify JavaDocs.md is fresh and complete
-        run: ./gradlew checkJavaDocs --no-daemon
+        run: ./gradlew -p javadoc-tools checkJavaDocs --no-daemon
