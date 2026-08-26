@@ -9,6 +9,67 @@ Bug Fixes lists only bugs that shipped in a previous release; bugs introduced an
 fixed within the same release cycle are omitted, since users never saw them.
 -->
 
+# 1.5 - August 26 2026
+
+## Quick Overview
+
+Stockpile 1.5 opens your items up. Any item's detail view now pops out into its own resizable dashboard window — values, market info, collection log, and the price and volume charts laid out side by side — with a home you can search from without tracking anything first. The Grand Exchange gets deeper too: track an item straight from the offer window, and read its latest 5-minute high and low prices right where you set your price. On top of that there are new ways to organize and track — a per-item compact view, a category prompt when you track something, drag-and-drop category reordering, a floating search, and a Shift+right-click "Stockpile" menu to track, view, or open any item in the dashboard. Rounded out with fixes to profit sorting, trade sales, and long-running Grand Exchange pricing.
+
+## Detailed Breakdown
+
+### Dashboard
+
+#### Pop items out into a dashboard window
+Open any item's detail view as its own resizable window that lives outside the side panel, with values, market info, alchemy, collection log, and the price and volume charts laid out across columns. It updates live while you play, and you can open several at once to watch multiple items. You can also open the dashboard on its own and search for any item to pull up its full detail without tracking it first — pick another item and the window switches to it in place. The detail view's pop-out control now uses a clear dashboard icon.
+[#109](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/109), [#284](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/284)
+
+### Detail view
+
+#### Track straight from the detail view
+A Track/Untrack button right in an item's detail view, so you can start or stop tracking it without leaving the page you're looking at.
+[#138](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/138)
+
+### Grand Exchange
+
+#### Track from the offer window
+A Track/Untrack button in the Grand Exchange offer window, plus a Stockpile-branded "View in Stockpile" button that jumps the offer's item straight into the panel.
+[#139](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/139), [#140](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/140)
+
+#### 5-minute high and low prices
+The offer window now shows the item's latest 5-minute high and low prices under the buy-limit line, so you can set your price from live numbers without leaving the Grand Exchange.
+[#142](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/142)
+
+### Organizing your list
+
+#### Compact a single row
+A hover button compacts one item's row on its own, so you can shrink the ones you only glance at while keeping full detail on the ones you watch.
+[#210](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/210)
+
+#### Pick a category when you track
+Optionally get prompted to file an item into a category the moment you track it, so your list stays organized as it grows.
+[#211](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/211)
+
+#### Drag to reorder categories
+Reorder your categories by dragging them into place in the Manage Categories dialog.
+[#212](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/212)
+
+#### Floating search results
+Searching your tracked list now drops the results in a floating panel instead of pushing the list down the panel.
+[#279](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/279)
+
+### Right-click menu
+
+#### Shift+right-click into Stockpile
+Shift+right-click an item anywhere in the game for a "Stockpile" menu that lets you track or untrack it, view it in the panel, or open it straight in the dashboard — without hunting for it first. You choose which entries appear and the key that opens the menu.
+[#285](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/285)
+
+## Bug Fixes
+
+[#173](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/173) - Sorting by profit now matches the profit figure shown on each row, instead of ordering by a raw value-minus-cost number
+[#175](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/175) - A trade sale that completes on the same tick it's set up is no longer lost, matching the existing Grand Exchange fix
+[#248](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/248) - Items stored in a sailing boat's cargohold are now counted as holdings
+[#259](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/259) - Grand Exchange buys that were never collected no longer pile up and mis-price later collections; stale buy claims are pruned when you log in
+
 # 1.4.1 - August 14 2026
 
 ## Quick Overview
