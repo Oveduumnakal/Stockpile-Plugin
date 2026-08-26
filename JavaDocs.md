@@ -2164,6 +2164,8 @@ populated detail card and a loading placeholder.
 | `private static final String` | `PRICES_BASE` |  |
 | `private static final String` | `PRICES_HOME` |  |
 | `private static final Color` | `SEARCH_PLACEHOLDER_COLOR` |  |
+| `private static final Color` | `TRACK_BTN_COLOR` | Foreground of the detail header's Track button (green) — a preview can be tracked. |
+| `private static final Color` | `UNTRACK_BTN_COLOR` | Foreground of the detail header's Untrack button (red) — a tracked item can be dropped. |
 | `private static final String` | `WIKI_BASE` |  |
 | `private static final String` | `WIKI_HOME` |  |
 | `private int` | `acqHoverCol` |  |
@@ -2465,6 +2467,18 @@ Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`.
 #### SEARCH_PLACEHOLDER_COLOR
 
 `private static final Color SEARCH_PLACEHOLDER_COLOR`
+
+#### TRACK_BTN_COLOR
+
+`private static final Color TRACK_BTN_COLOR`
+
+Foreground of the detail header's Track button (green) — a preview can be tracked.
+
+#### UNTRACK_BTN_COLOR
+
+`private static final Color UNTRACK_BTN_COLOR`
+
+Foreground of the detail header's Untrack button (red) — a tracked item can be dropped.
 
 #### WIKI_BASE
 
@@ -9484,8 +9498,9 @@ _interface_
 RuneLite configuration for the Stockpile plugin.
 
 <p>Defines every user-facing setting as a defaulted `@ConfigItem`
-accessor, grouped into five `@ConfigSection`s: main view, tracked-item
-row display, GE estimates, tracking/highlighting, and the detail view. The
+accessor, grouped into `@ConfigSection`s: main view, tracked-item row
+display, GE estimates, tracking/highlighting, context menu, the detail view,
+the on-screen overlay, and GE integration. The
 `KEY_*` constants are the persisted setting keys (also used directly by
 the plugin when reading/writing config), and `#GROUP` names the config
 group. Each accessor's behavior is described by its annotation; the per-item
@@ -9496,10 +9511,14 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `String` | `GROUP` | RuneLite config group name (`"stockpile"`). |
-| `String` | `KEY_ADD_CONTEXT_MENU_OPTION` | Persisted config key `"addContextMenuOption"`. |
 | `String` | `KEY_AUTO_ADD_ITEMS` | Persisted config key `"autoAddItems"`. |
 | `String` | `KEY_CATEGORIES` | Persisted config key `"trackedCategories"`. |
 | `String` | `KEY_COMPACT_VIEW` | Persisted config key `"compactView"`. |
+| `String` | `KEY_CONTEXT_MENU_DASHBOARD` | Persisted config key `"contextMenuDashboard"`. |
+| `String` | `KEY_CONTEXT_MENU_ENABLED` | Persisted config key `"contextMenuEnabled"`. |
+| `String` | `KEY_CONTEXT_MENU_KEY` | Persisted config key `"contextMenuKey"`. |
+| `String` | `KEY_CONTEXT_MENU_TRACK` | Persisted config key `"contextMenuTrack"`. |
+| `String` | `KEY_CONTEXT_MENU_VIEW` | Persisted config key `"contextMenuView"`. |
 | `String` | `KEY_FALLBACK_PRICING` | Persisted config key `"fallbackPricing"`. |
 | `String` | `KEY_GE_BUY_LEDGER` | Persisted config key `"geBuyLedger"`. |
 | `String` | `KEY_GE_BUY_LIMITS` | Persisted config key `"geBuyLimits"`. |
@@ -9554,27 +9573,30 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `String` | `KEY_SORT_REVERSED` | Persisted config key `"sortReversed"`. |
 | `String` | `KEY_SOURCE_PRICING` | Persisted config key `"sourcePricing"`. |
 | `String` | `KEY_STALE_PRICE_THRESHOLD` | Persisted config key `"stalePriceThresholdMinutes"`. |
-| `String` | `KEY_STOP_TRACKING_COLOR` | Persisted config key `"stopTrackingColor"`. |
 | `String` | `KEY_TRACKED_ITEMS` | Persisted config key `"trackedItemIds"`. |
-| `String` | `KEY_TRACK_ITEM_COLOR` | Persisted config key `"trackItemColor"`. |
 | `String` | `KEY_VERSION_FIRST_SEEN` | Persisted config key `"versionFirstSeen"`. |
 | `String` | `KEY_WHATS_NEW_DISMISSED` | Persisted config key `"whatsNewDismissed"`. |
+| `String` | `contextMenuSection` | The shift+right-click Stockpile options added to item context menus. |
 | `String` | `detailViewSection` | Order, visibility, and contents of the per-item detail view sections. |
 | `String` | `geEstimatesSection` | Placement, format, spacing, and rows of the estimated GE sell-value block. |
 | `String` | `geIntegrationSection` | How the open Grand Exchange offer ties into the Stockpile view. |
 | `String` | `mainViewSection` | Top-level panel behavior: price refresh, change indicator, and global toggles. |
 | `String` | `overlaySection` | The in-game on-screen overlay of selected tracked items. |
 | `String` | `trackedItemSection` | Which columns and rows each tracked-item entry shows in the list. |
-| `String` | `trackingSection` | Context-menu integration, highlight colors/mode, and the glow effect. |
+| `String` | `trackingSection` | Highlight colors/mode and the glow effect for tracked items. |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `default boolean` | `addContextMenuOption()` | Add a "Track Item" / "Stop Tracking" entry to right-click menus on the ground, in the bank, or in the inventory. |
 | `default boolean` | `autoAddItems()` | Automatically add collection-log entries from inventory/bank changes. |
 | `default PressureWindow` | `buySellPressureWindow()` | Look-back period for the Buy/Sell Pressure bar in the Market Info section. |
 | `default boolean` | `compactView()` | Show tracked items as compact two-row entries. |
+| `default boolean` | `contextMenuDashboard()` | Include the Open in Dashboard option in the Stockpile context-menu section. |
+| `default boolean` | `contextMenuEnabled()` | Show the Stockpile options section on an item's right-click menu (held with the Context Menu Key). |
+| `default Keybind` | `contextMenuKey()` | The key held while right-clicking an item to show the Stockpile options section. |
+| `default boolean` | `contextMenuTrack()` | Include the Track / Untrack option in the Stockpile context-menu section. |
+| `default boolean` | `contextMenuView()` | Include the View in Stockpile option in the Stockpile context-menu section. |
 | `default FallbackPricing` | `fallbackPricing()` | The price an unknown-source change buys in at — mobile/offline sessions and anything no detector observed (observed sources like GE offers price themselves). |
 | `default ValueFormat` | `geEstimatesFormat()` | How GE Estimate prices are formatted. |
 | `default EstimatesPosition` | `geEstimatesPosition()` | Top: under the search bar above the tracked items list. |
@@ -9623,8 +9645,6 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `default boolean` | `sortReversed()` | Reverses the sort direction of the tracked items list (flips each mode's default ascending/descending order). |
 | `default boolean` | `sourcePricing()` | Price quantity changes by how they occurred (GE offers, pickups, shops, alchemy...) as those detectors arrive. |
 | `default int` | `stalePriceThresholdMinutes()` | Dim the Ltst high or low when its last trade is older than this many minutes. |
-| `default Color` | `stopTrackingColor()` | Color of the "Stop Tracking" context menu entry. |
-| `default Color` | `trackItemColor()` | Color of the "Track Item" context menu entry. |
 
 ### Field Detail
 
@@ -9633,12 +9653,6 @@ group. Each accessor's behavior is described by its annotation; the per-item
 `String GROUP`
 
 RuneLite config group name (`"stockpile"`).
-
-#### KEY_ADD_CONTEXT_MENU_OPTION
-
-`String KEY_ADD_CONTEXT_MENU_OPTION`
-
-Persisted config key `"addContextMenuOption"`.
 
 #### KEY_AUTO_ADD_ITEMS
 
@@ -9657,6 +9671,36 @@ Persisted config key `"trackedCategories"`.
 `String KEY_COMPACT_VIEW`
 
 Persisted config key `"compactView"`.
+
+#### KEY_CONTEXT_MENU_DASHBOARD
+
+`String KEY_CONTEXT_MENU_DASHBOARD`
+
+Persisted config key `"contextMenuDashboard"`.
+
+#### KEY_CONTEXT_MENU_ENABLED
+
+`String KEY_CONTEXT_MENU_ENABLED`
+
+Persisted config key `"contextMenuEnabled"`.
+
+#### KEY_CONTEXT_MENU_KEY
+
+`String KEY_CONTEXT_MENU_KEY`
+
+Persisted config key `"contextMenuKey"`.
+
+#### KEY_CONTEXT_MENU_TRACK
+
+`String KEY_CONTEXT_MENU_TRACK`
+
+Persisted config key `"contextMenuTrack"`.
+
+#### KEY_CONTEXT_MENU_VIEW
+
+`String KEY_CONTEXT_MENU_VIEW`
+
+Persisted config key `"contextMenuView"`.
 
 #### KEY_FALLBACK_PRICING
 
@@ -9982,23 +10026,11 @@ Persisted config key `"sourcePricing"`.
 
 Persisted config key `"stalePriceThresholdMinutes"`.
 
-#### KEY_STOP_TRACKING_COLOR
-
-`String KEY_STOP_TRACKING_COLOR`
-
-Persisted config key `"stopTrackingColor"`.
-
 #### KEY_TRACKED_ITEMS
 
 `String KEY_TRACKED_ITEMS`
 
 Persisted config key `"trackedItemIds"`.
-
-#### KEY_TRACK_ITEM_COLOR
-
-`String KEY_TRACK_ITEM_COLOR`
-
-Persisted config key `"trackItemColor"`.
 
 #### KEY_VERSION_FIRST_SEEN
 
@@ -10011,6 +10043,12 @@ Persisted config key `"versionFirstSeen"`.
 `String KEY_WHATS_NEW_DISMISSED`
 
 Persisted config key `"whatsNewDismissed"`.
+
+#### contextMenuSection
+
+`String contextMenuSection`
+
+The shift+right-click Stockpile options added to item context menus.
 
 #### detailViewSection
 
@@ -10052,15 +10090,9 @@ Which columns and rows each tracked-item entry shows in the list.
 
 `String trackingSection`
 
-Context-menu integration, highlight colors/mode, and the glow effect.
+Highlight colors/mode and the glow effect for tracked items.
 
 ### Method Detail
-
-#### addContextMenuOption
-
-`default boolean addContextMenuOption()`
-
-Add a "Track Item" / "Stop Tracking" entry to right-click menus on the ground, in the bank, or in the inventory.
 
 #### autoAddItems
 
@@ -10081,6 +10113,36 @@ Look-back period for the Buy/Sell Pressure bar in the Market Info section.
 `default boolean compactView()`
 
 Show tracked items as compact two-row entries. Toggleable from the tracked list header.
+
+#### contextMenuDashboard
+
+`default boolean contextMenuDashboard()`
+
+Include the Open in Dashboard option in the Stockpile context-menu section.
+
+#### contextMenuEnabled
+
+`default boolean contextMenuEnabled()`
+
+Show the Stockpile options section on an item's right-click menu (held with the Context Menu Key).
+
+#### contextMenuKey
+
+`default Keybind contextMenuKey()`
+
+The key held while right-clicking an item to show the Stockpile options section.
+
+#### contextMenuTrack
+
+`default boolean contextMenuTrack()`
+
+Include the Track / Untrack option in the Stockpile context-menu section.
+
+#### contextMenuView
+
+`default boolean contextMenuView()`
+
+Include the View in Stockpile option in the Stockpile context-menu section.
 
 #### fallbackPricing
 
@@ -10385,18 +10447,6 @@ already in flight when switched off (an open GE offer, an unrecovered death) sti
 `default int stalePriceThresholdMinutes()`
 
 Dim the Ltst high or low when its last trade is older than this many minutes.
-
-#### stopTrackingColor
-
-`default Color stopTrackingColor()`
-
-Color of the "Stop Tracking" context menu entry.
-
-#### trackItemColor
-
-`default Color trackItemColor()`
-
-Color of the "Track Item" context menu entry.
 
 ---
 
@@ -13111,6 +13161,8 @@ executor.
 | `private static final String` | `LOOT_SACK_OPTION` | Menu option and target substring for the Huntsman's loot sack, whose contents land in the inventory with no reward `ItemContainer` to observe. |
 | `private static final String` | `LOOT_SACK_TARGET` |  |
 | `private static final double` | `MAX_DELTA_PCT` | Maximum plausible Δ% for a notification: changes beyond this magnitude indicate a sparse/stale window average (a near-zero denominator) rather than a real move, and are ignored so a one-shot rule isn't fired on noise. |
+| `private static final Color` | `MENU_DIVIDER_COLOR` | Muted colour of a Stockpile context-menu divider line (#285). |
+| `private static final String` | `MENU_DIVIDER_LINE` | The line drawn for a Stockpile context-menu divider (#285). |
 | `private static final int` | `NATURE_RUNE_ID` |  |
 | `static final int` | `OVERLAY_MAX` | Maximum number of items shown in the on-screen overlay (fixed for now). |
 | `private static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
@@ -13131,7 +13183,7 @@ executor.
 | `private static final int[]` | `RUNE_POUCH_TYPE_VARBITS` |  |
 | `private static final ImmutableSet<Integer>` | `RUNE_POUCH_VARBITS` |  |
 | `private static final Set<String>` | `SECTION_SLOT_KEYS` |  |
-| `private static final int` | `STOCKPILE_GE_SPRITE_ID` | Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). |
+| `private static final int` | `STOCKPILE_GE_SPRITE_ID` |  |
 | `private static final ImmutableSet<Integer>` | `TRACKED_CONTAINERS` |  |
 | `private static final int` | `TRADE_OTHER_CONTAINER` | The partner-side trade container: the offer container id with the "other player" bit set. |
 | `private static final Duration` | `WHATS_NEW_WINDOW` | How long after first launching a new release the "What's New" indicator stays highlighted. |
@@ -13143,6 +13195,9 @@ executor.
 | `private StockpileConfig` | `config` |  |
 | `private ConfigManager` | `configManager` |  |
 | `private final Map<Integer,Map<Integer,Integer>>` | `containerCounts` |  |
+| `private int` | `contextHeldKeyCode` | The key code that set `#contextKeyHeld`, so its release clears the flag even if the bind changes. |
+| `private volatile boolean` | `contextKeyHeld` | True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). |
+| `private final KeyListener` | `contextMenuKeyListener` | Tracks the Context Menu Key so `#onMenuOpened` can offer the section; (un)registered in start/shutdown. |
 | `private int` | `currentGeItem` | The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). |
 | `private final Map<Integer,DetailWindow>` | `detailWindows` | Open pop-out detail windows keyed by item id (#109). |
 | `private final Set<Integer>` | `doseSwapClaimedIds` | Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). |
@@ -13163,6 +13218,7 @@ executor.
 | `private StockpileHighlightOverlay` | `highlightOverlay` |  |
 | `private ItemManager` | `itemManager` |  |
 | `private volatile Map<Integer,WikiRealtimePriceClient.ItemMapping>` | `itemMappings` |  |
+| `private KeyManager` | `keyManager` |  |
 | `private volatile long` | `lastFireRunePrice` |  |
 | `private volatile long` | `lastNatureRunePrice` | Latest nature/fire rune prices, cached for the pop-out windows' alch figures (`#requestDetailData`). |
 | `private Instant` | `lastPortfolioSave` |  |
@@ -13209,6 +13265,8 @@ executor.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `private void` | `addMenuDivider()` | Adds a non-interactive divider line to bracket the Stockpile context-menu section (#285). |
+| `private void` | `addStockpileMenuSection(int canonicalId, boolean tracked)` | Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. |
 | `private void` | `addTrackedItem(int itemId)` | Tracks an item by id with defaults (full tracking mode, no preset cost basis). |
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
@@ -13313,7 +13371,7 @@ executor.
 | `public void` | `onItemDespawned(ItemDespawned event)` | Forgets a ground item once it despawns, buffering it for #65's pickup/lost-drop correlation. |
 | `public void` | `onItemQuantityChanged(ItemQuantityChanged event)` | Buffers ground-stack quantity changes so drops onto an existing stack correlate like spawns (#65). |
 | `public void` | `onItemSpawned(ItemSpawned event)` | Records a ground item and its tile so the ground overlay can outline it, buffering it for #65. |
-| `public void` | `onMenuOpened(MenuOpened event)` | Adds a "Track Item" / "Stop Tracking" right-click option to item menu entries, when enabled. |
+| `public void` | `onMenuOpened(MenuOpened event)` | Adds Stockpile right-click options to item menu entries, when enabled (#285). |
 | `public void` | `onMenuOptionClicked(MenuOptionClicked event)` | Claims an upcoming High/Low Alchemy disposal (#68): casting either spell on a tracked item registers an `AcquisitionSource#ALCHEMY` claim for one unit at the coins the cast actually yields — the item's cached high/low alch value — so the lot closes at the real proceeds instead of the current average. |
 | `private void` | `onNotificationsEdited(int itemId)` | Callback after the user edits an item's notification rules: just persists the change. |
 | `public void` | `onRuneScapeProfileChanged(RuneScapeProfileChanged event)` | Resets the session baseline when the RS profile (account) changes, so stats restart per account. |
@@ -13383,6 +13441,7 @@ executor.
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
+| `private void` | `toggleTracked(int canonicalId, boolean tracked)` | Tracks or untracks `canonicalId` from a right-click menu action. |
 | `private void` | `trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)` | Tracks `itemId` from a pop-out window's header (#138), then transitions that window to tracked. |
 | `public TrackedItem` | `trackedItem(int itemId)` | Returns the tracked item with the given id, if tracked. |
 | `public Collection<TrackedItem>` | `trackedItems()` | Returns all currently tracked items. |
@@ -13392,6 +13451,7 @@ executor.
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
 | `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
 | `private long` | `untrackedInputValue(int itemId)` |  |
+| `private void` | `viewInStockpile(int itemId)` | Opens `itemId`'s detailed view in the sidebar panel (a preview when untracked) and focuses the Stockpile panel &mdash; the "View in Stockpile" menu action (#285). |
 | `private DetailViewHost` | `windowHost(DetailWindow window)` | Builds the `DetailViewHost` for a pop-out window. |
 
 ### Field Detail
@@ -13521,6 +13581,18 @@ reward pool and GOTR reward guardian remain deferred pending their own live capt
 Maximum plausible Δ% for a notification: changes beyond this magnitude
 indicate a sparse/stale window average (a near-zero denominator) rather than
 a real move, and are ignored so a one-shot rule isn't fired on noise.
+
+#### MENU_DIVIDER_COLOR
+
+`private static final Color MENU_DIVIDER_COLOR`
+
+Muted colour of a Stockpile context-menu divider line (#285).
+
+#### MENU_DIVIDER_LINE
+
+`private static final String MENU_DIVIDER_LINE`
+
+The line drawn for a Stockpile context-menu divider (#285).
 
 #### NATURE_RUNE_ID
 
@@ -13655,8 +13727,6 @@ so suppressing the delta here avoids the phantom login acquisition (#237).
 
 `private static final int STOCKPILE_GE_SPRITE_ID`
 
-Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140).
-
 #### TRACKED_CONTAINERS
 
 `private static final ImmutableSet<Integer> TRACKED_CONTAINERS`
@@ -13708,6 +13778,24 @@ Bundled release notes, parsed once at startup; the newest entry is the current v
 #### containerCounts
 
 `private final Map<Integer,Map<Integer,Integer>> containerCounts`
+
+#### contextHeldKeyCode
+
+`private int contextHeldKeyCode`
+
+The key code that set `#contextKeyHeld`, so its release clears the flag even if the bind changes.
+
+#### contextKeyHeld
+
+`private volatile boolean contextKeyHeld`
+
+True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285).
+
+#### contextMenuKeyListener
+
+`private final KeyListener contextMenuKeyListener`
+
+Tracks the Context Menu Key so `#onMenuOpened` can offer the section; (un)registered in start/shutdown.
 
 #### currentGeItem
 
@@ -13810,6 +13898,10 @@ The dark text label riding on `#geTrackButton`; carries the Track/Untrack text (
 #### itemMappings
 
 `private volatile Map<Integer,WikiRealtimePriceClient.ItemMapping> itemMappings`
+
+#### keyManager
+
+`private KeyManager keyManager`
 
 #### lastFireRunePrice
 
@@ -14030,6 +14122,20 @@ state, mutated alongside the price maps so `#lookupItem`, `#applyGePrices` and t
 per-detail request loop keep every popped-out item (tracked or preview) live.
 
 ### Method Detail
+
+#### addMenuDivider
+
+`private void addMenuDivider()`
+
+Adds a non-interactive divider line to bracket the Stockpile context-menu section (#285).
+
+#### addStockpileMenuSection
+
+`private void addStockpileMenuSection(int canonicalId, boolean tracked)`
+
+Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: the enabled options
+(Track/Untrack, View in Stockpile, Open in Dashboard) bracketed by divider lines. Entries are inserted so
+they read top-to-bottom in that order; each option is individually toggleable in the config.
 
 #### addTrackedItem
 
@@ -14932,7 +15038,9 @@ Records a ground item and its tile so the ground overlay can outline it, bufferi
 
 `public void onMenuOpened(MenuOpened event)`
 
-Adds a "Track Item" / "Stop Tracking" right-click option to item menu entries, when enabled.
+Adds Stockpile right-click options to item menu entries, when enabled (#285). A shift+right-click
+shows a bottom section &mdash; Track/Untrack, View in Stockpile, Open in Dashboard &mdash; while a
+plain right-click keeps the single Track/Untrack entry.
 
 #### onMenuOptionClicked
 
@@ -15458,6 +15566,12 @@ and only correct itself on the next mouse-leave.
 
 Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel.
 
+#### toggleTracked
+
+`private void toggleTracked(int canonicalId, boolean tracked)`
+
+Tracks or untracks `canonicalId` from a right-click menu action.
+
 #### trackFromWindow
 
 `private void trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)`
@@ -15523,6 +15637,13 @@ window to a fresh preview instead of the sidebar.
 `private long untrackedInputValue(int itemId)`
 
 - **Returns:** an untracked processing input's per-unit value under the configured fallback pricing.
+
+#### viewInStockpile
+
+`private void viewInStockpile(int itemId)`
+
+Opens `itemId`'s detailed view in the sidebar panel (a preview when untracked) and focuses the
+Stockpile panel &mdash; the "View in Stockpile" menu action (#285).
 
 #### windowHost
 

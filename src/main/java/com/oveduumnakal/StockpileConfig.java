@@ -30,6 +30,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Notification;
 import net.runelite.client.config.Range;
 
@@ -37,8 +38,9 @@ import net.runelite.client.config.Range;
  * RuneLite configuration for the Stockpile plugin.
  *
  * <p>Defines every user-facing setting as a defaulted {@code @ConfigItem}
- * accessor, grouped into five {@code @ConfigSection}s: main view, tracked-item
- * row display, GE estimates, tracking/highlighting, and the detail view. The
+ * accessor, grouped into {@code @ConfigSection}s: main view, tracked-item row
+ * display, GE estimates, tracking/highlighting, context menu, the detail view,
+ * the on-screen overlay, and GE integration. The
  * {@code KEY_*} constants are the persisted setting keys (also used directly by
  * the plugin when reading/writing config), and {@link #GROUP} names the config
  * group. Each accessor's behavior is described by its annotation; the per-item
@@ -160,14 +162,18 @@ public interface StockpileConfig extends Config
 	/** Persisted config key {@code "showSession"}. */
 	String KEY_SHOW_SESSION = "showSession";
 
-	/** Persisted config key {@code "addContextMenuOption"}. */
-	String KEY_ADD_CONTEXT_MENU_OPTION = "addContextMenuOption";
+	/** Persisted config key {@code "contextMenuEnabled"}. */
+	String KEY_CONTEXT_MENU_ENABLED = "contextMenuEnabled";
+	/** Persisted config key {@code "contextMenuKey"}. */
+	String KEY_CONTEXT_MENU_KEY = "contextMenuKey";
+	/** Persisted config key {@code "contextMenuTrack"}. */
+	String KEY_CONTEXT_MENU_TRACK = "contextMenuTrack";
+	/** Persisted config key {@code "contextMenuView"}. */
+	String KEY_CONTEXT_MENU_VIEW = "contextMenuView";
+	/** Persisted config key {@code "contextMenuDashboard"}. */
+	String KEY_CONTEXT_MENU_DASHBOARD = "contextMenuDashboard";
 	/** Persisted config key {@code "promptCategoryOnTrack"}. */
 	String KEY_PROMPT_CATEGORY_ON_TRACK = "promptCategoryOnTrack";
-	/** Persisted config key {@code "trackItemColor"}. */
-	String KEY_TRACK_ITEM_COLOR = "trackItemColor";
-	/** Persisted config key {@code "stopTrackingColor"}. */
-	String KEY_STOP_TRACKING_COLOR = "stopTrackingColor";
 	/** Persisted config key {@code "highlightTrackedItems"}. */
 	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
 	/** Persisted config key {@code "highlightColor"}. */
@@ -207,19 +213,27 @@ public interface StockpileConfig extends Config
 	)
 	String geEstimatesSection = "geEstimates";
 
-	/** Context-menu integration, highlight colors/mode, and the glow effect. */
+	/** Highlight colors/mode and the glow effect for tracked items. */
 	@ConfigSection(
 			name = "Tracking",
-			description = "Context menu, highlighting, and tracking behavior",
+			description = "Highlighting and tracking behavior",
 			position = 3
 	)
 	String trackingSection = "tracking";
+
+	/** The shift+right-click Stockpile options added to item context menus. */
+	@ConfigSection(
+			name = "Context Menu",
+			description = "Right-click item menu options (Track, View, Open in Dashboard)",
+			position = 4
+	)
+	String contextMenuSection = "contextMenu";
 
 	/** Order, visibility, and contents of the per-item detail view sections. */
 	@ConfigSection(
 			name = "Detailed View",
 			description = "Order, visibility, and contents of the item detail view sections",
-			position = 4
+			position = 5
 	)
 	String detailViewSection = "detailView";
 
@@ -227,7 +241,7 @@ public interface StockpileConfig extends Config
 	@ConfigSection(
 			name = "On-screen Overlay",
 			description = "Show selected tracked items as a draggable in-game overlay",
-			position = 5
+			position = 6
 	)
 	String overlaySection = "overlay";
 
@@ -235,7 +249,7 @@ public interface StockpileConfig extends Config
 	@ConfigSection(
 			name = "GE Integration",
 			description = "How the open Grand Exchange offer ties into the Stockpile view",
-			position = 6
+			position = 7
 	)
 	String geIntegrationSection = "geIntegration";
 
@@ -851,17 +865,76 @@ public interface StockpileConfig extends Config
 	}
 
 	/**
-	 * Add a "Track Item" / "Stop Tracking" entry to right-click menus on the ground, in the bank, or in the inventory.
+	 * Show the Stockpile options section on an item's right-click menu (held with the Context Menu Key).
 	 */
 	@ConfigItem(
-			keyName = KEY_ADD_CONTEXT_MENU_OPTION,
-			name = "Add Context Menu Option",
-			description = "Add a \"Track Item\" / \"Stop Tracking\" entry to right-click menus on the ground, "
-					+ "in the bank, or in the inventory",
-			section = trackingSection,
+			keyName = KEY_CONTEXT_MENU_ENABLED,
+			name = "Enable Context Menu",
+			description = "Show the Stockpile options on an item's right-click menu (held with the Context Menu Key)",
+			section = contextMenuSection,
 			position = 0
 	)
-	default boolean addContextMenuOption()
+	default boolean contextMenuEnabled()
+	{
+		return true;
+	}
+
+	/**
+	 * The key held while right-clicking an item to show the Stockpile options section.
+	 */
+	@ConfigItem(
+			keyName = KEY_CONTEXT_MENU_KEY,
+			name = "Context Menu Key",
+			description = "The key held while right-clicking an item to show the Stockpile options",
+			section = contextMenuSection,
+			position = 1
+	)
+	default Keybind contextMenuKey()
+	{
+		return Keybind.SHIFT;
+	}
+
+	/**
+	 * Include the Track / Untrack option in the Stockpile context-menu section.
+	 */
+	@ConfigItem(
+			keyName = KEY_CONTEXT_MENU_TRACK,
+			name = "Track / Untrack",
+			description = "Include the Track / Untrack option in the context-menu section",
+			section = contextMenuSection,
+			position = 2
+	)
+	default boolean contextMenuTrack()
+	{
+		return true;
+	}
+
+	/**
+	 * Include the View in Stockpile option in the Stockpile context-menu section.
+	 */
+	@ConfigItem(
+			keyName = KEY_CONTEXT_MENU_VIEW,
+			name = "View in Stockpile",
+			description = "Include the View in Stockpile option in the context-menu section",
+			section = contextMenuSection,
+			position = 3
+	)
+	default boolean contextMenuView()
+	{
+		return true;
+	}
+
+	/**
+	 * Include the Open in Dashboard option in the Stockpile context-menu section.
+	 */
+	@ConfigItem(
+			keyName = KEY_CONTEXT_MENU_DASHBOARD,
+			name = "Open in Dashboard",
+			description = "Include the Open in Dashboard option in the context-menu section",
+			section = contextMenuSection,
+			position = 4
+	)
+	default boolean contextMenuDashboard()
 	{
 		return true;
 	}
@@ -902,36 +975,6 @@ public interface StockpileConfig extends Config
 	default boolean sourcePricing()
 	{
 		return true;
-	}
-
-	/**
-	 * Color of the "Track Item" context menu entry.
-	 */
-	@ConfigItem(
-			keyName = KEY_TRACK_ITEM_COLOR,
-			name = "\"Track Item\" Color",
-			description = "Color of the \"Track Item\" context menu entry",
-			section = trackingSection,
-			position = 1
-	)
-	default Color trackItemColor()
-	{
-		return new Color(0xd8, 0xfb, 0xd4);
-	}
-
-	/**
-	 * Color of the "Stop Tracking" context menu entry.
-	 */
-	@ConfigItem(
-			keyName = KEY_STOP_TRACKING_COLOR,
-			name = "\"Stop Tracking\" Color",
-			description = "Color of the \"Stop Tracking\" context menu entry",
-			section = trackingSection,
-			position = 2
-	)
-	default Color stopTrackingColor()
-	{
-		return new Color(0xfb, 0xd4, 0xd4);
 	}
 
 	/**
