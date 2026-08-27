@@ -41,6 +41,9 @@ public interface PanelActions
 	/** Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. */
 	void openDashboard();
 
+	/** Opens the compare window (#280) or focuses it, showing the empty prompt when nothing is compared yet. */
+	void openCompare();
+
 	/** Notifies the plugin that {@code itemId}'s acquisition lots were edited and must be persisted. */
 	void acquisitionsEdited(int itemId);
 

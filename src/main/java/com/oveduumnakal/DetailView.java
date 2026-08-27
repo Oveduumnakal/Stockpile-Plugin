@@ -1417,8 +1417,9 @@ public class DetailView extends JPanel implements Scrollable
 	}
 
 	/**
-	 * Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row,
-	 * then the icon-and-title row, then the wrapping description &mdash; all stacked vertically.
+	 * Builds the sidebar (STACK) detail header: a Back button (left) with the Track/Untrack button (right)
+	 * on the first row, the Dashboard and Compare icons left-justified on the second, then the
+	 * icon-and-title row and the wrapping description &mdash; all stacked vertically.
 	 */
 	private void buildStackHeader(JPanel titleTextStack)
 	{
@@ -1443,22 +1444,29 @@ public class DetailView extends JPanel implements Scrollable
 		headerRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		headerRow.add(backBtn, BorderLayout.WEST);
-
-		JPanel headerControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-		headerControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		headerControls.add(detailTrackBtn);
+		headerRow.add(detailTrackBtn, BorderLayout.EAST);
 
 		detailPopOutBtn = StockpilePanel.buildIconButton(
 				StockpilePanel.dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR),
 				"Open in Dashboard View", () -> host.popOut(boundItemId));
-		headerControls.add(detailPopOutBtn);
 
 		detailCompareBtn = StockpilePanel.buildIconButton(
 				StockpilePanel.compareIcon(ColorScheme.LIGHT_GRAY_COLOR),
 				"Add to Compare", () -> host.addToCompare(boundItemId));
-		headerControls.add(detailCompareBtn);
 
-		headerRow.add(headerControls, BorderLayout.EAST);
+		JPanel iconRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0))
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		iconRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		iconRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		iconRow.setBorder(new EmptyBorder(8, 0, 0, 0));
+		iconRow.add(detailPopOutBtn);
+		iconRow.add(detailCompareBtn);
 
 		JPanel titleRow = new JPanel(new BorderLayout(8, 0))
 		{
@@ -1475,6 +1483,7 @@ public class DetailView extends JPanel implements Scrollable
 		titleRow.add(titleTextStack, BorderLayout.CENTER);
 
 		topStack.add(headerRow);
+		topStack.add(iconRow);
 		topStack.add(titleRow);
 		topStack.add(detailDescriptionArea);
 	}
@@ -1557,13 +1566,19 @@ public class DetailView extends JPanel implements Scrollable
 			return;
 
 		dashboardRightControls.removeAll();
-		dashboardRightControls.setLayout(new GridLayout(1, home ? 2 : 4, 6, 0));
-		dashboardRightControls.add(dashboardWikiBtn);
-		dashboardRightControls.add(dashboardPricesBtn);
-		if (!home)
+		if (home)
 		{
-			dashboardRightControls.add(detailTrackBtn);
+			dashboardRightControls.setLayout(new GridLayout(1, 2, 6, 0));
+			dashboardRightControls.add(dashboardWikiBtn);
+			dashboardRightControls.add(dashboardPricesBtn);
+		}
+		else
+		{
+			dashboardRightControls.setLayout(new GridLayout(2, 2, 6, 6));
+			dashboardRightControls.add(dashboardWikiBtn);
+			dashboardRightControls.add(dashboardPricesBtn);
 			dashboardRightControls.add(dashboardCompareBtn);
+			dashboardRightControls.add(detailTrackBtn);
 		}
 
 		dashboardRightControls.revalidate();

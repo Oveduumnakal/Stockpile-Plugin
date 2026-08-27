@@ -200,6 +200,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Integer> onAddToCompare;
 	/** Opens the item-less Stockpile dashboard window (#109). */
 	private final Runnable onOpenDashboard;
+
+	private final Runnable onOpenCompare;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
@@ -548,6 +550,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onPopOut = actions::popOut;
 		this.onAddToCompare = actions::addToCompare;
 		this.onOpenDashboard = actions::openDashboard;
+		this.onOpenCompare = actions::openCompare;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
@@ -803,9 +806,31 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				color -> dashboardButton.setIcon(dashboardIcon(color)),
 				() -> dashboardButton.setIcon(dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR)));
 
+		JLabel compareButton = new JLabel(compareIcon(ColorScheme.LIGHT_GRAY_COLOR));
+		compareButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		compareButton.setBorder(new EmptyBorder(0, 2, 0, 6));
+		compareButton.setToolTipText("Compare View");
+		compareButton.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (onOpenCompare != null)
+					onOpenCompare.run();
+			}
+		});
+		installToggleHover(compareButton, () -> false,
+				color -> compareButton.setIcon(compareIcon(color)),
+				() -> compareButton.setIcon(compareIcon(ColorScheme.LIGHT_GRAY_COLOR)));
+
+		JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		leftButtons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		leftButtons.add(dashboardButton);
+		leftButtons.add(compareButton);
+
 		JPanel dashboardButtonWrap = new JPanel(new GridBagLayout());
 		dashboardButtonWrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		dashboardButtonWrap.add(dashboardButton);
+		dashboardButtonWrap.add(leftButtons);
 
 		JPanel togglesRow = new JPanel(new BorderLayout());
 		togglesRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -2764,7 +2789,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return new ImageIcon(img);
 	}
 
-	/** Draws a side-by-side-columns glyph for the Compare control (#280), tinted {@code color}. */
+	/** Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted {@code color}. */
 	static Icon compareIcon(Color color)
 	{
 		int size = 16;
@@ -2773,10 +2798,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g.setColor(color);
 
-		g.drawRect(2, 2, 4, 11);
-		g.drawRect(10, 2, 4, 11);
-		g.fillRect(3, 9, 3, 3);
-		g.fillRect(11, 5, 3, 7);
+		g.drawOval(1, 3, 10, 10);
+		g.drawOval(5, 3, 10, 10);
 
 		g.dispose();
 		return new ImageIcon(img);

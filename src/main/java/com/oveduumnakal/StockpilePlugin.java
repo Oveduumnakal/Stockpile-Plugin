@@ -916,6 +916,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void openCompare()
+					{
+						clientThread.invokeLater(StockpilePlugin.this::openCompareWindow);
+					}
+
+					@Override
 					public void acquisitionsEdited(int itemId)
 					{
 						onAcquisitionsEdited(itemId);
@@ -1894,6 +1900,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			compareItems.put(canonicalId, buildPreview(canonicalId));
 
 		requestDetailData(canonicalId);
+		refreshGePrices();
 		rebuildCompareWindow(true);
 	}
 
@@ -1904,6 +1911,27 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			return;
 
 		compareItems.remove(itemId);
+		rebuildCompareWindow(false);
+	}
+
+	/**
+	 * Reorders the compare set so {@code itemId} sits at {@code toIndex}, then refreshes the window.
+	 * Backs the drag-reorder of the compare columns. Client thread.
+	 *
+	 * @param itemId the compared item being moved
+	 * @param toIndex the target position in the compare order
+	 */
+	private void moveCompareId(int itemId, int toIndex)
+	{
+		if (!compareIds.contains(itemId))
+			return;
+
+		List<Integer> order = new ArrayList<>(compareIds);
+		order.remove((Integer) itemId);
+		int index = Math.max(0, Math.min(toIndex, order.size()));
+		order.add(index, itemId);
+		compareIds.clear();
+		compareIds.addAll(order);
 		rebuildCompareWindow(false);
 	}
 
@@ -1923,7 +1951,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 */
 	private void rebuildCompareWindow(boolean focus)
 	{
-		final List<CompareView.Entry> entries = new ArrayList<>();
+		final List<CompareView.Entry> entries = compareEntries();
+		SwingUtilities.invokeLater(() -> showOrUpdateCompareWindow(entries, focus));
+	}
+
+	/**
+	 * Snapshots the compare set into an ordered {@link CompareView.Entry} list, resolving each id to its
+	 * live tracked item or its read-only preview. Runs on the client thread.
+	 *
+	 * @return the compared items, in display order
+	 */
+	private List<CompareView.Entry> compareEntries()
+	{
+		List<CompareView.Entry> entries = new ArrayList<>();
 		for (int id : compareIds)
 		{
 			TrackedItem tracked = trackedItems.get(id);
@@ -1938,7 +1978,17 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			}
 		}
 
-		SwingUtilities.invokeLater(() -> showOrUpdateCompareWindow(entries, focus));
+		return entries;
+	}
+
+	/**
+	 * Opens the compare window from the main-view toolbar button (or focuses the open one), showing the
+	 * empty "add items to compare" prompt when the set is empty rather than staying closed. Client thread.
+	 */
+	private void openCompareWindow()
+	{
+		final List<CompareView.Entry> entries = compareEntries();
+		SwingUtilities.invokeLater(() -> openOrFocusCompareWindow(entries));
 	}
 
 	/**
@@ -1963,6 +2013,22 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		if (focus)
 			compareWindow.focus();
+	}
+
+	/**
+	 * Opens the compare window with {@code entries} (an empty list is allowed, showing the prompt) or
+	 * updates and focuses the already-open one. Runs on the EDT.
+	 *
+	 * @param entries the items to compare, in display order
+	 */
+	private void openOrFocusCompareWindow(List<CompareView.Entry> entries)
+	{
+		if (compareWindow == null)
+			compareWindow = new CompareWindow(compareHost(), entries, this::onCompareWindowClosed);
+		else
+			compareWindow.setEntries(entries);
+
+		compareWindow.focus();
 	}
 
 	/** Brings the compare window to the front if one is open. Runs on the EDT. */
@@ -2030,6 +2096,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			public void removeFromCompare(int itemId)
 			{
 				clientThread.invokeLater(() -> removeFromCompareId(itemId));
+			}
+
+			@Override
+			public void moveCompare(int itemId, int toIndex)
+			{
+				clientThread.invokeLater(() -> moveCompareId(itemId, toIndex));
 			}
 
 			@Override
@@ -2758,6 +2830,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				applyLivePrices(windowItem, prices);
 			else if (!windowItem.hasPrices() && windowItem.isTradeable() && mappingsLoaded)
 				windowItem.setPriceLoadFailed(true);
+		}
+
+		for (TrackedItem compareItem : compareItems.values())
+		{
+			if (trackedItems.containsKey(compareItem.getItemId())
+					|| windowItems.containsKey(compareItem.getItemId()))
+				continue;
+
+			WikiRealtimePriceClient.ItemPrices prices = all.get(compareItem.getItemId());
+			if (prices != null)
+				applyLivePrices(compareItem, prices);
+			else if (!compareItem.hasPrices() && compareItem.isTradeable() && mappingsLoaded)
+				compareItem.setPriceLoadFailed(true);
 		}
 
 		if (fetchFailed)

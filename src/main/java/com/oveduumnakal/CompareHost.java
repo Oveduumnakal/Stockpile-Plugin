@@ -30,6 +30,9 @@ interface CompareHost
 	/** Removes {@code itemId} from the compare set (its column disappears; the window closes if empty). */
 	void removeFromCompare(int itemId);
 
+	/** Moves {@code itemId} to {@code toIndex} in the compare order, reordering the columns (drag-reorder). */
+	void moveCompare(int itemId, int toIndex);
+
 	/** Clears the whole compare set and closes the window. */
 	void clearCompare();
 }

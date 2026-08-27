@@ -5,20 +5,26 @@
 package com.oveduumnakal;
 
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Frame;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.List;
-import java.util.function.Consumer;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.WindowConstants;
 
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.util.ImageUtil;
 
 /**
  * The standalone, resizable compare window (#280): a singleton {@link JFrame} wrapping a
@@ -32,6 +38,13 @@ final class CompareWindow
 	private static final Dimension DEFAULT_SIZE = new Dimension(560, 640);
 
 	private static final Dimension MIN_SIZE = new Dimension(320, 360);
+
+	/** The time windows offered by the top toggle, from the latest snapshot out to a month. */
+	private static final TimeWindow[] WINDOWS =
+	{
+		TimeWindow.LIVE, TimeWindow.M5, TimeWindow.H1, TimeWindow.H6,
+		TimeWindow.H24, TimeWindow.WEEK, TimeWindow.MONTH,
+	};
 
 	private final CompareView view;
 
@@ -67,6 +80,7 @@ final class CompareWindow
 
 		JPanel content = new JPanel(new BorderLayout());
 		content.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		content.add(buildToolbar(), BorderLayout.NORTH);
 		content.add(scroll, BorderLayout.CENTER);
 		content.add(buildFooter(host), BorderLayout.SOUTH);
 
@@ -76,6 +90,7 @@ final class CompareWindow
 		f.setSize(DEFAULT_SIZE);
 		f.setMinimumSize(MIN_SIZE);
 		f.setLocationByPlatform(true);
+		f.setIconImage(ImageUtil.loadImageResource(getClass(), "icon.png"));
 		f.addWindowListener(new WindowAdapter()
 		{
 			@Override
@@ -86,6 +101,53 @@ final class CompareWindow
 		});
 
 		return f;
+	}
+
+	/** Builds the top toolbar holding the time-window toggle that drives every column's figures. */
+	private JPanel buildToolbar()
+	{
+		JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+		bar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		JLabel label = new JLabel("Window:");
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		bar.add(label);
+
+		JComboBox<TimeWindow> windows = new JComboBox<>(WINDOWS);
+		windows.setSelectedItem(view.activeWindow());
+		windows.setRenderer(new DefaultListCellRenderer()
+		{
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean isSelected, boolean cellHasFocus)
+			{
+				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+				if (value instanceof TimeWindow)
+				{
+					TimeWindow w = (TimeWindow) value;
+					setText(windowLabel(w));
+				}
+
+				return this;
+			}
+		});
+		windows.addActionListener(e -> view.setActiveWindow((TimeWindow) windows.getSelectedItem()));
+		bar.add(windows);
+
+		return bar;
+	}
+
+	/** @return the toggle label for a window: {@code "Latest"} for the live snapshot, {@code "5m"} for the
+	 *          5-minute datapoint, else the window's spelled-out label. */
+	private static String windowLabel(TimeWindow window)
+	{
+		if (window == TimeWindow.LIVE)
+			return "Latest";
+
+		if (window == TimeWindow.M5)
+			return "5m";
+
+		return window.getLongLabel();
 	}
 
 	/** Builds the footer strip holding the Clear-all control. */
