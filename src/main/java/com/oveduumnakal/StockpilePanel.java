@@ -51,6 +51,7 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
@@ -126,6 +127,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.TransferHandler;
+import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
@@ -2582,7 +2584,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				.append(config.showScreenOverlay() ? 1 : 0)
 				.append(config.compactView() ? 1 : 0)
 				.append(groupingActive ? 1 : 0)
-				.append(reorderMode ? 1 : 0);
+				.append(reorderMode ? 1 : 0)
+				.append(config.quickActionDelivery().ordinal());
 
 		for (RowSection s : sections)
 		{
@@ -2800,6 +2803,94 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 		g.drawOval(1, 3, 10, 10);
 		g.drawOval(5, 3, 10, 10);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/**
+	 * Draws a "view detail" glyph tinted {@code color}: a document with two text lines and a magnifying
+	 * glass overlapping its lower-right corner, echoing the detail view's document-and-lens motif (#299).
+	 */
+	private static Icon detailIcon(Color color)
+	{
+		int size = 16;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		g.drawRect(1, 1, 8, 12);
+		g.fillRect(3, 4, 4, 1);
+		g.fillRect(3, 7, 4, 1);
+
+		g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.drawOval(8, 8, 5, 5);
+		g.drawLine(13, 13, 15, 15);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/** Draws a five-point star (favorite) tinted {@code color}; {@code filled} fills it, else outlines it. */
+	private static Icon starMenuIcon(Color color, boolean filled)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		double centre = size / 2.0;
+		double outer = centre - 1.0;
+		double inner = outer * 0.42;
+		int[] xs = new int[10];
+		int[] ys = new int[10];
+		for (int i = 0; i < 10; i++)
+		{
+			double r = i % 2 == 0 ? outer : inner;
+			double angle = -Math.PI / 2 + i * Math.PI / 5;
+			xs[i] = (int) Math.round(centre + Math.cos(angle) * r);
+			ys[i] = (int) Math.round(centre + Math.sin(angle) * r);
+		}
+
+		if (filled)
+			g.fillPolygon(xs, ys, 10);
+		else
+			g.drawPolygon(xs, ys, 10);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/** Draws two stacked bars (per-item compact) tinted {@code color}. */
+	private static Icon compactMenuIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		g.fillRect(2, 4, size - 4, 2);
+		g.fillRect(2, 8, size - 4, 2);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/** Draws an "✕" cross (remove) tinted {@code color}. */
+	private static Icon removeMenuIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+		g.drawLine(3, 3, size - 3, size - 3);
+		g.drawLine(size - 3, 3, 3, size - 3);
 
 		g.dispose();
 		return new ImageIcon(img);
@@ -3771,6 +3862,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		final boolean hovered = item.getItemId() == hoveredItemId;
 		final boolean showQty = config.showQuantityValue();
 		final boolean rowCompact = config.compactView() || item.isCompact();
+		final boolean showHoverButtons = config.quickActionDelivery().showsHoverButtons();
 
 		JPanel card = new JPanel(new BorderLayout(0, 0))
 		{
@@ -3804,9 +3896,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		removeBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 		favStar.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-		final JLabel overlayBtn = config.showScreenOverlay() ? buildOverlayToggle(item) : null;
-		final JLabel compactBtn = config.compactView() ? null : buildRowCompactToggle(item);
-		final JLabel dashboardBtn = buildRowDashboardButton(item);
+		final JLabel overlayBtn = config.showScreenOverlay() && showHoverButtons ? buildOverlayToggle(item) : null;
+		final JLabel compactBtn = config.compactView() || !showHoverButtons ? null : buildRowCompactToggle(item);
+		final JLabel dashboardBtn = showHoverButtons ? buildRowDashboardButton(item) : null;
 
 		JPanel eastPanel = new JPanel()
 		{
@@ -3839,7 +3931,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 						d.height += cb.height;
 				}
 
-				if (!dashboardBtn.isVisible())
+				if (dashboardBtn != null && !dashboardBtn.isVisible())
 				{
 					Dimension db = dashboardBtn.getPreferredSize();
 					if (rowCompact)
@@ -3868,8 +3960,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			eastPanel.add(compactBtn);
 		}
 
-		dashboardBtn.setVisible(false);
-		eastPanel.add(dashboardBtn);
+		if (dashboardBtn != null)
+		{
+			dashboardBtn.setVisible(false);
+			eastPanel.add(dashboardBtn);
+		}
 
 		if (rowCompact)
 		{
@@ -4164,8 +4259,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/**
-	 * Shows the tracked-row right-click menu (#280) when {@code e} is a popup trigger: an "Add to Compare"
-	 * action and an "Open in Dashboard" action for {@code itemId}.
+	 * Shows the tracked-row right-click menu (#280) when {@code e} is a popup trigger. Always offers
+	 * "View detail", "Open in Dashboard" and "Add to Compare"; when {@link StockpileConfig#quickActionDelivery()}
+	 * routes quick actions through the menu (#299), it also carries the row's favorite, overlay, per-item
+	 * compact and remove actions so they need not live on the hover strip.
 	 */
 	private void maybeShowRowMenu(MouseEvent e, int itemId)
 	{
@@ -4174,17 +4271,101 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 		JPopupMenu menu = new JPopupMenu();
 
-		JMenuItem compare = new JMenuItem("Add to Compare");
-		compare.setFont(FontManager.getRunescapeSmallFont());
-		compare.addActionListener(a -> onAddToCompare.accept(itemId));
-		menu.add(compare);
+		final Color grey = ColorScheme.LIGHT_GRAY_COLOR;
+		final Color gold = COLOR_AVG;
 
-		JMenuItem dashboard = new JMenuItem("Open in Dashboard");
-		dashboard.setFont(FontManager.getRunescapeSmallFont());
-		dashboard.addActionListener(a -> onPopOut.accept(itemId));
-		menu.add(dashboard);
+		menu.add(rowMenuItem("View detail", detailIcon(grey), detailIcon(gold), null,
+				true, a -> showDetail(itemId)));
+		menu.add(rowMenuItem("Open in Dashboard", dashboardIcon(grey), dashboardIcon(gold), null,
+				true, a -> onPopOut.accept(itemId)));
+		menu.add(rowMenuItem("Add to Compare", compareIcon(grey), compareIcon(gold), null,
+				true, a -> onAddToCompare.accept(itemId)));
+
+		final TrackedItem item = currentItems.get(itemId);
+		if (item != null && config.quickActionDelivery().showsRowMenuActions())
+		{
+			menu.addSeparator();
+
+			final boolean fav = item.isFavorite();
+			menu.add(rowMenuItem(fav ? "Remove from favorites" : "Add to favorites",
+					starMenuIcon(fav ? gold : grey, fav), starMenuIcon(fav ? grey : gold, !fav), null,
+					onSetFavorite != null, a -> onSetFavorite.accept(itemId, !fav)));
+
+			if (!config.compactView())
+			{
+				final boolean comp = item.isCompact();
+				menu.add(rowMenuItem(comp ? "Expand to standard row" : "Compact this row",
+						compactMenuIcon(comp ? gold : grey), compactMenuIcon(comp ? grey : gold), null,
+						onSetItemCompact != null, a -> onSetItemCompact.accept(itemId, !comp)));
+			}
+
+			if (config.showScreenOverlay())
+			{
+				final boolean on = item.isOnOverlay();
+				final boolean atCap = !on && overlayCount() >= StockpilePlugin.OVERLAY_MAX;
+				menu.add(rowMenuItem(on ? "Remove from overlay" : "Show on overlay",
+						overlayIcon(on ? gold : grey), overlayIcon(on ? grey : gold), null,
+						onSetOnOverlay != null && !atCap, a -> onSetOnOverlay.accept(itemId, !on)));
+			}
+
+			menu.addSeparator();
+			menu.add(rowMenuItem("Remove from tracking", removeMenuIcon(grey), removeMenuIcon(REMOVE_COLOR),
+					"selectionBackground: " + hex(removeHighlight()) + "; selectionForeground: #000000",
+					true, a -> onRemoveItem.accept(itemId)));
+		}
 
 		menu.show(e.getComponent(), e.getX(), e.getY());
+	}
+
+	/**
+	 * Builds a row right-click menu item: {@code restIcon} shown at rest (2px before the label) in the RuneScape
+	 * small font, swapped to {@code hoverIcon} while the item is highlighted (icon only — the label and default
+	 * row highlight are untouched). Active toggles pass a gold rest icon that greys out on hover, mirroring the
+	 * hover strip. A non-null {@code flatStyle} overrides the FlatLaf selection styling for this one item.
+	 */
+	private JMenuItem rowMenuItem(String label, Icon restIcon, Icon hoverIcon, String flatStyle,
+			boolean enabled, ActionListener action)
+	{
+		JMenuItem item = new JMenuItem(label, restIcon);
+		item.setFont(FontManager.getRunescapeSmallFont());
+		item.setIconTextGap(2);
+		item.setEnabled(enabled);
+		if (flatStyle != null)
+			item.putClientProperty("FlatLaf.style", flatStyle);
+
+		item.getModel().addChangeListener(ev ->
+				item.setIcon(item.getModel().isArmed() ? hoverIcon : restIcon));
+		item.addActionListener(action);
+		return item;
+	}
+
+	/**
+	 * @return a light red-tinted blend of the current menu-item highlight colour, for the Remove entry's hover.
+	 *         Kept light so the darker red ✕ icon stands out against it rather than blending in.
+	 */
+	private static Color removeHighlight()
+	{
+		Color highlight = UIManager.getColor("MenuItem.selectionBackground");
+		if (highlight == null)
+			highlight = ColorScheme.DARK_GRAY_HOVER_COLOR;
+
+		Color tint = blend(highlight, REMOVE_COLOR, 0.45f);
+		return blend(tint, Color.WHITE, 0.4f);
+	}
+
+	/** @return the linear blend of {@code base} and {@code other}, weighting {@code other} by {@code t} (0..1). */
+	private static Color blend(Color base, Color other, float t)
+	{
+		return new Color(
+				Math.round(base.getRed() * (1 - t) + other.getRed() * t),
+				Math.round(base.getGreen() * (1 - t) + other.getGreen() * t),
+				Math.round(base.getBlue() * (1 - t) + other.getBlue() * t));
+	}
+
+	/** @return {@code color} as a {@code #RRGGBB} hex string for a FlatLaf style property. */
+	private static String hex(Color color)
+	{
+		return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
 	}
 
 	/**
@@ -4240,7 +4421,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				if (compactBtn != null)
 					compactBtn.setVisible(true);
 
-				dashboardBtn.setVisible(true);
+				if (dashboardBtn != null)
+					dashboardBtn.setVisible(true);
 			}
 
 			@Override
@@ -4262,7 +4444,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 					if (compactBtn != null)
 						compactBtn.setVisible(false);
 
-					dashboardBtn.setVisible(false);
+					if (dashboardBtn != null)
+						dashboardBtn.setVisible(false);
 				}
 			}
 		};
