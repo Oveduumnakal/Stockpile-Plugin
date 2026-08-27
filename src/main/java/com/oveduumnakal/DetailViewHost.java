@@ -55,6 +55,9 @@ public interface DetailViewHost
 	/** Pops {@code itemId} out into its own standalone detail window, focusing an existing one (#109). */
 	void popOut(int itemId);
 
+	/** Adds {@code itemId} to the compare set, opening or focusing the compare window (#280). */
+	void addToCompare(int itemId);
+
 	/**
 	 * Switches the detail view to show {@code itemId} in place, from the dashboard toolbar's search bar
 	 * (#109). A pop-out window rebinds itself to the new item (tracked, or a read-only preview when it is

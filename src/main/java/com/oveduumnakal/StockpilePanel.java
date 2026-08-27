@@ -196,8 +196,12 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Integer> onUntrackToPreview;
 	/** Pops the shown item out into its own standalone detail window (#109). */
 	private final Consumer<Integer> onPopOut;
+	/** Adds the item to the compare set, opening or focusing the compare window (#280). */
+	private final Consumer<Integer> onAddToCompare;
 	/** Opens the item-less Stockpile dashboard window (#109). */
 	private final Runnable onOpenDashboard;
+
+	private final Runnable onOpenCompare;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
@@ -544,7 +548,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onRemoveItem = actions::removeItem;
 		this.onUntrackToPreview = actions::untrackToPreview;
 		this.onPopOut = actions::popOut;
+		this.onAddToCompare = actions::addToCompare;
 		this.onOpenDashboard = actions::openDashboard;
+		this.onOpenCompare = actions::openCompare;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
@@ -800,9 +806,31 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				color -> dashboardButton.setIcon(dashboardIcon(color)),
 				() -> dashboardButton.setIcon(dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR)));
 
+		JLabel compareButton = new JLabel(compareIcon(ColorScheme.LIGHT_GRAY_COLOR));
+		compareButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		compareButton.setBorder(new EmptyBorder(0, 2, 0, 6));
+		compareButton.setToolTipText("Compare View");
+		compareButton.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (onOpenCompare != null)
+					onOpenCompare.run();
+			}
+		});
+		installToggleHover(compareButton, () -> false,
+				color -> compareButton.setIcon(compareIcon(color)),
+				() -> compareButton.setIcon(compareIcon(ColorScheme.LIGHT_GRAY_COLOR)));
+
+		JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		leftButtons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		leftButtons.add(dashboardButton);
+		leftButtons.add(compareButton);
+
 		JPanel dashboardButtonWrap = new JPanel(new GridBagLayout());
 		dashboardButtonWrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		dashboardButtonWrap.add(dashboardButton);
+		dashboardButtonWrap.add(leftButtons);
 
 		JPanel togglesRow = new JPanel(new BorderLayout());
 		togglesRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -2761,6 +2789,22 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return new ImageIcon(img);
 	}
 
+	/** Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted {@code color}. */
+	static Icon compareIcon(Color color)
+	{
+		int size = 16;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+
+		g.drawOval(1, 3, 10, 10);
+		g.drawOval(5, 3, 10, 10);
+
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
 	/** Draws a bulleted-list glyph — three dots, each followed by a line — tinted {@code color}. */
 	private static Icon categoriesIcon(Color color)
 	{
@@ -4120,6 +4164,30 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/**
+	 * Shows the tracked-row right-click menu (#280) when {@code e} is a popup trigger: an "Add to Compare"
+	 * action and an "Open in Dashboard" action for {@code itemId}.
+	 */
+	private void maybeShowRowMenu(MouseEvent e, int itemId)
+	{
+		if (!e.isPopupTrigger())
+			return;
+
+		JPopupMenu menu = new JPopupMenu();
+
+		JMenuItem compare = new JMenuItem("Add to Compare");
+		compare.setFont(FontManager.getRunescapeSmallFont());
+		compare.addActionListener(a -> onAddToCompare.accept(itemId));
+		menu.add(compare);
+
+		JMenuItem dashboard = new JMenuItem("Open in Dashboard");
+		dashboard.setFont(FontManager.getRunescapeSmallFont());
+		dashboard.addActionListener(a -> onPopOut.accept(itemId));
+		menu.add(dashboard);
+
+		menu.show(e.getComponent(), e.getX(), e.getY());
+	}
+
+	/**
 	 * Wires the shared row hover behaviour onto a tracked-item card: clicking the row
 	 * (other than the remove button, favorite star, overlay button, or compact button) opens
 	 * the detail view, and entering/leaving the card tracks {@link #hoveredItemId} and reveals/hides
@@ -4141,7 +4209,22 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 						|| e.getSource() == dashboardBtn)
 					return;
 
+				if (e.isPopupTrigger())
+					return;
+
 				showDetail(item.getItemId());
+			}
+
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				maybeShowRowMenu(e, item.getItemId());
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				maybeShowRowMenu(e, item.getItemId());
 			}
 
 			@Override
@@ -5002,6 +5085,14 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		if (itemId > 0)
 			onPopOut.accept(itemId);
+	}
+
+	/** {@inheritDoc} Delegates to the panel's add-to-compare callback. */
+	@Override
+	public void addToCompare(int itemId)
+	{
+		if (itemId > 0)
+			onAddToCompare.accept(itemId);
 	}
 
 	/**

@@ -16,6 +16,16 @@
 - [com.oveduumnakal.Changelog](#comoveduumnakalchangelog)
 - [com.oveduumnakal.Changelog.Release](#comoveduumnakalchangelogrelease)
 - [com.oveduumnakal.ChartUtil](#comoveduumnakalchartutil)
+- [com.oveduumnakal.CompareHost](#comoveduumnakalcomparehost)
+- [com.oveduumnakal.CompareView](#comoveduumnakalcompareview)
+- [com.oveduumnakal.CompareView.Cell](#comoveduumnakalcompareviewcell)
+- [com.oveduumnakal.CompareView.CellFn](#comoveduumnakalcompareviewcellfn)
+- [com.oveduumnakal.CompareView.Entry](#comoveduumnakalcompareviewentry)
+- [com.oveduumnakal.CompareView.RowDef](#comoveduumnakalcompareviewrowdef)
+- [com.oveduumnakal.CompareView.Rule](#comoveduumnakalcompareviewrule)
+- [com.oveduumnakal.CompareView.Sparkline](#comoveduumnakalcompareviewsparkline)
+- [com.oveduumnakal.CompareView.VolumeChart](#comoveduumnakalcompareviewvolumechart)
+- [com.oveduumnakal.CompareWindow](#comoveduumnakalcomparewindow)
 - [com.oveduumnakal.CostBasisLedger](#comoveduumnakalcostbasisledger)
 - [com.oveduumnakal.DecantBasis](#comoveduumnakaldecantbasis)
 - [com.oveduumnakal.DestroyedOutputSources](#comoveduumnakaldestroyedoutputsources)
@@ -47,6 +57,7 @@
 - [com.oveduumnakal.ItemDeltas.DeltaAction](#comoveduumnakalitemdeltasdeltaaction)
 - [com.oveduumnakal.LedgerHost](#comoveduumnakalledgerhost)
 - [com.oveduumnakal.MarketClassifier](#comoveduumnakalmarketclassifier)
+- [com.oveduumnakal.MarketMath](#comoveduumnakalmarketmath)
 - [com.oveduumnakal.NotifCellRenderer](#comoveduumnakalnotifcellrenderer)
 - [com.oveduumnakal.NotificationMetric](#comoveduumnakalnotificationmetric)
 - [com.oveduumnakal.NotificationMetric.Kind](#comoveduumnakalnotificationmetrickind)
@@ -1154,6 +1165,1136 @@ progression so labels land on round numbers.
 
 ---
 
+## com.oveduumnakal.CompareHost
+
+_interface_
+
+`interface CompareHost`
+
+The seam a `CompareView` uses to reach the shared services and callbacks it does not own
+itself (#280). Mirrors `DetailViewHost`: the compare view was built to live inside a pop-out
+`CompareWindow`, and everything it still needs from the plugin &mdash; config, the item
+manager, the live rune prices for alch figures, and the remove/clear actions &mdash; is supplied
+through this interface rather than direct field access.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `clearCompare()` | Clears the whole compare set and closes the window. |
+| `StockpileConfig` | `config()` |  |
+| `long` | `fireRunePrice()` |  |
+| `ItemManager` | `itemManager()` |  |
+| `void` | `moveCompare(int itemId, int toIndex)` | Moves `itemId` to `toIndex` in the compare order, reordering the columns (drag-reorder). |
+| `long` | `natureRunePrice()` |  |
+| `void` | `removeFromCompare(int itemId)` | Removes `itemId` from the compare set (its column disappears; the window closes if empty). |
+
+### Method Detail
+
+#### clearCompare
+
+`void clearCompare()`
+
+Clears the whole compare set and closes the window.
+
+#### config
+
+`StockpileConfig config()`
+
+- **Returns:** the live plugin config (colours, section-visibility toggles) the compare view reads.
+
+#### fireRunePrice
+
+`long fireRunePrice()`
+
+- **Returns:** the current fire-rune price used for high-alch profit figures.
+
+#### itemManager
+
+`ItemManager itemManager()`
+
+- **Returns:** the shared item manager, for icon images and item lookups.
+
+#### moveCompare
+
+`void moveCompare(int itemId, int toIndex)`
+
+Moves `itemId` to `toIndex` in the compare order, reordering the columns (drag-reorder).
+
+#### natureRunePrice
+
+`long natureRunePrice()`
+
+- **Returns:** the current nature-rune price used for high-alch profit figures.
+
+#### removeFromCompare
+
+`void removeFromCompare(int itemId)`
+
+Removes `itemId` from the compare set (its column disappears; the window closes if empty).
+
+---
+
+## com.oveduumnakal.CompareView
+
+_class_
+
+`final class CompareView`
+
+The side-by-side compare grid (#280): one trimmed stat column per item, with a shared row-label
+column pinned down the left so the same rows line up across every item. Each column reads its
+figures from its `TrackedItem` the same way `DetailView` does &mdash; window stats,
+`MarketClassifier` ratings, `MarketMath` tax/alch/change &mdash; so the numbers match
+the detail view without duplicating any pricing logic. Which sections appear honours the same
+section-visibility config the detail view uses.
+
+<p>This component is the scrollable strip of item columns; `#rowHeader()` returns the label
+column, which `CompareWindow` pins as the scroll pane's row header so it stays put while the
+columns scroll horizontally. All construction happens on the Swing EDT.
+
+### Nested Type Summary
+
+| Type | Description |
+|---|---|
+| _class_ [`Cell`](#comoveduumnakalcompareviewcell) | A computed cell value: its display text, colour, and optional tooltip. |
+| _interface_ [`CellFn`](#comoveduumnakalcompareviewcellfn) | Maps one `Entry` to its `Cell` value for a single row. |
+| _class_ [`Entry`](#comoveduumnakalcompareviewentry) | One item to compare: its backing `TrackedItem` and whether it is actually tracked. |
+| _class_ [`RowDef`](#comoveduumnakalcompareviewrowdef) | One shared row in the grid: a section title (when `value` is `null`) or a value row. |
+| _class_ [`Rule`](#comoveduumnakalcompareviewrule) | A faint horizontal rule filling a section row's cell in an item column, so each section boundary reads as a continuous line across the columns rather than a blank gap. |
+| _class_ [`Sparkline`](#comoveduumnakalcompareviewsparkline) | A small custom-painted price sparkline for one item: the active window series' midpoints scaled to the row, giving an at-a-glance trend beneath each column. |
+| _class_ [`VolumeChart`](#comoveduumnakalcompareviewvolumechart) | A small custom-painted volume bar chart for one item: each active-window point's total traded volume (high plus low) drawn as a bar scaled to the row, sitting beneath the price trend. |
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final Cursor` | `DRAG_CURSOR` | Cursor shown while a column is being dragged: the four-way move arrow. |
+| `private static final Color` | `DRAG_HIGHLIGHT` | Translucent tint painted over the column being dragged, so the grabbed column stands out. |
+| `private static final Color` | `DRAG_LINE` | The vertical insertion line marking where a dragged column will drop. |
+| `private static final int` | `DRAG_THRESHOLD` | Minimum horizontal drag, in pixels, before a header drag is treated as a column reorder. |
+| `private static final int` | `HEADER_H` | Height of a column's top header block (icon, name, remove) in pixels. |
+| `private static final Cursor` | `HOVER_CURSOR` | Cursor shown over a draggable column header, and while it is being dragged: the four-way move arrow. |
+| `private static final int` | `ICON_SIZE` | Item-icon edge length in pixels. |
+| `private static final int` | `ITEM_COL_W` | Minimum width of each item column in pixels. |
+| `private static final int` | `LABEL_COL_W` | Width of the pinned label column in pixels. |
+| `private static final int` | `LABEL_PAD_R` | Right-hand padding on the right-justified label column, in pixels. |
+| `private static final long` | `RECENT_CHART_SECONDS` | The recent look-back the charts clip to for the `5m` window, in seconds. |
+| `private static final Color` | `REMOVE_HOVER` | The red the remove control turns on hover, matching the tracked list's remove button. |
+| `private static final int` | `REMOVE_W` | Edge length of the header's remove control, also the balancing strut opposite it, in pixels. |
+| `private static final int` | `ROW_H` | Height of a single value row in pixels. |
+| `private static final int` | `SECTION_H` | Height of a section-title row in pixels. |
+| `private static final Color` | `SECTION_RULE` | The horizontal section rule colour: the vertical `StockpileColors#DIVIDER` shifted 66% toward the column background so the row separators read fainter than the column separators. |
+| `private static final int` | `SPARK_H` | Height of the trend sparkline row in pixels. |
+| `private static final int` | `VOL_H` | Height of the mini volume-bar row beneath the trend, in pixels. |
+| `private int` | `dragItemId` | The item id of the column being dragged, valid while `#dragging`. |
+| `private int` | `dragPointerX` | The drag pointer's current x in this view's coordinates, valid while `#dragging`. |
+| `private boolean` | `dragging` | Whether a header drag-reorder is in progress (drives the drag highlight and insertion line). |
+| `private List<Entry>` | `entries` | The most recent entries, retained so a window switch can re-render without the plugin re-supplying them. |
+| `private final CompareHost` | `host` |  |
+| `private final JPanel` | `labelColumn` |  |
+| `private TimeWindow` | `window` | The time window every column currently reads its price/volume figures from. |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `CompareView(CompareHost host)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `TimeWindow` | `activeWindow()` |  |
+| `private Cell` | `alchProfitCell(TrackedItem item, boolean high)` |  |
+| `private static Color` | `blend(Color from, Color to, float t)` |  |
+| `private JComponent` | `buildCell(RowDef row, Entry entry)` | Builds one item column's cell for a shared row: a faint section rule or the computed value label. |
+| `private JPanel` | `buildColumn(Entry entry, List<RowDef> rows, boolean spark, boolean volChart)` | Builds one item's column: the header block, every value cell, then the trend and volume charts. |
+| `private JPanel` | `buildColumnHeader(Entry entry)` | Builds a column's header: the item icon and name centred, with a remove control in the corner. |
+| `private List<RowDef>` | `buildRows()` | Builds the shared row list for the current config: a section title followed by its value rows, for each section whose visibility toggle is not `SectionSlot#NONE`. |
+| `private Cell` | `changeCell(TrackedItem item)` |  |
+| `private static JLabel` | `chartLabel(String text)` |  |
+| `private Cell` | `countCell(long value)` |  |
+| `private int` | `entryIndex(int itemId)` |  |
+| `private static JComponent` | `fixHeight(JComponent component, int width, int height)` | Pins a component to a fixed width and height so rows line up across every column. |
+| `private static void` | `fixWidth(JComponent component, int width)` | Pins a component to a fixed width, leaving its height free. |
+| `private static void` | `flexWidth(JComponent component, int minWidth)` | Fixes a column's minimum width while letting it grow unbounded, so the layout stretches columns to share the viewport when they fit and holds them at `minWidth` once they overflow. |
+| `public Dimension` | `getPreferredScrollableViewportSize()` |  |
+| `public int` | `getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)` |  |
+| `public boolean` | `getScrollableTracksViewportHeight()` |  |
+| `public boolean` | `getScrollableTracksViewportWidth()` |  |
+| `public int` | `getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)` |  |
+| `private Cell` | `gpCell(long value, Color color)` |  |
+| `private static JComponent` | `growHeight(JComponent component, int width, int minHeight, boolean growWidth)` | Fixes a component's width and minimum height while letting its height grow unbounded, so the trend row stretches to absorb the column's leftover vertical space. |
+| `private static JComponent` | `headerSpacer(int width)` |  |
+| `private Cell` | `holdingProfitCell(Entry entry)` |  |
+| `private Cell` | `holdingValueCell(Entry entry)` |  |
+| `private int` | `insertionIndex(int x)` |  |
+| `private void` | `installHeaderDrag(JComponent handle, int itemId)` | Makes a header handle drag its column to a new position: pressing shows a move cursor, and releasing far enough away drops the column over whichever column the cursor is above. |
+| `private static PriceStats` | `latestFivePoint(TrackedItem item)` |  |
+| `private static JLabel` | `mutedLabel(String text, int alignment)` |  |
+| `protected void` | `paintChildren(Graphics g)` | Paints the columns, then — while a header drag is in progress — a translucent highlight over the grabbed column and a bright vertical line marking where it will drop. |
+| `private Cell` | `qtyCell(Entry entry)` |  |
+| `private Cell` | `rangeCell(TrackedItem item)` |  |
+| `private Cell` | `ratingCell(String rating)` |  |
+| `private void` | `render()` | Rebuilds the label column and every item column from one shared row list against the active window. |
+| `JComponent` | `rowHeader()` |  |
+| `private JComponent` | `rowLabel(RowDef row)` | Builds the label-column entry for one shared row: a section title or a muted row label. |
+| `void` | `setActiveWindow(TimeWindow window)` | Switches the window the columns read from and re-renders the retained entries against it. |
+| `void` | `setEntries(List<Entry> entries)` | Retains `entries` and rebuilds the grid, honouring the current section-visibility config. |
+| `private static Font` | `smallFont()` |  |
+| `private Cell` | `taxCell(TrackedItem item)` |  |
+| `private int` | `viewX(JComponent source, MouseEvent e)` |  |
+| `private static long` | `vol24(TrackedItem item)` |  |
+| `private Cell` | `volumeCell(TrackedItem item)` |  |
+| `private long` | `windowAvg(TrackedItem item)` |  |
+| `private long` | `windowHigh(TrackedItem item)` |  |
+| `private long` | `windowLow(TrackedItem item)` |  |
+| `private List<WikiRealtimePriceClient.PricePoint>` | `windowSeries(TrackedItem item)` |  |
+| `private PriceStats` | `windowStats(TrackedItem item)` |  |
+| `private long` | `windowVol(TrackedItem item)` |  |
+
+### Field Detail
+
+#### DRAG_CURSOR
+
+`private static final Cursor DRAG_CURSOR`
+
+Cursor shown while a column is being dragged: the four-way move arrow.
+
+#### DRAG_HIGHLIGHT
+
+`private static final Color DRAG_HIGHLIGHT`
+
+Translucent tint painted over the column being dragged, so the grabbed column stands out.
+
+#### DRAG_LINE
+
+`private static final Color DRAG_LINE`
+
+The vertical insertion line marking where a dragged column will drop.
+
+#### DRAG_THRESHOLD
+
+`private static final int DRAG_THRESHOLD`
+
+Minimum horizontal drag, in pixels, before a header drag is treated as a column reorder.
+
+#### HEADER_H
+
+`private static final int HEADER_H`
+
+Height of a column's top header block (icon, name, remove) in pixels.
+
+#### HOVER_CURSOR
+
+`private static final Cursor HOVER_CURSOR`
+
+Cursor shown over a draggable column header, and while it is being dragged: the four-way move arrow.
+
+#### ICON_SIZE
+
+`private static final int ICON_SIZE`
+
+Item-icon edge length in pixels.
+
+#### ITEM_COL_W
+
+`private static final int ITEM_COL_W`
+
+Minimum width of each item column in pixels. Columns grow past this to share the viewport width
+when they all fit (so they fill the window), and hold at this width &mdash; scrolling horizontally
+&mdash; once their combined minimum overflows it.
+
+#### LABEL_COL_W
+
+`private static final int LABEL_COL_W`
+
+Width of the pinned label column in pixels.
+
+#### LABEL_PAD_R
+
+`private static final int LABEL_PAD_R`
+
+Right-hand padding on the right-justified label column, in pixels.
+
+#### RECENT_CHART_SECONDS
+
+`private static final long RECENT_CHART_SECONDS`
+
+The recent look-back the charts clip to for the `5m` window, in seconds.
+
+#### REMOVE_HOVER
+
+`private static final Color REMOVE_HOVER`
+
+The red the remove control turns on hover, matching the tracked list's remove button.
+
+#### REMOVE_W
+
+`private static final int REMOVE_W`
+
+Edge length of the header's remove control, also the balancing strut opposite it, in pixels.
+
+#### ROW_H
+
+`private static final int ROW_H`
+
+Height of a single value row in pixels.
+
+#### SECTION_H
+
+`private static final int SECTION_H`
+
+Height of a section-title row in pixels.
+
+#### SECTION_RULE
+
+`private static final Color SECTION_RULE`
+
+The horizontal section rule colour: the vertical `StockpileColors#DIVIDER` shifted 66% toward
+the column background so the row separators read fainter than the column separators.
+
+#### SPARK_H
+
+`private static final int SPARK_H`
+
+Height of the trend sparkline row in pixels.
+
+#### VOL_H
+
+`private static final int VOL_H`
+
+Height of the mini volume-bar row beneath the trend, in pixels. The trend flexes to fill what's left.
+
+#### dragItemId
+
+`private int dragItemId`
+
+The item id of the column being dragged, valid while `#dragging`.
+
+#### dragPointerX
+
+`private int dragPointerX`
+
+The drag pointer's current x in this view's coordinates, valid while `#dragging`.
+
+#### dragging
+
+`private boolean dragging`
+
+Whether a header drag-reorder is in progress (drives the drag highlight and insertion line).
+
+#### entries
+
+`private List<Entry> entries`
+
+The most recent entries, retained so a window switch can re-render without the plugin re-supplying them.
+
+#### host
+
+`private final CompareHost host`
+
+#### labelColumn
+
+`private final JPanel labelColumn`
+
+#### window
+
+`private TimeWindow window`
+
+The time window every column currently reads its price/volume figures from.
+
+### Constructor Detail
+
+#### CompareView
+
+`CompareView(CompareHost host)`
+
+- **Parameter** `host` — the seam supplying config, the item manager, rune prices, and the remove/clear actions
+
+### Method Detail
+
+#### activeWindow
+
+`TimeWindow activeWindow()`
+
+- **Returns:** the time window the columns currently read their price/volume figures from.
+
+#### alchProfitCell
+
+`private Cell alchProfitCell(TrackedItem item, boolean high)`
+
+- **Returns:** the high- or low-alch profit cell, signed and coloured, or a placeholder when unknown.
+
+#### blend
+
+`private static Color blend(Color from, Color to, float t)`
+
+- **Parameter** `from` — the colour to start from
+- **Parameter** `to` — the colour to move toward
+- **Parameter** `t` — the fraction (0..1) of the way from `from` to `to`
+- **Returns:** `from` blended `t` of the way toward `to`
+
+#### buildCell
+
+`private JComponent buildCell(RowDef row, Entry entry)`
+
+Builds one item column's cell for a shared row: a faint section rule or the computed value label.
+
+#### buildColumn
+
+`private JPanel buildColumn(Entry entry, List<RowDef> rows, boolean spark, boolean volChart)`
+
+Builds one item's column: the header block, every value cell, then the trend and volume charts.
+
+#### buildColumnHeader
+
+`private JPanel buildColumnHeader(Entry entry)`
+
+Builds a column's header: the item icon and name centred, with a remove control in the corner.
+
+#### buildRows
+
+`private List<RowDef> buildRows()`
+
+Builds the shared row list for the current config: a section title followed by its value rows,
+for each section whose visibility toggle is not `SectionSlot#NONE`.
+
+#### changeCell
+
+`private Cell changeCell(TrackedItem item)`
+
+- **Returns:** the signed percent change of the current price against the active window's average.
+
+#### chartLabel
+
+`private static JLabel chartLabel(String text)`
+
+- **Returns:** a right-aligned, right-padded muted label for the trend and volume rows in the label column.
+
+#### countCell
+
+`private Cell countCell(long value)`
+
+- **Returns:** a full-number count cell (buy limit, etc.), or a placeholder when zero.
+
+#### entryIndex
+
+`private int entryIndex(int itemId)`
+
+- **Returns:** the current column index of the compared item `itemId`, or -1 when it is not present.
+
+#### fixHeight
+
+`private static JComponent fixHeight(JComponent component, int width, int height)`
+
+Pins a component to a fixed width and height so rows line up across every column.
+
+#### fixWidth
+
+`private static void fixWidth(JComponent component, int width)`
+
+Pins a component to a fixed width, leaving its height free.
+
+#### flexWidth
+
+`private static void flexWidth(JComponent component, int minWidth)`
+
+Fixes a column's minimum width while letting it grow unbounded, so the layout stretches columns to
+share the viewport when they fit and holds them at `minWidth` once they overflow. The column's
+preferred height is left to compute from its rows (it is sized after they are added).
+
+#### getPreferredScrollableViewportSize
+
+`public Dimension getPreferredScrollableViewportSize()`
+
+- **Returns:** this view's own preferred size as the preferred viewport size.
+
+#### getScrollableBlockIncrement
+
+`public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)`
+
+- **Returns:** a block scroll increment of one visible page along the scroll axis.
+
+#### getScrollableTracksViewportHeight
+
+`public boolean getScrollableTracksViewportHeight()`
+
+- **Returns:** `true` when the grid fits the viewport, so the trend row stretches to fill its height;
+        `false` once the rows overflow, so the pane scrolls vertically instead of squashing.
+
+#### getScrollableTracksViewportWidth
+
+`public boolean getScrollableTracksViewportWidth()`
+
+- **Returns:** `true` when the columns fit the viewport, so the layout stretches them to fill its
+        width; `false` once their combined minimum width overflows, so they hold their width
+        and the pane scrolls horizontally instead.
+
+#### getScrollableUnitIncrement
+
+`public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)`
+
+- **Returns:** a fixed unit scroll increment matching the enclosing scroll pane's step.
+
+#### gpCell
+
+`private Cell gpCell(long value, Color color)`
+
+- **Returns:** a compact gp cell, or a placeholder when the value is non-positive.
+
+#### growHeight
+
+`private static JComponent growHeight(JComponent component, int width, int minHeight, boolean growWidth)`
+
+Fixes a component's width and minimum height while letting its height grow unbounded, so the trend
+row stretches to absorb the column's leftover vertical space. `growWidth` lets the sparkline
+also fill its column's width, while the label column's trend cell keeps its fixed width.
+
+#### headerSpacer
+
+`private static JComponent headerSpacer(int width)`
+
+- **Returns:** an empty, fixed-height spacer standing in for a column's header block in the label column.
+
+#### holdingProfitCell
+
+`private Cell holdingProfitCell(Entry entry)`
+
+- **Returns:** the realized-profit cell, signed and coloured, blank for an untracked item.
+
+#### holdingValueCell
+
+`private Cell holdingValueCell(Entry entry)`
+
+- **Returns:** the tracked holding-value cell (qty times price), blank for an untracked item.
+
+#### insertionIndex
+
+`private int insertionIndex(int x)`
+
+- **Returns:** the boundary (0..N) between columns nearest x, where a dropped column would be inserted.
+
+#### installHeaderDrag
+
+`private void installHeaderDrag(JComponent handle, int itemId)`
+
+Makes a header handle drag its column to a new position: pressing shows a move cursor, and
+releasing far enough away drops the column over whichever column the cursor is above.
+
+- **Parameter** `handle` — the header component the drag is attached to (the identity panel, icon, or name)
+- **Parameter** `itemId` — the id of the column being dragged
+
+#### latestFivePoint
+
+`private static PriceStats latestFivePoint(TrackedItem item)`
+
+- **Returns:** a `PriceStats` built from the most recent 5-minute datapoint (the `/5m` series'
+        last point): its averaged high and low, their midpoint, and traded volume; `null`
+        when the series is empty.
+
+#### mutedLabel
+
+`private static JLabel mutedLabel(String text, int alignment)`
+
+- **Returns:** a small muted, left-or-centre-aligned label in the panel's small font.
+
+#### paintChildren
+
+`protected void paintChildren(Graphics g)`
+
+Paints the columns, then — while a header drag is in progress — a translucent highlight over the
+grabbed column and a bright vertical line marking where it will drop.
+
+- **Parameter** `g` — the graphics context
+
+#### qtyCell
+
+`private Cell qtyCell(Entry entry)`
+
+- **Returns:** the tracked quantity cell, blank for an untracked item.
+
+#### rangeCell
+
+`private Cell rangeCell(TrackedItem item)`
+
+- **Returns:** the 30-day range-position cell, or a placeholder when the range is unknown.
+
+#### ratingCell
+
+`private Cell ratingCell(String rating)`
+
+- **Returns:** a Low/Medium/High rating cell (volatility, liquidity), or a placeholder when unknown.
+
+#### render
+
+`private void render()`
+
+Rebuilds the label column and every item column from one shared row list against the active window.
+
+#### rowHeader
+
+`JComponent rowHeader()`
+
+- **Returns:** the pinned label column, for use as the scroll pane's row header.
+
+#### rowLabel
+
+`private JComponent rowLabel(RowDef row)`
+
+Builds the label-column entry for one shared row: a section title or a muted row label.
+
+#### setActiveWindow
+
+`void setActiveWindow(TimeWindow window)`
+
+Switches the window the columns read from and re-renders the retained entries against it.
+
+- **Parameter** `window` — the window whose stats every column should show
+
+#### setEntries
+
+`void setEntries(List<Entry> entries)`
+
+Retains `entries` and rebuilds the grid, honouring the current section-visibility config. The
+label column and every item column are rebuilt from one shared row list so the rows stay aligned.
+
+- **Parameter** `entries` — the items to compare, in display order
+
+#### smallFont
+
+`private static Font smallFont()`
+
+- **Returns:** the panel's small font (the RuneScape small font).
+
+#### taxCell
+
+`private Cell taxCell(TrackedItem item)`
+
+- **Returns:** the item's GE-tax cell, or a placeholder when the item has no price.
+
+#### viewX
+
+`private int viewX(JComponent source, MouseEvent e)`
+
+- **Returns:** `e`'s x, translated from `source`'s coordinates into this view's coordinates.
+
+#### vol24
+
+`private static long vol24(TrackedItem item)`
+
+- **Returns:** the item's traded volume over the past 24 hours from its window stats, or 0 when unknown.
+
+#### volumeCell
+
+`private Cell volumeCell(TrackedItem item)`
+
+- **Returns:** the item's traded-volume cell over the active window, or a placeholder when unknown.
+
+#### windowAvg
+
+`private long windowAvg(TrackedItem item)`
+
+- **Returns:** the active window's average price, or 0 when unknown.
+
+#### windowHigh
+
+`private long windowHigh(TrackedItem item)`
+
+- **Returns:** the active window's high (buy) price, or 0 when unknown.
+
+#### windowLow
+
+`private long windowLow(TrackedItem item)`
+
+- **Returns:** the active window's low (sell) price, or 0 when unknown.
+
+#### windowSeries
+
+`private List<WikiRealtimePriceClient.PricePoint> windowSeries(TrackedItem item)`
+
+- **Returns:** the item's price series for the active window, clipped to that window's look-back so the
+        trend and volume charts differ between windows drawn from the same underlying series. The
+        `Latest` window (`TimeWindow#LIVE`) shows the full 24h of 5-minute points; the
+        `5m` window (`TimeWindow#M5`) shows just a zoomed recent span.
+
+#### windowStats
+
+`private PriceStats windowStats(TrackedItem item)`
+
+- **Returns:** the stats the active window reads its figures from: the most recent 5-minute datapoint for
+        the `5m` window (`TimeWindow#M5`), else the item's precomputed window stats.
+
+#### windowVol
+
+`private long windowVol(TrackedItem item)`
+
+- **Returns:** the active window's traded volume, or 0 when unknown.
+
+---
+
+## com.oveduumnakal.CompareView.Cell
+
+_class_
+
+`private static final class Cell`
+
+A computed cell value: its display text, colour, and optional tooltip.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final Color` | `color` |  |
+| `private final String` | `text` |  |
+| `private final String` | `tooltip` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `Cell(String text, Color color, String tooltip)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static Cell` | `placeholder()` |  |
+
+### Field Detail
+
+#### color
+
+`private final Color color`
+
+#### text
+
+`private final String text`
+
+#### tooltip
+
+`private final String tooltip`
+
+### Constructor Detail
+
+#### Cell
+
+`Cell(String text, Color color, String tooltip)`
+
+- **Parameter** `text` — the display text
+- **Parameter** `color` — the text colour
+- **Parameter** `tooltip` — the tooltip, or `null` for none
+
+### Method Detail
+
+#### placeholder
+
+`static Cell placeholder()`
+
+- **Returns:** the shared placeholder cell for an unknown/absent value (a muted dash).
+
+---
+
+## com.oveduumnakal.CompareView.CellFn
+
+_interface_
+
+`private interface CellFn`
+
+Maps one `Entry` to its `Cell` value for a single row.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `Cell` | `apply(Entry entry)` |  |
+
+### Method Detail
+
+#### apply
+
+`Cell apply(Entry entry)`
+
+- **Parameter** `entry` — the item being rendered
+- **Returns:** the computed cell for this row
+
+---
+
+## com.oveduumnakal.CompareView.Entry
+
+_class_
+
+`static final class Entry`
+
+One item to compare: its backing `TrackedItem` and whether it is actually tracked.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final TrackedItem` | `item` |  |
+| `private final boolean` | `tracked` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `Entry(TrackedItem item, boolean tracked)` |  |
+
+### Field Detail
+
+#### item
+
+`private final TrackedItem item`
+
+#### tracked
+
+`private final boolean tracked`
+
+### Constructor Detail
+
+#### Entry
+
+`Entry(TrackedItem item, boolean tracked)`
+
+- **Parameter** `item` — the tracked item (live) or a read-only preview instance for an untracked item
+- **Parameter** `tracked` — whether `item` is actually tracked (untracked items blank the holdings rows)
+
+---
+
+## com.oveduumnakal.CompareView.RowDef
+
+_class_
+
+`private static final class RowDef`
+
+One shared row in the grid: a section title (when `value` is `null`) or a value row.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final String` | `label` |  |
+| `private final CellFn` | `value` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `RowDef(String label, CellFn value)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `boolean` | `isSection()` |  |
+| `static RowDef` | `section(String label)` |  |
+| `static RowDef` | `value(String label, CellFn value)` |  |
+
+### Field Detail
+
+#### label
+
+`private final String label`
+
+#### value
+
+`private final CellFn value`
+
+### Constructor Detail
+
+#### RowDef
+
+`private RowDef(String label, CellFn value)`
+
+- **Parameter** `label` — the row's label text
+- **Parameter** `value` — the value provider, or `null` for a section-title row
+
+### Method Detail
+
+#### isSection
+
+`boolean isSection()`
+
+- **Returns:** whether this row is a section title rather than a value row.
+
+#### section
+
+`static RowDef section(String label)`
+
+- **Parameter** `label` — the section title
+- **Returns:** a section-title row
+
+#### value
+
+`static RowDef value(String label, CellFn value)`
+
+- **Parameter** `label` — the row label
+- **Parameter** `value` — the value provider
+- **Returns:** a value row
+
+---
+
+## com.oveduumnakal.CompareView.Rule
+
+_class_
+
+`private static final class Rule`
+
+A faint horizontal rule filling a section row's cell in an item column, so each section boundary
+reads as a continuous line across the columns rather than a blank gap.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `protected void` | `paintComponent(Graphics g)` |  |
+
+### Method Detail
+
+#### paintComponent
+
+`protected void paintComponent(Graphics g)`
+
+---
+
+## com.oveduumnakal.CompareView.Sparkline
+
+_class_
+
+`private static final class Sparkline`
+
+A small custom-painted price sparkline for one item: the active window series' midpoints scaled to
+the row, giving an at-a-glance trend beneath each column.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final List<WikiRealtimePriceClient.PricePoint>` | `series` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `Sparkline(List<WikiRealtimePriceClient.PricePoint> series)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `private List<Long>` | `midpoints()` |  |
+| `protected void` | `paintComponent(Graphics g)` |  |
+
+### Field Detail
+
+#### series
+
+`private final List<WikiRealtimePriceClient.PricePoint> series`
+
+### Constructor Detail
+
+#### Sparkline
+
+`Sparkline(List<WikiRealtimePriceClient.PricePoint> series)`
+
+- **Parameter** `series` — the price points to plot (an empty list paints nothing)
+
+### Method Detail
+
+#### midpoints
+
+`private List<Long> midpoints()`
+
+- **Returns:** the in-order series midpoints (high/low average), skipping points with no price.
+
+#### paintComponent
+
+`protected void paintComponent(Graphics g)`
+
+---
+
+## com.oveduumnakal.CompareView.VolumeChart
+
+_class_
+
+`private static final class VolumeChart`
+
+A small custom-painted volume bar chart for one item: each active-window point's total traded
+volume (high plus low) drawn as a bar scaled to the row, sitting beneath the price trend.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final List<WikiRealtimePriceClient.PricePoint>` | `series` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `VolumeChart(List<WikiRealtimePriceClient.PricePoint> series)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `protected void` | `paintComponent(Graphics g)` |  |
+| `private List<Long>` | `volumes()` |  |
+
+### Field Detail
+
+#### series
+
+`private final List<WikiRealtimePriceClient.PricePoint> series`
+
+### Constructor Detail
+
+#### VolumeChart
+
+`VolumeChart(List<WikiRealtimePriceClient.PricePoint> series)`
+
+- **Parameter** `series` — the price points whose volumes to plot (an empty list paints nothing)
+
+### Method Detail
+
+#### paintComponent
+
+`protected void paintComponent(Graphics g)`
+
+#### volumes
+
+`private List<Long> volumes()`
+
+- **Returns:** each point's total traded volume (high plus low) in series order.
+
+---
+
+## com.oveduumnakal.CompareWindow
+
+_class_
+
+`final class CompareWindow`
+
+The standalone, resizable compare window (#280): a singleton `JFrame` wrapping a
+`CompareView` whose columns compare the items in the plugin's shared compare set side by
+side. The view's label column is pinned as the scroll pane's row header so it stays put while the
+item columns scroll horizontally. The plugin owns the single instance, drives its item list, keeps
+its prices fresh each tick, and disposes it on shutdown. All methods run on the Swing EDT.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final Dimension` | `DEFAULT_SIZE` |  |
+| `private static final Dimension` | `MIN_SIZE` |  |
+| `private static final TimeWindow[]` | `WINDOWS` | The time windows offered by the top toggle, from the latest snapshot out to a month. |
+| `private final JFrame` | `frame` |  |
+| `private final CompareView` | `view` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `CompareWindow(CompareHost host, List<CompareView.Entry> entries, Runnable onClose)` | Builds and shows the compare window for `entries`. |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `private JPanel` | `buildFooter(CompareHost host)` | Builds the footer strip holding the Clear-all control. |
+| `private JFrame` | `buildFrame(CompareHost host, Runnable onClose)` | Wraps the compare view (with a pinned label column) and a Clear-all footer in a disposable frame. |
+| `private JPanel` | `buildToolbar()` | Builds the top toolbar holding the time-window toggle that drives every column's figures. |
+| `void` | `dispose()` | Disposes the window (its close listener drops the plugin's singleton reference). |
+| `void` | `focus()` | Brings the window to the front, restoring it if minimised, so re-adding focuses it. |
+| `void` | `setEntries(List<CompareView.Entry> entries)` | Re-populates the window with `entries` and updates the title count. |
+| `private static String` | `windowLabel(TimeWindow window)` |  |
+
+### Field Detail
+
+#### DEFAULT_SIZE
+
+`private static final Dimension DEFAULT_SIZE`
+
+#### MIN_SIZE
+
+`private static final Dimension MIN_SIZE`
+
+#### WINDOWS
+
+`private static final TimeWindow[] WINDOWS`
+
+The time windows offered by the top toggle, from the latest snapshot out to a month.
+
+#### frame
+
+`private final JFrame frame`
+
+#### view
+
+`private final CompareView view`
+
+### Constructor Detail
+
+#### CompareWindow
+
+`CompareWindow(CompareHost host, List<CompareView.Entry> entries, Runnable onClose)`
+
+Builds and shows the compare window for `entries`.
+
+- **Parameter** `host` — the seam supplying config, the item manager, rune prices, and the remove/clear actions
+- **Parameter** `entries` — the initial items to compare, in display order
+- **Parameter** `onClose` — fires when the window is disposed, letting the plugin drop its singleton reference
+
+### Method Detail
+
+#### buildFooter
+
+`private JPanel buildFooter(CompareHost host)`
+
+Builds the footer strip holding the Clear-all control.
+
+#### buildFrame
+
+`private JFrame buildFrame(CompareHost host, Runnable onClose)`
+
+Wraps the compare view (with a pinned label column) and a Clear-all footer in a disposable frame.
+
+#### buildToolbar
+
+`private JPanel buildToolbar()`
+
+Builds the top toolbar holding the time-window toggle that drives every column's figures.
+
+#### dispose
+
+`void dispose()`
+
+Disposes the window (its close listener drops the plugin's singleton reference).
+
+#### focus
+
+`void focus()`
+
+Brings the window to the front, restoring it if minimised, so re-adding focuses it.
+
+#### setEntries
+
+`void setEntries(List<CompareView.Entry> entries)`
+
+Re-populates the window with `entries` and updates the title count.
+
+- **Parameter** `entries` — the items to compare, in display order
+
+#### windowLabel
+
+`private static String windowLabel(TimeWindow window)`
+
+- **Returns:** the toggle label for a window: `"Latest"` for the live snapshot, `"5m"` for the
+         5-minute datapoint, else the window's spelled-out label.
+
+---
+
 ## com.oveduumnakal.CostBasisLedger
 
 _class_
@@ -2207,6 +3348,7 @@ populated detail card and a loading placeholder.
 | `private final JLabel` | `ccvQuantity` |  |
 | `private JPanel` | `ccvSection` |  |
 | `private final StockpileConfig` | `config` |  |
+| `private JButton` | `dashboardCompareBtn` |  |
 | `private JLabel` | `dashboardEmptyMessage` |  |
 | `private boolean` | `dashboardHome` |  |
 | `private JPanel` | `dashboardLeftColumn` |  |
@@ -2218,6 +3360,7 @@ populated detail card and a loading placeholder.
 | `private JPopupMenu` | `dashboardSearchPopup` |  |
 | `private JButton` | `dashboardWikiBtn` |  |
 | `private final JPanel` | `detailCard` |  |
+| `private JButton` | `detailCompareBtn` |  |
 | `private final JTextArea` | `detailDescriptionArea` |  |
 | `private String` | `detailExamineText` |  |
 | `private final JLabel` | `detailIconLabel` |  |
@@ -2340,7 +3483,7 @@ populated detail card and a loading placeholder.
 | `private JPanel` | `buildOverviewGrid()` | Builds (and remembers) the sidebar overview grid. |
 | `private JButton` | `buildPopoutButton(Runnable onClick)` | Builds a borderless pop-out button that runs the given action when clicked. |
 | `private Icon` | `buildPopoutIcon()` | Paints the small box-with-arrow "open in new window" icon used by pop-out buttons. |
-| `private void` | `buildStackHeader(JPanel titleTextStack)` | Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row, then the icon-and-title row, then the wrapping description &mdash; all stacked vertically. |
+| `private void` | `buildStackHeader(JPanel titleTextStack)` | Builds the sidebar (STACK) detail header: a Back button (left) with the Track/Untrack button (right) on the first row, the Dashboard and Compare icons left-justified on the second, then the icon-and-title row and the wrapping description &mdash; all stacked vertically. |
 | `private void` | `clearItemValue(JLabel label, String text)` | Resets a value label to plain text, dropping its tooltip and any hover-tint listener. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows (e.g. |
 | `private JPanel` | `createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)` | Creates an overview grid panel that custom-paints its own dividers: a vertical rule after the window-label column and a horizontal rule between consecutive rows, both derived from the live label positions so they track layout changes. |
@@ -2605,6 +3748,10 @@ Foreground of the detail header's Untrack button (red) — a tracked item can be
 
 `private final StockpileConfig config`
 
+#### dashboardCompareBtn
+
+`private JButton dashboardCompareBtn`
+
 #### dashboardEmptyMessage
 
 `private JLabel dashboardEmptyMessage`
@@ -2648,6 +3795,10 @@ Foreground of the detail header's Untrack button (red) — a tracked item can be
 #### detailCard
 
 `private final JPanel detailCard`
+
+#### detailCompareBtn
+
+`private JButton detailCompareBtn`
 
 #### detailDescriptionArea
 
@@ -3233,8 +4384,9 @@ Paints the small box-with-arrow "open in new window" icon used by pop-out button
 
 `private void buildStackHeader(JPanel titleTextStack)`
 
-Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row,
-then the icon-and-title row, then the wrapping description &mdash; all stacked vertically.
+Builds the sidebar (STACK) detail header: a Back button (left) with the Track/Untrack button (right)
+on the first row, the Dashboard and Compare icons left-justified on the second, then the
+icon-and-title row and the wrapping description &mdash; all stacked vertically.
 
 #### clearItemValue
 
@@ -3773,6 +4925,7 @@ the fields and callbacks it already holds.
 |---|---|---|
 | `void` | `acquisitionsEdited(int itemId)` | Signals that the acquisitions log for `itemId` was edited in-view. |
 | `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId` from the detail header Track button (#138), honouring the add mode. |
+| `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set, opening or focusing the compare window (#280). |
 | `void` | `clearAcquisitions(int itemId)` | Clears the acquisitions log for `itemId`. |
 | `StockpileConfig` | `config()` |  |
 | `String` | `examine(int itemId)` |  |
@@ -3800,6 +4953,12 @@ Signals that the acquisitions log for `itemId` was edited in-view.
 `void addItem(int itemId, TrackItemMode mode)`
 
 Tracks `itemId` from the detail header Track button (#138), honouring the add mode.
+
+#### addToCompare
+
+`void addToCompare(int itemId)`
+
+Adds `itemId` to the compare set, opening or focusing the compare window (#280).
 
 #### clearAcquisitions
 
@@ -5633,6 +6792,120 @@ Rates price volatility over the past week as the coefficient of variation
 
 ---
 
+## com.oveduumnakal.MarketMath
+
+_class_
+
+`final class MarketMath`
+
+Small pure market-math helpers shared by the item detail view and the compare view (#280): the
+Grand Exchange sell tax, high/low alchemy profit, and percent price change against a baseline.
+Extracted so both views compute these identical figures from one source rather than each
+duplicating the formulas.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final long` | `GE_TAX_CAP` | The Grand Exchange sell tax is capped at this many gp per item. |
+| `private static final long` | `GE_TAX_MIN_PRICE` | The Grand Exchange sell tax is waived on items priced below this many gp. |
+| `private static final double` | `GE_TAX_RATE` | The Grand Exchange sell tax is 2% of the sale price. |
+| `private static final int` | `HIGH_ALCH_FIRE_RUNES` | High-alchemy consumes five fire runes per cast. |
+| `private static final int` | `LOW_ALCH_FIRE_RUNES` | Low-alchemy consumes three fire runes per cast. |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `MarketMath()` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static double` | `changePct(long current, long baseline)` |  |
+| `static long` | `geTax(long avgPrice)` |  |
+| `static long` | `highAlchProfit(long highAlch, long itemAvg, long naturePrice, long firePrice)` |  |
+| `static long` | `lowAlchProfit(long lowAlch, long itemAvg, long naturePrice, long firePrice)` |  |
+
+### Field Detail
+
+#### GE_TAX_CAP
+
+`private static final long GE_TAX_CAP`
+
+The Grand Exchange sell tax is capped at this many gp per item.
+
+#### GE_TAX_MIN_PRICE
+
+`private static final long GE_TAX_MIN_PRICE`
+
+The Grand Exchange sell tax is waived on items priced below this many gp.
+
+#### GE_TAX_RATE
+
+`private static final double GE_TAX_RATE`
+
+The Grand Exchange sell tax is 2% of the sale price.
+
+#### HIGH_ALCH_FIRE_RUNES
+
+`private static final int HIGH_ALCH_FIRE_RUNES`
+
+High-alchemy consumes five fire runes per cast.
+
+#### LOW_ALCH_FIRE_RUNES
+
+`private static final int LOW_ALCH_FIRE_RUNES`
+
+Low-alchemy consumes three fire runes per cast.
+
+### Constructor Detail
+
+#### MarketMath
+
+`private MarketMath()`
+
+### Method Detail
+
+#### changePct
+
+`static double changePct(long current, long baseline)`
+
+- **Parameter** `current` — the current price in gp
+- **Parameter** `baseline` — the baseline (window-average) price in gp
+- **Returns:** the signed percent change of `current` against `baseline`, rounded to one
+    decimal place, or `Double#NaN` when either price is non-positive
+
+#### geTax
+
+`static long geTax(long avgPrice)`
+
+- **Parameter** `avgPrice` — the unit sale price in gp
+- **Returns:** the Grand Exchange sell tax on a unit at `avgPrice` (per the live GE tax rules)
+
+#### highAlchProfit
+
+`static long highAlchProfit(long highAlch, long itemAvg, long naturePrice, long firePrice)`
+
+- **Parameter** `highAlch` — the item's high-alchemy value in gp
+- **Parameter** `itemAvg` — the item's average price in gp
+- **Parameter** `naturePrice` — the nature-rune price in gp
+- **Parameter** `firePrice` — the fire-rune price in gp
+- **Returns:** the profit from high-alching one unit (alch value minus item cost and rune cost)
+
+#### lowAlchProfit
+
+`static long lowAlchProfit(long lowAlch, long itemAvg, long naturePrice, long firePrice)`
+
+- **Parameter** `lowAlch` — the item's low-alchemy value in gp
+- **Parameter** `itemAvg` — the item's average price in gp
+- **Parameter** `naturePrice` — the nature-rune price in gp
+- **Parameter** `firePrice` — the fire-rune price in gp
+- **Returns:** the profit from low-alching one unit (alch value minus item cost and rune cost)
+
+---
+
 ## com.oveduumnakal.NotifCellRenderer
 
 _class_
@@ -6533,6 +7806,7 @@ lets a new feature add a method rather than another positional lambda.
 |---|---|---|
 | `void` | `acquisitionsEdited(int itemId)` | Notifies the plugin that `itemId`'s acquisition lots were edited and must be persisted. |
 | `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId`, honouring how the user asked for it to be added. |
+| `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set (#280), opening or focusing the compare window. |
 | `void` | `clearAcquisitions(int itemId)` | Clears all acquisition lots recorded for `itemId`. |
 | `void` | `clearAll()` | Stops tracking every item and clears all tracked state. |
 | `String` | `examineLookup(int itemId)` |  |
@@ -6540,6 +7814,7 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `exportList(Consumer<String> callback)` | Builds the share token for the tracked list and hands it back through `callback`. |
 | `void` | `importList(String data, Consumer<String> callback)` | Imports the tracked list encoded in `data`, reporting the outcome through `callback`. |
 | `void` | `notificationsEdited(int itemId)` | Notifies the plugin that `itemId`'s notification rules were edited and must be persisted. |
+| `void` | `openCompare()` | Opens the compare window (#280) or focuses it, showing the empty prompt when nothing is compared yet. |
 | `void` | `openDashboard()` | Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. |
 | `void` | `popOut(int itemId)` | Pops `itemId` out into its own standalone, resizable detail window (#109), or focuses the existing window if one is already open for it. |
 | `List<long[]>` | `portfolioHistory()` |  |
@@ -6571,6 +7846,12 @@ Notifies the plugin that `itemId`'s acquisition lots were edited and must be per
 `void addItem(int itemId, TrackItemMode mode)`
 
 Tracks `itemId`, honouring how the user asked for it to be added.
+
+#### addToCompare
+
+`void addToCompare(int itemId)`
+
+Adds `itemId` to the compare set (#280), opening or focusing the compare window.
 
 #### clearAcquisitions
 
@@ -6613,6 +7894,12 @@ Imports the tracked list encoded in `data`, reporting the outcome through `callb
 `void notificationsEdited(int itemId)`
 
 Notifies the plugin that `itemId`'s notification rules were edited and must be persisted.
+
+#### openCompare
+
+`void openCompare()`
+
+Opens the compare window (#280) or focuses it, showing the empty prompt when nothing is compared yet.
 
 #### openDashboard
 
@@ -9546,6 +10833,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `String` | `KEY_AUTO_ADD_ITEMS` | Persisted config key `"autoAddItems"`. |
 | `String` | `KEY_CATEGORIES` | Persisted config key `"trackedCategories"`. |
 | `String` | `KEY_COMPACT_VIEW` | Persisted config key `"compactView"`. |
+| `String` | `KEY_CONTEXT_MENU_COMPARE` | Persisted config key `"contextMenuCompare"`. |
 | `String` | `KEY_CONTEXT_MENU_DASHBOARD` | Persisted config key `"contextMenuDashboard"`. |
 | `String` | `KEY_CONTEXT_MENU_ENABLED` | Persisted config key `"contextMenuEnabled"`. |
 | `String` | `KEY_CONTEXT_MENU_KEY` | Persisted config key `"contextMenuKey"`. |
@@ -9624,6 +10912,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `default boolean` | `autoAddItems()` | Automatically add collection-log entries from inventory/bank changes. |
 | `default PressureWindow` | `buySellPressureWindow()` | Look-back period for the Buy/Sell Pressure bar in the Market Info section. |
 | `default boolean` | `compactView()` | Show tracked items as compact two-row entries. |
+| `default boolean` | `contextMenuCompare()` | Include the Add to Compare option in the Stockpile context-menu section. |
 | `default boolean` | `contextMenuDashboard()` | Include the Open in Dashboard option in the Stockpile context-menu section. |
 | `default boolean` | `contextMenuEnabled()` | Show the Stockpile options section on an item's right-click menu (held with the Context Menu Key). |
 | `default Keybind` | `contextMenuKey()` | The key held while right-clicking an item to show the Stockpile options section. |
@@ -9703,6 +10992,12 @@ Persisted config key `"trackedCategories"`.
 `String KEY_COMPACT_VIEW`
 
 Persisted config key `"compactView"`.
+
+#### KEY_CONTEXT_MENU_COMPARE
+
+`String KEY_CONTEXT_MENU_COMPARE`
+
+Persisted config key `"contextMenuCompare"`.
 
 #### KEY_CONTEXT_MENU_DASHBOARD
 
@@ -10145,6 +11440,12 @@ Look-back period for the Buy/Sell Pressure bar in the Market Info section.
 `default boolean compactView()`
 
 Show tracked items as compact two-row entries. Toggleable from the tracked list header.
+
+#### contextMenuCompare
+
+`default boolean contextMenuCompare()`
+
+Include the Add to Compare option in the Stockpile context-menu section.
 
 #### contextMenuDashboard
 
@@ -10757,12 +12058,14 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private long` | `natureRunePrice` |  |
 | `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
+| `private final Consumer<Integer>` | `onAddToCompare` | Adds the item to the compare set, opening or focusing the compare window (#280). |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
 | `private final Runnable` | `onClearAll` |  |
 | `private final Consumer<Consumer<String>>` | `onExportCsv` | Builds the acquisitions CSV on the client thread and delivers it back on the EDT. |
 | `private final Consumer<Consumer<String>>` | `onExportList` | Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. |
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
 | `private final Consumer<Integer>` | `onNotificationsEdited` |  |
+| `private final Runnable` | `onOpenCompare` |  |
 | `private final Runnable` | `onOpenDashboard` | Opens the item-less Stockpile dashboard window (#109). |
 | `private final Consumer<Integer>` | `onPopOut` | Pops the shown item out into its own standalone detail window (#109). |
 | `private final Supplier<List<long[]>>` | `onPortfolioHistory` | Supplies the portfolio value history points (`{epochSeconds, value, costBasis`}) for the chart. |
@@ -10837,6 +12140,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `addFormRow(JPanel form, String label, JComponent field)` | Adds a labelled row (label above the field) to a vertical form panel. |
 | `public void` | `addItem(int itemId, TrackItemMode mode)` | {@inheritDoc} Delegates to the panel's add-item callback. |
 | `private void` | `addListenerRecursively(Component c, MouseListener listener)` | Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one. |
+| `public void` | `addToCompare(int itemId)` | {@inheritDoc} Delegates to the panel's add-to-compare callback. |
 | `private static void` | `appendChangelogAnchor(StringBuilder sb, int sectionIndex)` | Appends a named scroll anchor (`sec `) matching the ids `#extractSections` hands the nav. |
 | `private static void` | `appendChangelogDiv(StringBuilder sb, String style, int indentLevel, String html)` | Appends a ` ` with the given inline CSS `style` and left indent, wrapping `html`. |
 | `private void` | `applyChangelogButtonStyle()` | Applies the indicator styling — gold while "What's New", muted once seen. |
@@ -10880,6 +12184,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `clearSessionBaseline()` | Drops the session baseline without re-priming (used on profile change): the next rebuild captures the new profile's holdings as the baseline. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
 | `private void` | `commitDrag()` | Commits the in-progress drag: places the dragged item at its new slot within its own group and rewrites the full tracked order accordingly (kept within-group, since groups render in global order). |
+| `static Icon` | `compareIcon(Color color)` | Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted `color`. |
 | `private List<Integer>` | `computeDragGroup(int itemId)` | Determines the dragged item's group as the contiguous run of item rows between accordion headers in the rendered list (the whole list when ungrouped), returning its item ids in visual order. |
 | `private List<RowSection>` | `computeSections(List<TrackedItem> items)` | Computes the ordered, filtered display sections (#275): a single flat section when no grouping is active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized. |
 | `public StockpileConfig` | `config()` | {@inheritDoc} Supplies the panel's live plugin config to the detail view. |
@@ -10922,6 +12227,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static Map<Integer,long[]>` | `liveSessionSnapshot(List<TrackedItem> items)` | Builds the session baseline snapshot (item id → [quantity, avg price]) from only the items whose prices came from a live fetch. |
 | `private JButton` | `makeRowControl(String glyph, String tooltip)` | Builds a compact, hover-revealed glyph button styled like the row's remove button. |
 | `private boolean` | `matchesFilter(TrackedItem item)` |  |
+| `private void` | `maybeShowRowMenu(MouseEvent e, int itemId)` | Shows the tracked-row right-click menu (#280) when `e` is a popup trigger: an "Add to Compare" action and an "Open in Dashboard" action for `itemId`. |
 | `private void` | `moveCategoryInDialog(JList<String> list, DefaultListModel<String> model, int delta)` | Moves the selected dialog category by `delta` and forwards the new index to the plugin. |
 | `public long` | `natureRunePrice()` | {@inheritDoc} Returns the nature-rune price the panel currently holds. |
 | `public void` | `notificationsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's notifications-edited callback when present. |
@@ -11469,6 +12775,12 @@ The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport w
 
 `private final BiConsumer<Integer,TrackItemMode> onAddItem`
 
+#### onAddToCompare
+
+`private final Consumer<Integer> onAddToCompare`
+
+Adds the item to the compare set, opening or focusing the compare window (#280).
+
 #### onClearAcquisitions
 
 `private final Consumer<Integer> onClearAcquisitions`
@@ -11498,6 +12810,10 @@ Imports a tracked-list token (merge, non-destructive); delivers a user-facing re
 #### onNotificationsEdited
 
 `private final Consumer<Integer> onNotificationsEdited`
+
+#### onOpenCompare
+
+`private final Runnable onOpenCompare`
 
 #### onOpenDashboard
 
@@ -11842,6 +13158,12 @@ Adds a labelled row (label above the field) to a vertical form panel.
 
 Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one.
 
+#### addToCompare
+
+`public void addToCompare(int itemId)`
+
+{@inheritDoc} Delegates to the panel's add-to-compare callback.
+
 #### appendChangelogAnchor
 
 `private static void appendChangelogAnchor(StringBuilder sb, int sectionIndex)`
@@ -12134,6 +13456,12 @@ Commits the in-progress drag: places the dragged item at its new slot within its
 group and rewrites the full tracked order accordingly (kept within-group, since groups
 render in global order). A no-op drop is ignored.
 
+#### compareIcon
+
+`static Icon compareIcon(Color color)`
+
+Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted `color`.
+
 #### computeDragGroup
 
 `private List<Integer> computeDragGroup(int itemId)`
@@ -12410,6 +13738,13 @@ Builds a compact, hover-revealed glyph button styled like the row's remove butto
 `private boolean matchesFilter(TrackedItem item)`
 
 - **Returns:** whether the item matches the active tracked-list name filter (always true when the filter is empty).
+
+#### maybeShowRowMenu
+
+`private void maybeShowRowMenu(MouseEvent e, int itemId)`
+
+Shows the tracked-row right-click menu (#280) when `e` is a popup trigger: an "Add to Compare"
+action and an "Open in Dashboard" action for `itemId`.
 
 #### moveCategoryInDialog
 
@@ -13368,6 +14703,7 @@ executor.
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `private static final String` | `AMMO_CATEGORY` | `ItemCategoryClassifier` category holding recoverable ranged ammo — arrows, bolts, darts, … (#234). |
+| `private static final int` | `COMPARE_CAP` | The most items the compare view holds at once (#280); adding past this is a no-op with a chat notice. |
 | `private static final Set<String>` | `CONSUMABLE_CATEGORIES` | Item categories whose members are used up in a single action — food eaten, a last potion dose drunk — so an unclaimed removal of one closes at 0 under `AcquisitionSource#CONSUMED` (its cost realizes as a loss) rather than an avg-price Unknown "sale" (#218). |
 | `private static final Set<String>` | `DESTROYED_AMMO_TOKENS` | Name tokens marking ammo destroyed on use — a cannonball fired from a cannon, a chinchompa thrown — matched by name rather than category, since chinchompas classify as Hunter and a few cannonballs as Weapons. |
 | `private static final Set<Integer>` | `EMPTY_CONTAINERS` | Empty vessels left behind when a potion or drink/dish is finished — a free byproduct of the consumption, booked at 0 rather than an avg-price Unknown purchase (#218). |
@@ -13417,6 +14753,9 @@ executor.
 | `private Client` | `client` |  |
 | `private ClientThread` | `clientThread` |  |
 | `private ClientToolbar` | `clientToolbar` |  |
+| `private final Set<Integer>` | `compareIds` | The shared compare set (#280): canonical item ids compared side by side, in insertion order. |
+| `private final Map<Integer,TrackedItem>` | `compareItems` | Read-only preview instances backing untracked items in the compare set (#280), keyed by item id. |
+| `private CompareWindow` | `compareWindow` | The singleton compare window (#280), or `null` when none is open. |
 | `private StockpileConfig` | `config` |  |
 | `private ConfigManager` | `configManager` |  |
 | `private final Map<Integer,Map<Integer,Integer>>` | `containerCounts` |  |
@@ -13493,6 +14832,7 @@ executor.
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `private void` | `addStockpileMenuSection(int canonicalId, boolean tracked)` | Adds the Stockpile context-menu section (#285) when the Context Menu Key is held: a single "Stockpile" parent entry whose submenu holds the enabled options (Track/Untrack, View in Stockpile, Open in Dashboard). |
+| `private void` | `addToCompare(int itemId)` | Adds `itemId` to the shared compare set and opens or focuses the compare window (#280). |
 | `private void` | `addTrackedItem(int itemId)` | Tracks an item by id with defaults (full tracking mode, no preset cost basis). |
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
@@ -13518,12 +14858,16 @@ executor.
 | `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
 | `private void` | `clearAcquisitions(int itemId)` | Clears an item's acquisition lots (resetting its cost basis) and persists/refreshes. |
 | `private void` | `clearAllTrackedItems()` | Removes every tracked item, then persists and refreshes. |
+| `private void` | `clearCompareSet()` | Clears the whole compare set and closes the window. |
 | `private void` | `clearPortfolioHistory()` | Wipes the portfolio value history (in memory and in config), e.g. |
 | `private void` | `closeAllDetailWindows()` | Disposes every open pop-out window (on the EDT), e.g. |
 | `private void` | `closeAllGroundSuspensions()` | Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking. |
+| `private void` | `closeCompareWindow()` | Disposes the compare window (its close listener clears the set). |
 | `private void` | `closeDetailWindowFor(int itemId)` | Closes any open pop-out window for `itemId` (e.g. |
 | `private void` | `closeGivenItems(Map<Integer,Integer> side, long gp)` | Closes given items as sells at the apportioned per-unit price, realizing them against the trade suspension taken when they were offered. |
 | `private static String` | `colourGp(long value, String colour)` |  |
+| `private List<CompareView.Entry>` | `compareEntries()` | Snapshots the compare set into an ordered `CompareView.Entry` list, resolving each id to its live tracked item or its read-only preview. |
+| `private CompareHost` | `compareHost()` | Builds the `CompareHost` for the compare window, routing edits back onto the client thread. |
 | `private void` | `correlateCombine()` | Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`, so the ingredients' cost basis carries onto the product instead of both sides falling to Unknown at market value (#231). |
 | `private void` | `correlateDecant()` | Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so cost basis follows the liquid across the item-id change rather than being realized as a sale. |
 | `private void` | `correlateDoseSwapFamily(List<int[]> members)` | Applies the dose-family basis transfer to one family's members (`{id, delta, doses`}): a dose-conserving swap (consumed doses equal produced doses) is a decant under `AcquisitionSource#DECANT`; a swap that loses doses while leaving some (a dose drunk) is a consume-down under `AcquisitionSource#CONSUMED`. |
@@ -13547,6 +14891,7 @@ executor.
 | `private void` | `fetchItemMappings()` | Fetches GE item metadata in the background, keeping the previous map on failure. |
 | `private Widget` | `findGeCloseButton()` | Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer container and searching its subtree for a visible widget with a "Close" action (#139). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
+| `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
 | `Map<TileItem,Tile>` | `getGroundItems()` |  |
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
@@ -13582,12 +14927,14 @@ executor.
 | `private long` | `marketUnitValue(int itemId)` |  |
 | `private void` | `mergeImportedList(List<PortfolioShareCodec.Entry> entries, List<CategoryState> importedCategories)` | Applies a decoded tracked-list import on the client thread: categories first, then new items. |
 | `private void` | `migrateAutoAddSetting()` | One-time migration for #219: the old combined `autoAddItems` enum (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate `FallbackPricing`. |
+| `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
 | `private String` | `notificationText(TrackedItem item, NotificationRule rule)` | Builds the user-facing notification message, e.g. |
 | `private OptionalDouble` | `numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)` | Resolves the current numeric reading of a metric for an item over a window (price, volume, profit, HA profit, Δ% vs. |
 | `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66). |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync, evaluates notifications, and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
+| `private void` | `onCompareWindowClosed()` | Drops the singleton reference and clears the set when the compare window is closed. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
 | `private void` | `onDetailWindowClosed(int itemId)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
 | `public void` | `onGameStateChanged(GameStateChanged event)` | Resets transient and per-login state on game-state transitions: clears ground items on each load, and on login wipes the count caches and reloads the persisted tracked items. |
@@ -13605,10 +14952,12 @@ executor.
 | `public void` | `onVarbitChanged(VarbitChanged event)` | Mirrors rune pouch contents (held in varbits, not a normal container) into the quantity counts, accumulating deltas like a container change. |
 | `public void` | `onWidgetClosed(WidgetClosed event)` | Clears GE-integration state when the offer interface closes, and shop state for #67. |
 | `public void` | `onWidgetLoaded(WidgetLoaded event)` | Forces the GE buttons to be re-injected against a freshly (re)built offer interface. |
+| `private void` | `openCompareWindow()` | Opens the compare window from the main-view toolbar button (or focuses the open one), showing the empty "add items to compare" prompt when the set is empty rather than staying closed. |
 | `private void` | `openDashboardWindow()` | Opens the item-less Stockpile dashboard window (#109), or focuses the existing one. |
 | `private void` | `openDetailWindow(TrackedItem item, boolean preview)` | Creates and registers a pop-out window for `item`, or focuses an existing one. |
 | `private void` | `openGeItemInStockpile(int itemId)` | Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. |
 | `public GrandExchangeOffer[]` | `openGeOffers()` | Returns the player's current Grand Exchange offers. |
+| `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
 | `private int` | `overlayItemCount()` |  |
 | `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
@@ -13625,10 +14974,12 @@ executor.
 | `StockpileConfig` | `provideConfig(ConfigManager configManager)` |  |
 | `private void` | `queueTradeSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)` | Turns the change in our own offer into pending suspend/un-suspend intents: items added to the offer left our inventory and should suspend, items withdrawn returned and should un-suspend. |
 | `private void` | `rebucketScreenOverlays()` | Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. |
+| `private void` | `rebuildCompareWindow(boolean focus)` | Snapshots the compare set into an ordered `CompareView.Entry` list (resolving each id to its live tracked item or its preview) and hands it to the EDT to open or update the window. |
 | `private void` | `recomputeWindowStats(TrackedItem tracked)` | Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series. |
 | `private void` | `reconcileAllQuantities()` | Recounts every tracked item from scratch across all containers plus the rune pouch, and reconciles each item's lots to match the true on-hand total (opening or closing lots as needed). |
 | `private void` | `reconcileContextKeyFromMouse(MouseEvent e)` | Sets `#contextKeyHeld` from a mouse event's live modifier state when the Context Menu Key is a modifier (or modifier combo); leaves the flag untouched for a non-modifier keybind, which mouse events cannot report. |
 | `private void` | `recordPortfolioSnapshot()` | Records a portfolio snapshot into the history (persisting throttled): the running value — owned units (held plus suspended) marked to the current average plus sold lots at their actual sale price — against the invested cost basis of every logged lot, which stays fixed as lots sell. |
+| `private void` | `refreshCompareWindow()` | Re-reads the compare columns from current prices, if a window is open. |
 | `private void` | `refreshDetailWindows()` | Re-populates every open pop-out window with fresh data. |
 | `private void` | `refreshGePrices()` | Fetches the latest prices for all items in the background, then applies them on the client thread. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
@@ -13636,6 +14987,7 @@ executor.
 | `private void` | `registerGeButtonSprite(BufferedImage icon)` | Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the injected GE button (#140). |
 | `private void` | `registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)` | Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved: the coins paid or received, divided across the quantity, price the item's `AcquisitionSource#SHOP` claim. |
 | `private void` | `registerTradeClaims()` | Books a completed trade's item movements as `AcquisitionSource#PLAYER_TRADE` (#66): items received buy in at the gp we gave apportioned across them by market value, and items given close at the gp we received apportioned the same way. |
+| `private void` | `removeFromCompareId(int itemId)` | Removes `itemId` from the compare set, closing the window when the set empties. |
 | `private void` | `removeTrackedItem(int itemId)` | Stops tracking an item, then persists and refreshes. |
 | `private void` | `renameCategory(String oldName, String newName)` | Renames a category and re-points its items, ignoring blanks and clashes, then persists and refreshes. |
 | `private void` | `reorderCategory(String name, int targetIndex)` | Moves a category to a new position in the ordered list, then persists and refreshes. |
@@ -13657,6 +15009,7 @@ executor.
 | `private void` | `setItemCompact(int itemId, boolean on)` | Toggles an item's per-item compact-row override (#210), then persists and refreshes. |
 | `private void` | `setOnOverlay(int itemId, boolean on)` | Adds/removes an item from the on-screen overlay set, enforcing the `#OVERLAY_MAX` cap (an add beyond the cap is ignored), then persists and refreshes. |
 | `private void` | `setSortMode(SortMode mode)` | Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel. |
+| `private void` | `showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)` | Opens the compare window (or updates the open one) with `entries`, disposing it when the set is empty. |
 | `protected void` | `shutDown() throws Exception` | Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state. |
 | `public boolean` | `sourcePricing()` | Returns whether source-aware pricing is enabled in config. |
 | `protected void` | `startUp() throws Exception` | Builds the side panel (wiring its callbacks back to this plugin), registers the nav button and overlays, restores persisted items, and kicks off the metadata fetch and recurring price refresh. |
@@ -13688,6 +15041,12 @@ executor.
 `private static final String AMMO_CATEGORY`
 
 `ItemCategoryClassifier` category holding recoverable ranged ammo — arrows, bolts, darts, … (#234).
+
+#### COMPARE_CAP
+
+`private static final int COMPARE_CAP`
+
+The most items the compare view holds at once (#280); adding past this is a no-op with a chat notice.
 
 #### CONSUMABLE_CATEGORIES
 
@@ -13989,6 +15348,27 @@ Bundled release notes, parsed once at startup; the newest entry is the current v
 #### clientToolbar
 
 `private ClientToolbar clientToolbar`
+
+#### compareIds
+
+`private final Set<Integer> compareIds`
+
+The shared compare set (#280): canonical item ids compared side by side, in insertion order.
+Client-thread state (mutated alongside the price maps), transient (never persisted).
+
+#### compareItems
+
+`private final Map<Integer,TrackedItem> compareItems`
+
+Read-only preview instances backing untracked items in the compare set (#280), keyed by item id.
+Client-thread state, the compare-set analogue of `#windowItems` so `#lookupItem` and the
+per-tick request loop keep untracked compared items live.
+
+#### compareWindow
+
+`private CompareWindow compareWindow`
+
+The singleton compare window (#280), or `null` when none is open. EDT-only, like the detail windows.
 
 #### config
 
@@ -14372,6 +15752,15 @@ parent entry whose submenu holds the enabled options (Track/Untrack, View in Sto
 The children are added so they read top-to-bottom in that order; each option is individually toggleable in
 the config.
 
+#### addToCompare
+
+`private void addToCompare(int itemId)`
+
+Adds `itemId` to the shared compare set and opens or focuses the compare window (#280). A
+canonicalised id already present just focuses the window; a full set (see `#COMPARE_CAP`)
+focuses without adding. Untracked ids get a read-only preview instance so their column stays live.
+A background data fetch fills in the new item's prices. Runs on the client thread.
+
 #### addTrackedItem
 
 `private void addTrackedItem(int itemId)`
@@ -14578,6 +15967,12 @@ Clears an item's acquisition lots (resetting its cost basis) and persists/refres
 
 Removes every tracked item, then persists and refreshes. Runs on the client thread.
 
+#### clearCompareSet
+
+`private void clearCompareSet()`
+
+Clears the whole compare set and closes the window. Client thread.
+
 #### clearPortfolioHistory
 
 `private void clearPortfolioHistory()`
@@ -14595,6 +15990,12 @@ Disposes every open pop-out window (on the EDT), e.g. at shutdown or when the wh
 `private void closeAllGroundSuspensions()`
 
 Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking.
+
+#### closeCompareWindow
+
+`private void closeCompareWindow()`
+
+Disposes the compare window (its close listener clears the set). Runs on the EDT.
 
 #### closeDetailWindowFor
 
@@ -14616,6 +16017,21 @@ after the container sync, exactly as the GE sell path does, so the sale is never
 `private static String colourGp(long value, String colour)`
 
 - **Returns:** a full grouped `"1,234 gp"` in the given colour, or a muted dash when unpriced (#142).
+
+#### compareEntries
+
+`private List<CompareView.Entry> compareEntries()`
+
+Snapshots the compare set into an ordered `CompareView.Entry` list, resolving each id to its
+live tracked item or its read-only preview. Runs on the client thread.
+
+- **Returns:** the compared items, in display order
+
+#### compareHost
+
+`private CompareHost compareHost()`
+
+Builds the `CompareHost` for the compare window, routing edits back onto the client thread.
 
 #### correlateCombine
 
@@ -14872,6 +16288,12 @@ per varbit event) means every type/quantity varbit for a change has landed befor
 a half-populated snapshot can no longer book a phantom acquisition (#237). The first settled
 read after login — and any empty→full read inside `#RUNE_POUCH_LOGIN_GRACE_TICKS` — only
 establishes the baseline, since a login must produce no pouch delta.
+
+#### focusCompareWindow
+
+`private void focusCompareWindow()`
+
+Brings the compare window to the front if one is open. Runs on the EDT.
 
 #### getGroundItems
 
@@ -15155,6 +16577,16 @@ from its pricing half (Off, which conflated the two and couldn't carry a pricing
 choice, defaults to Avg). Idempotent: a value already migrated to a boolean, or a
 fresh install with no value, is left untouched.
 
+#### moveCompareId
+
+`private void moveCompareId(int itemId, int toIndex)`
+
+Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window.
+Backs the drag-reorder of the compare columns. Client thread.
+
+- **Parameter** `itemId` — the compared item being moved
+- **Parameter** `toIndex` — the target position in the compare order
+
 #### notificationText
 
 `private String notificationText(TrackedItem item, NotificationRule rule)`
@@ -15198,6 +16630,12 @@ Registers the completed trade's claims when the game confirms the exchange (#66)
 Per-tick work: flushes any pending quantity sync, evaluates notifications,
 and (when ground highlighting is on) reorders tracked items' "Take" menu
 entries to the bottom so they don't get in the way of normal actions.
+
+#### onCompareWindowClosed
+
+`private void onCompareWindowClosed()`
+
+Drops the singleton reference and clears the set when the compare window is closed.
 
 #### onConfigChanged
 
@@ -15326,6 +16764,13 @@ Clears GE-integration state when the offer interface closes, and shop state for 
 
 Forces the GE buttons to be re-injected against a freshly (re)built offer interface.
 
+#### openCompareWindow
+
+`private void openCompareWindow()`
+
+Opens the compare window from the main-view toolbar button (or focuses the open one), showing the
+empty "add items to compare" prompt when the set is empty rather than staying closed. Client thread.
+
 #### openDashboardWindow
 
 `private void openDashboardWindow()`
@@ -15353,6 +16798,15 @@ Opens the item in Stockpile's view-only preview, switching to/focusing the panel
 Returns the player's current Grand Exchange offers.
 
 - **Returns:** the open GE offer slots
+
+#### openOrFocusCompareWindow
+
+`private void openOrFocusCompareWindow(List<CompareView.Entry> entries)`
+
+Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or
+updates and focuses the already-open one. Runs on the EDT.
+
+- **Parameter** `entries` — the items to compare, in display order
 
 #### orderGeneratedCategories
 
@@ -15473,6 +16927,15 @@ to consume the intent.
 
 Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer.
 
+#### rebuildCompareWindow
+
+`private void rebuildCompareWindow(boolean focus)`
+
+Snapshots the compare set into an ordered `CompareView.Entry` list (resolving each id to its
+live tracked item or its preview) and hands it to the EDT to open or update the window. Client thread.
+
+- **Parameter** `focus` — whether to bring the window to the front after updating (true when an item was just added)
+
 #### recomputeWindowStats
 
 `private void recomputeWindowStats(TrackedItem tracked)`
@@ -15508,6 +16971,12 @@ lot, which stays fixed as lots sell. Their gap is thus the realized-plus-unreali
 profit. Suspended units must count: their lots are still open on the cost side, so
 omitting their value would carve a false loss into the chart for the duration of
 every in-flight sell, trade, drop, or death.
+
+#### refreshCompareWindow
+
+`private void refreshCompareWindow()`
+
+Re-reads the compare columns from current prices, if a window is open. Client thread.
 
 #### refreshDetailWindows
 
@@ -15577,6 +17046,12 @@ numerator, never an apportionment target.
 are registered as claims for the imminent additions to match. Given items already left our
 inventory when they were offered (suspended, not closed), so there is no delta to match —
 they are closed here directly against their trade suspension.
+
+#### removeFromCompareId
+
+`private void removeFromCompareId(int itemId)`
+
+Removes `itemId` from the compare set, closing the window when the set empties. Client thread.
 
 #### removeTrackedItem
 
@@ -15730,6 +17205,16 @@ cap (an add beyond the cap is ignored), then persists and refreshes.
 `private void setSortMode(SortMode mode)`
 
 Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel.
+
+#### showOrUpdateCompareWindow
+
+`private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)`
+
+Opens the compare window (or updates the open one) with `entries`, disposing it when the set is
+empty. Runs on the EDT.
+
+- **Parameter** `entries` — the items to compare, in display order
+- **Parameter** `focus` — whether to bring the window to the front after updating
 
 #### shutDown
 

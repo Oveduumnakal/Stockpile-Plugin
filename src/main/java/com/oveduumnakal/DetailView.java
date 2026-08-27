@@ -220,6 +220,8 @@ public class DetailView extends JPanel implements Scrollable
 	private JButton dashboardPricesBtn;
 	private JPanel dashboardRightControls;
 	private JButton detailPopOutBtn;
+	private JButton detailCompareBtn;
+	private JButton dashboardCompareBtn;
 	private boolean detailItemTracked;
 	private final JTextArea detailDescriptionArea = new JTextArea()
 	{
@@ -1415,8 +1417,9 @@ public class DetailView extends JPanel implements Scrollable
 	}
 
 	/**
-	 * Builds the sidebar (STACK) detail header: a Back button and Track/pop-out controls on one row,
-	 * then the icon-and-title row, then the wrapping description &mdash; all stacked vertically.
+	 * Builds the sidebar (STACK) detail header: a Back button (left) with the Track/Untrack button (right)
+	 * on the first row, the Dashboard and Compare icons left-justified on the second, then the
+	 * icon-and-title row and the wrapping description &mdash; all stacked vertically.
 	 */
 	private void buildStackHeader(JPanel titleTextStack)
 	{
@@ -1441,17 +1444,29 @@ public class DetailView extends JPanel implements Scrollable
 		headerRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		headerRow.add(backBtn, BorderLayout.WEST);
-
-		JPanel headerControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-		headerControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		headerControls.add(detailTrackBtn);
+		headerRow.add(detailTrackBtn, BorderLayout.EAST);
 
 		detailPopOutBtn = StockpilePanel.buildIconButton(
 				StockpilePanel.dashboardIcon(ColorScheme.LIGHT_GRAY_COLOR),
 				"Open in Dashboard View", () -> host.popOut(boundItemId));
-		headerControls.add(detailPopOutBtn);
 
-		headerRow.add(headerControls, BorderLayout.EAST);
+		detailCompareBtn = StockpilePanel.buildIconButton(
+				StockpilePanel.compareIcon(ColorScheme.LIGHT_GRAY_COLOR),
+				"Add to Compare", () -> host.addToCompare(boundItemId));
+
+		JPanel iconRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0))
+		{
+			@Override
+			public Dimension getMaximumSize()
+			{
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
+		iconRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		iconRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		iconRow.setBorder(new EmptyBorder(8, 0, 0, 0));
+		iconRow.add(detailPopOutBtn);
+		iconRow.add(detailCompareBtn);
 
 		JPanel titleRow = new JPanel(new BorderLayout(8, 0))
 		{
@@ -1468,6 +1483,7 @@ public class DetailView extends JPanel implements Scrollable
 		titleRow.add(titleTextStack, BorderLayout.CENTER);
 
 		topStack.add(headerRow);
+		topStack.add(iconRow);
 		topStack.add(titleRow);
 		topStack.add(detailDescriptionArea);
 	}
@@ -1492,8 +1508,11 @@ public class DetailView extends JPanel implements Scrollable
 		dashboardWikiBtn = buildLinkButton("Wiki", "Open the OSRS Wiki page for this item", this::openWikiLink);
 		dashboardPricesBtn = buildLinkButton("Live Prices", "Open the live prices page for this item",
 				this::openPricesLink);
+		dashboardCompareBtn = buildLinkButton("Compare", "Add this item to the compare view",
+				() -> host.addToCompare(boundItemId));
 		styleToolbarButton(dashboardWikiBtn);
 		styleToolbarButton(dashboardPricesBtn);
+		styleToolbarButton(dashboardCompareBtn);
 		styleToolbarButton(detailTrackBtn);
 
 		dashboardRightControls = new JPanel(new GridLayout(1, 3, 6, 0));
@@ -1547,11 +1566,20 @@ public class DetailView extends JPanel implements Scrollable
 			return;
 
 		dashboardRightControls.removeAll();
-		dashboardRightControls.setLayout(new GridLayout(1, home ? 2 : 3, 6, 0));
-		dashboardRightControls.add(dashboardWikiBtn);
-		dashboardRightControls.add(dashboardPricesBtn);
-		if (!home)
+		if (home)
+		{
+			dashboardRightControls.setLayout(new GridLayout(1, 2, 6, 0));
+			dashboardRightControls.add(dashboardWikiBtn);
+			dashboardRightControls.add(dashboardPricesBtn);
+		}
+		else
+		{
+			dashboardRightControls.setLayout(new GridLayout(2, 2, 6, 6));
+			dashboardRightControls.add(dashboardWikiBtn);
+			dashboardRightControls.add(dashboardPricesBtn);
+			dashboardRightControls.add(dashboardCompareBtn);
 			dashboardRightControls.add(detailTrackBtn);
+		}
 
 		dashboardRightControls.revalidate();
 		dashboardRightControls.repaint();
@@ -3113,8 +3141,8 @@ public class DetailView extends JPanel implements Scrollable
 		long avg = item.getAvgPrice();
 		haValue.setText(ha > 0 ? StockpilePanel.formatTotalGp(ha, full) : "—");
 		laValue.setText(la > 0 ? StockpilePanel.formatTotalGp(la, full) : "—");
-		long haP = ha - avg - host.natureRunePrice() - 5 * host.fireRunePrice();
-		long laP = la - avg - host.natureRunePrice() - 3 * host.fireRunePrice();
+		long haP = MarketMath.highAlchProfit(ha, avg, host.natureRunePrice(), host.fireRunePrice());
+		long laP = MarketMath.lowAlchProfit(la, avg, host.natureRunePrice(), host.fireRunePrice());
 		boolean alchKnown = ha > 0 && hasPrices;
 		boolean laKnown = la > 0 && hasPrices;
 		applyProfitLabel(haProfit, haP, alchKnown);
@@ -3266,7 +3294,7 @@ public class DetailView extends JPanel implements Scrollable
 			return;
 		}
 
-		double pct = Math.round(((double) (current - baseline) / baseline) * 1000.0) / 10.0;
+		double pct = MarketMath.changePct(current, baseline);
 		String pctText;
 		Color color;
 		Color tint;
@@ -3330,11 +3358,7 @@ public class DetailView extends JPanel implements Scrollable
 	/** @return the Grand Exchange sell tax on a unit at {@code avgPrice} (per the live GE tax rules). */
 	private long geTax(long avgPrice)
 	{
-		if (avgPrice < 50)
-			return 0;
-
-		long tax = (long) Math.floor(avgPrice * 0.02);
-		return Math.min(tax, 5_000_000L);
+		return MarketMath.geTax(avgPrice);
 	}
 
 	/** Sets the market-info volatility rating from the item's week series via {@link MarketClassifier}. */

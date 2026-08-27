@@ -172,6 +172,9 @@ public interface StockpileConfig extends Config
 	String KEY_CONTEXT_MENU_VIEW = "contextMenuView";
 	/** Persisted config key {@code "contextMenuDashboard"}. */
 	String KEY_CONTEXT_MENU_DASHBOARD = "contextMenuDashboard";
+	/** Persisted config key {@code "contextMenuCompare"}. */
+	String KEY_CONTEXT_MENU_COMPARE = "contextMenuCompare";
+
 	/** Persisted config key {@code "promptCategoryOnTrack"}. */
 	String KEY_PROMPT_CATEGORY_ON_TRACK = "promptCategoryOnTrack";
 	/** Persisted config key {@code "highlightTrackedItems"}. */
@@ -935,6 +938,21 @@ public interface StockpileConfig extends Config
 			position = 4
 	)
 	default boolean contextMenuDashboard()
+	{
+		return true;
+	}
+
+	/**
+	 * Include the Add to Compare option in the Stockpile context-menu section.
+	 */
+	@ConfigItem(
+			keyName = KEY_CONTEXT_MENU_COMPARE,
+			name = "Add to Compare",
+			description = "Include the Add to Compare option in the context-menu section",
+			section = contextMenuSection,
+			position = 5
+	)
+	default boolean contextMenuCompare()
 	{
 		return true;
 	}

@@ -16,6 +16,7 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.WindowConstants;
 
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.util.ImageUtil;
 
 /**
  * A standalone, resizable window hosting the full item detail view for one item (#109). Wraps a
@@ -93,6 +94,7 @@ final class DetailWindow
 		f.setSize(DEFAULT_SIZE);
 		f.setMinimumSize(MIN_SIZE);
 		f.setLocationByPlatform(true);
+		f.setIconImage(ImageUtil.loadImageResource(getClass(), "icon.png"));
 		f.addWindowListener(new WindowAdapter()
 		{
 			@Override
