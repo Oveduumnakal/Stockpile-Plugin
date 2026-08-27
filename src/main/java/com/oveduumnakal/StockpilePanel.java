@@ -109,6 +109,7 @@ import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -4291,6 +4292,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 					starMenuIcon(fav ? gold : grey, fav), starMenuIcon(fav ? grey : gold, !fav), null,
 					onSetFavorite != null, a -> onSetFavorite.accept(itemId, !fav)));
 
+			menu.add(buildChangeCategoryMenu(itemId, item));
+
 			if (!config.compactView())
 			{
 				final boolean comp = item.isCompact();
@@ -4337,6 +4340,93 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				item.setIcon(item.getModel().isArmed() ? hoverIcon : restIcon));
 		item.addActionListener(action);
 		return item;
+	}
+
+	/**
+	 * Builds the row menu's "Change category" submenu (#300): one child per existing category plus
+	 * Uncategorized, each moving the item into that group, followed by a "New category…" child that
+	 * prompts to create-and-assign. The item's current category is shown checked and disabled.
+	 */
+	private JMenu buildChangeCategoryMenu(int itemId, TrackedItem item)
+	{
+		final Color grey = ColorScheme.LIGHT_GRAY_COLOR;
+		final Color gold = COLOR_AVG;
+
+		JMenu submenu = new JMenu("Change category");
+		submenu.setFont(FontManager.getRunescapeSmallFont());
+		submenu.setIcon(categoriesIcon(grey));
+		submenu.setIconTextGap(2);
+		submenu.getModel().addChangeListener(ev ->
+				submenu.setIcon(submenu.getModel().isArmed() || submenu.getModel().isSelected()
+						? categoriesIcon(gold) : categoriesIcon(grey)));
+
+		final String current = item.getCategory();
+		final boolean uncategorized = current == null || current.isEmpty();
+
+		submenu.add(categoryMenuItem(UNCATEGORIZED_LABEL, uncategorized,
+				a -> categoryActions.setItemCategory(itemId, null)));
+
+		for (CategoryState cat : categories)
+		{
+			final String name = cat.getName();
+			submenu.add(categoryMenuItem(name, name.equals(current),
+					a -> categoryActions.setItemCategory(itemId, name)));
+		}
+
+		submenu.addSeparator();
+		submenu.add(categoryMenuItem(NEW_CATEGORY_LABEL, false, a -> promptNewCategory(itemId)));
+		return submenu;
+	}
+
+	/**
+	 * Builds a "Change category" child: the item's current category is marked with a check icon and
+	 * disabled (selecting it would be a no-op); every other entry runs {@code action} on click.
+	 */
+	private JMenuItem categoryMenuItem(String label, boolean current, ActionListener action)
+	{
+		JMenuItem item = new JMenuItem(label);
+		item.setFont(FontManager.getRunescapeSmallFont());
+		item.setIconTextGap(4);
+		if (current)
+		{
+			item.setIcon(checkIcon(COLOR_AVG));
+			item.setEnabled(false);
+		}
+		else
+		{
+			item.addActionListener(action);
+		}
+
+		return item;
+	}
+
+	/**
+	 * Prompts for a new category name (reusing the manage-row prompt), then creates it and assigns
+	 * {@code itemId} to it. A blank or cancelled entry does nothing.
+	 */
+	private void promptNewCategory(int itemId)
+	{
+		String name = JOptionPane.showInputDialog(this, "New category name:",
+				"New Category", JOptionPane.PLAIN_MESSAGE);
+		if (name != null && !name.trim().isEmpty())
+		{
+			categoryActions.create(name.trim());
+			categoryActions.setItemCategory(itemId, name.trim());
+		}
+	}
+
+	/** Draws a check-mark glyph tinted {@code color}, marking the item's current category. */
+	private static Icon checkIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.drawPolyline(new int[]{2, 6, 12}, new int[]{7, 11, 3}, 3);
+		g.dispose();
+		return new ImageIcon(img);
 	}
 
 	/**
