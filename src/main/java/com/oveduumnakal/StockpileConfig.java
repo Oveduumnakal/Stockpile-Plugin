@@ -64,6 +64,8 @@ public interface StockpileConfig extends Config
 	String KEY_GE_BUY_LIMITS = "geBuyLimits";
 	/** Persisted config key {@code "trackedCategories"}. */
 	String KEY_CATEGORIES = "trackedCategories";
+	/** Persisted config key {@code "savedComparisons"}. */
+	String KEY_SAVED_COMPARISONS = "savedComparisons";
 
 	/** Persisted config key {@code "priceRefreshSeconds"}. */
 	String KEY_PRICE_REFRESH_SECONDS = "priceRefreshSeconds";

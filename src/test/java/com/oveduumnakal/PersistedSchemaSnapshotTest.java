@@ -53,6 +53,7 @@ public class PersistedSchemaSnapshotTest
 			StockpilePersistence.PersistedItem.class,
 			StockpilePersistence.CategoryData.class,
 			StockpilePersistence.CachedPrice.class,
+			StockpilePersistence.SavedComparison.class,
 	};
 
 	@Test

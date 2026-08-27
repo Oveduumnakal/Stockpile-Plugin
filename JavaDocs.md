@@ -107,6 +107,7 @@
 - [com.oveduumnakal.StockpilePersistence.CachedPrice](#comoveduumnakalstockpilepersistencecachedprice)
 - [com.oveduumnakal.StockpilePersistence.CategoryData](#comoveduumnakalstockpilepersistencecategorydata)
 - [com.oveduumnakal.StockpilePersistence.PersistedItem](#comoveduumnakalstockpilepersistencepersisteditem)
+- [com.oveduumnakal.StockpilePersistence.SavedComparison](#comoveduumnakalstockpilepersistencesavedcomparison)
 - [com.oveduumnakal.StockpilePlugin](#comoveduumnakalstockpileplugin)
 - [com.oveduumnakal.StockpileScreenOverlay](#comoveduumnakalstockpilescreenoverlay)
 - [com.oveduumnakal.StockpileScreenOverlay.Seg](#comoveduumnakalstockpilescreenoverlayseg)
@@ -1184,11 +1185,15 @@ through this interface rather than direct field access.
 |---|---|---|
 | `void` | `clearCompare()` | Clears the whole compare set and closes the window. |
 | `StockpileConfig` | `config()` |  |
+| `void` | `deleteComparison(String name)` | Deletes the saved comparison named `name` (#303). |
 | `long` | `fireRunePrice()` |  |
+| `void` | `importComparison(List<Integer> itemIds)` | Replaces the current compare set with the items in an imported shared code (#303). |
 | `ItemManager` | `itemManager()` |  |
+| `void` | `loadComparison(String name)` | Replaces the current compare set with the saved comparison named `name` (#303). |
 | `void` | `moveCompare(int itemId, int toIndex)` | Moves `itemId` to `toIndex` in the compare order, reordering the columns (drag-reorder). |
 | `long` | `natureRunePrice()` |  |
 | `void` | `removeFromCompare(int itemId)` | Removes `itemId` from the compare set (its column disappears; the window closes if empty). |
+| `void` | `saveComparison(String name)` | Saves the current compare set under `name` (overwriting an existing one of that name) (#303). |
 
 ### Method Detail
 
@@ -1204,17 +1209,35 @@ Clears the whole compare set and closes the window.
 
 - **Returns:** the live plugin config (colours, section-visibility toggles) the compare view reads.
 
+#### deleteComparison
+
+`void deleteComparison(String name)`
+
+Deletes the saved comparison named `name` (#303).
+
 #### fireRunePrice
 
 `long fireRunePrice()`
 
 - **Returns:** the current fire-rune price used for high-alch profit figures.
 
+#### importComparison
+
+`void importComparison(List<Integer> itemIds)`
+
+Replaces the current compare set with the items in an imported shared code (#303).
+
 #### itemManager
 
 `ItemManager itemManager()`
 
 - **Returns:** the shared item manager, for icon images and item lookups.
+
+#### loadComparison
+
+`void loadComparison(String name)`
+
+Replaces the current compare set with the saved comparison named `name` (#303).
 
 #### moveCompare
 
@@ -1233,6 +1256,12 @@ Moves `itemId` to `toIndex` in the compare order, reordering the columns (drag-r
 `void removeFromCompare(int itemId)`
 
 Removes `itemId` from the compare set (its column disappears; the window closes if empty).
+
+#### saveComparison
+
+`void saveComparison(String name)`
+
+Saves the current compare set under `name` (overwriting an existing one of that name) (#303).
 
 ---
 
@@ -2187,10 +2216,18 @@ its prices fresh each tick, and disposes it on shutdown. All methods run on the 
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `private static final String` | `CODE_PREFIX` | A shareable comparison code carries this prefix so an unrelated pasted string is rejected (#303). |
 | `private static final Dimension` | `DEFAULT_SIZE` |  |
+| `private static final Color` | `DELETE_HOVER` | The remove-glyph hover colour on a Load row (#303). |
+| `private static final Color` | `DELETE_REST` | The remove-glyph colour on a Load row, brightening to red on hover (#303). |
 | `private static final Dimension` | `MIN_SIZE` |  |
 | `private static final TimeWindow[]` | `WINDOWS` | The time windows offered by the top toggle, from the latest snapshot out to a month. |
+| `private List<Integer>` | `currentIds` | The current compare-set item ids, refreshed by the plugin; backs Export (#303). |
+| `private JButton` | `exportButton` |  |
 | `private final JFrame` | `frame` |  |
+| `private final CompareHost` | `host` |  |
+| `private JButton` | `saveButton` | The Save/Export controls, disabled while the compare set is empty. |
+| `private List<String>` | `savedNames` | Names of the persisted comparisons, refreshed by the plugin; drives the Load menu (#303). |
 | `private final CompareView` | `view` |  |
 
 ### Constructor Summary
@@ -2203,19 +2240,46 @@ its prices fresh each tick, and disposes it on shutdown. All methods run on the 
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private JPanel` | `buildFooter(CompareHost host)` | Builds the footer strip holding the Clear-all control. |
+| `private JPanel` | `buildFooter(CompareHost host)` | Builds the footer strip: Save/Load saved-comparison controls on the left, Clear-all on the right (#303). |
 | `private JFrame` | `buildFrame(CompareHost host, Runnable onClose)` | Wraps the compare view (with a pinned label column) and a Clear-all footer in a disposable frame. |
 | `private JPanel` | `buildToolbar()` | Builds the top toolbar holding the time-window toggle that drives every column's figures. |
+| `private static List<Integer>` | `decodeIds(String code)` |  |
 | `void` | `dispose()` | Disposes the window (its close listener drops the plugin's singleton reference). |
+| `private void` | `doExport()` | Copies a shareable code for the current comparison to the clipboard (#303). |
+| `private static String` | `encodeIds(List<Integer> ids)` |  |
 | `void` | `focus()` | Brings the window to the front, restoring it if minimised, so re-adding focuses it. |
+| `private JPanel` | `loadMenuRow(JPopupMenu menu, String name)` | Builds one Load-menu row: a name (loads on click) with a trailing ✕ that deletes it; both close the menu. |
+| `private void` | `promptImport()` | Prompts for a shared code and loads its items into the compare set (#303); a bad code shows an error. |
+| `private void` | `promptSave()` | Prompts for a name and saves the current comparison under it (blank/cancelled input is ignored). |
+| `void` | `setCurrentIds(List<Integer> ids)` | Updates the current compare-set ids backing Export (#303). |
 | `void` | `setEntries(List<CompareView.Entry> entries)` | Re-populates the window with `entries` and updates the title count. |
+| `void` | `setSavedNames(List<String> names)` | Updates the saved-comparison names backing the Load menu (#303). |
+| `private void` | `showLoadMenu(Component anchor)` | Shows the Load menu below `anchor`: each row loads its comparison, with a trailing ✕ to delete it. |
 | `private static String` | `windowLabel(TimeWindow window)` |  |
 
 ### Field Detail
 
+#### CODE_PREFIX
+
+`private static final String CODE_PREFIX`
+
+A shareable comparison code carries this prefix so an unrelated pasted string is rejected (#303).
+
 #### DEFAULT_SIZE
 
 `private static final Dimension DEFAULT_SIZE`
+
+#### DELETE_HOVER
+
+`private static final Color DELETE_HOVER`
+
+The remove-glyph hover colour on a Load row (#303).
+
+#### DELETE_REST
+
+`private static final Color DELETE_REST`
+
+The remove-glyph colour on a Load row, brightening to red on hover (#303).
 
 #### MIN_SIZE
 
@@ -2227,9 +2291,35 @@ its prices fresh each tick, and disposes it on shutdown. All methods run on the 
 
 The time windows offered by the top toggle, from the latest snapshot out to a month.
 
+#### currentIds
+
+`private List<Integer> currentIds`
+
+The current compare-set item ids, refreshed by the plugin; backs Export (#303).
+
+#### exportButton
+
+`private JButton exportButton`
+
 #### frame
 
 `private final JFrame frame`
+
+#### host
+
+`private final CompareHost host`
+
+#### saveButton
+
+`private JButton saveButton`
+
+The Save/Export controls, disabled while the compare set is empty.
+
+#### savedNames
+
+`private List<String> savedNames`
+
+Names of the persisted comparisons, refreshed by the plugin; drives the Load menu (#303).
 
 #### view
 
@@ -2253,7 +2343,7 @@ Builds and shows the compare window for `entries`.
 
 `private JPanel buildFooter(CompareHost host)`
 
-Builds the footer strip holding the Clear-all control.
+Builds the footer strip: Save/Load saved-comparison controls on the left, Clear-all on the right (#303).
 
 #### buildFrame
 
@@ -2267,17 +2357,62 @@ Wraps the compare view (with a pinned label column) and a Clear-all footer in a 
 
 Builds the top toolbar holding the time-window toggle that drives every column's figures.
 
+#### decodeIds
+
+`private static List<Integer> decodeIds(String code)`
+
+- **Returns:** the item ids decoded from `code`, or `null` when it is not a valid comparison code.
+
 #### dispose
 
 `void dispose()`
 
 Disposes the window (its close listener drops the plugin's singleton reference).
 
+#### doExport
+
+`private void doExport()`
+
+Copies a shareable code for the current comparison to the clipboard (#303). No-op when the set is empty.
+
+#### encodeIds
+
+`private static String encodeIds(List<Integer> ids)`
+
+- **Returns:** a shareable code for `ids`: `#CODE_PREFIX` plus the Base64 of the comma-joined ids.
+
 #### focus
 
 `void focus()`
 
 Brings the window to the front, restoring it if minimised, so re-adding focuses it.
+
+#### loadMenuRow
+
+`private JPanel loadMenuRow(JPopupMenu menu, String name)`
+
+Builds one Load-menu row: a name (loads on click) with a trailing ✕ that deletes it; both close the menu.
+
+#### promptImport
+
+`private void promptImport()`
+
+Prompts for a shared code and loads its items into the compare set (#303); a bad code shows an error.
+
+#### promptSave
+
+`private void promptSave()`
+
+Prompts for a name and saves the current comparison under it (blank/cancelled input is ignored).
+
+#### setCurrentIds
+
+`void setCurrentIds(List<Integer> ids)`
+
+Updates the current compare-set ids backing Export (#303). Called by the plugin on the EDT whenever the
+compare set changes.
+
+- **Parameter** `ids` — the current compare-set item ids, in display order
 
 #### setEntries
 
@@ -2286,6 +2421,21 @@ Brings the window to the front, restoring it if minimised, so re-adding focuses 
 Re-populates the window with `entries` and updates the title count.
 
 - **Parameter** `entries` — the items to compare, in display order
+
+#### setSavedNames
+
+`void setSavedNames(List<String> names)`
+
+Updates the saved-comparison names backing the Load menu (#303). Called by the plugin on the EDT
+whenever the persisted set changes.
+
+- **Parameter** `names` — the current saved-comparison names, in saved order
+
+#### showLoadMenu
+
+`private void showLoadMenu(Component anchor)`
+
+Shows the Load menu below `anchor`: each row loads its comparison, with a trailing ✕ to delete it.
 
 #### windowLabel
 
@@ -10965,6 +11115,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `String` | `KEY_ROW_1_DATA` | Persisted config key `"row1Data"`. |
 | `String` | `KEY_ROW_2_DATA` | Persisted config key `"row2Data"`. |
 | `String` | `KEY_ROW_3_DATA` | Persisted config key `"row3Data"`. |
+| `String` | `KEY_SAVED_COMPARISONS` | Persisted config key `"savedComparisons"`. |
 | `String` | `KEY_SCREEN_OVERLAY_LAYOUT` | Persisted config key `"screenOverlayLayout"`. |
 | `String` | `KEY_SCREEN_OVERLAY_ON_TOP` | Persisted config key `"screenOverlayOnTop"`. |
 | `String` | `KEY_SHOW_ALCH_INFO` | Persisted config key `"showAlchInfo"`. |
@@ -11286,6 +11437,12 @@ Persisted config key `"row2Data"`.
 `String KEY_ROW_3_DATA`
 
 Persisted config key `"row3Data"`.
+
+#### KEY_SAVED_COMPARISONS
+
+`String KEY_SAVED_COMPARISONS`
+
+Persisted config key `"savedComparisons"`.
 
 #### KEY_SCREEN_OVERLAY_LAYOUT
 
@@ -14547,6 +14704,7 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 | _class_ [`CachedPrice`](#comoveduumnakalstockpilepersistencecachedprice) | Last-known prices for one tracked item, stored as JSON in the RS profile config so the panel can show (staleness-dimmed) values immediately at startup instead of placeholders until the first wiki fetch lands. |
 | _class_ [`CategoryData`](#comoveduumnakalstockpilepersistencecategorydata) | Serializable snapshot of the category definitions and special-group collapsed state. |
 | _class_ [`PersistedItem`](#comoveduumnakalstockpilepersistencepersisteditem) | Serializable snapshot of a tracked item, stored as JSON in the RS profile config. |
+| _class_ [`SavedComparison`](#comoveduumnakalstockpilepersistencesavedcomparison) | Serializable snapshot of one named, saved item comparison (#303): a user-given name and the canonical item ids it compares, in display order. |
 
 ### Field Summary
 
@@ -14558,6 +14716,7 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 | `private static final Type` | `PERSIST_TYPE` |  |
 | `private static final Type` | `PORTFOLIO_HISTORY_TYPE` |  |
 | `private static final Type` | `PRICE_CACHE_TYPE` |  |
+| `private static final Type` | `SAVED_COMPARISONS_TYPE` |  |
 | `private final ConfigManager` | `configManager` |  |
 | `private final Gson` | `gson` |  |
 
@@ -14572,12 +14731,14 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `CategoryData` | `loadCategories()` |  |
+| `List<SavedComparison>` | `loadComparisons()` |  |
 | `Map<Integer,long[]>` | `loadGeBuyLimits()` |  |
 | `Map<Integer,List<long[]>>` | `loadGeLedger()` |  |
 | `List<PersistedItem>` | `loadItems()` |  |
 | `Map<Integer,List<long[]>>` | `loadPortfolioHistory()` |  |
 | `Map<Integer,CachedPrice>` | `loadPriceCache()` |  |
 | `void` | `saveCategories(CategoryData data)` | Serializes the category definitions and group collapsed state to per-profile config. |
+| `void` | `saveComparisons(List<SavedComparison> comparisons)` | Serializes the named saved comparisons to per-profile config (#303). |
 | `void` | `saveGeState(Map<Integer,List<long[]>> ledger, Map<Integer,long[]> limits)` | Persists the GE buy ledger and buy-limit windows to the RS profile config. |
 | `void` | `saveItems(List<PersistedItem> items)` | Serializes the tracked-item snapshots to per-profile config. |
 | `void` | `savePortfolioHistory(Map<Integer,List<long[]>> seriesByItem)` | Serializes the per-item portfolio history to per-profile config. |
@@ -14609,6 +14770,10 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 
 `private static final Type PRICE_CACHE_TYPE`
 
+#### SAVED_COMPARISONS_TYPE
+
+`private static final Type SAVED_COMPARISONS_TYPE`
+
 #### configManager
 
 `private final ConfigManager configManager`
@@ -14630,6 +14795,12 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 `CategoryData loadCategories()`
 
 - **Returns:** the persisted category data, or `null` when missing or corrupt.
+
+#### loadComparisons
+
+`List<SavedComparison> loadComparisons()`
+
+- **Returns:** the persisted saved comparisons, or an empty list when missing, non-array, or corrupt (#303).
 
 #### loadGeBuyLimits
 
@@ -14667,6 +14838,12 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 `void saveCategories(CategoryData data)`
 
 Serializes the category definitions and group collapsed state to per-profile config.
+
+#### saveComparisons
+
+`void saveComparisons(List<SavedComparison> comparisons)`
+
+Serializes the named saved comparisons to per-profile config (#303).
 
 #### saveGeState
 
@@ -14860,6 +15037,36 @@ schema snapshot until it is regenerated and explained in the PR.
 
 ---
 
+## com.oveduumnakal.StockpilePersistence.SavedComparison
+
+_class_
+
+`static class SavedComparison`
+
+Serializable snapshot of one named, saved item comparison (#303): a user-given name and the
+canonical item ids it compares, in display order. Package-private so
+`PersistedSchemaSnapshotTest` can guard it; any field change fails the schema snapshot
+until it is regenerated and explained in the PR.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `List<Integer>` | `itemIds` |  |
+| `String` | `name` |  |
+
+### Field Detail
+
+#### itemIds
+
+`List<Integer> itemIds`
+
+#### name
+
+`String name`
+
+---
+
 ## com.oveduumnakal.StockpilePlugin
 
 _class_
@@ -14992,6 +15199,7 @@ executor.
 | `private final Map<Integer,Integer>` | `runePouchCounts` |  |
 | `private boolean` | `runePouchDirty` | Set when a rune pouch varbit changes; the diff is deferred to `#onClientTick` so every type/quantity varbit for the change has settled before it is read (#237). |
 | `private boolean` | `runePouchSeenSinceLogin` |  |
+| `private final List<StockpilePersistence.SavedComparison>` | `savedComparisons` | The persisted named comparisons (#303), in saved order. |
 | `private final List<StockpileScreenOverlay>` | `screenOverlays` | One independently-draggable overlay box per slot; they start grouped in the same snap corner. |
 | `private final Set<Integer>` | `seenContainersSinceLogin` |  |
 | `private boolean` | `sessionInitialized` | Whether the current logged-in session has been initialised. |
@@ -15017,6 +15225,7 @@ executor.
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)` | Tracks an item with a preset quantity and acquisition history (e.g. |
 | `private void` | `applyAutoCategorize(boolean includeCategorized)` | Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. |
+| `private void` | `applyCompareIds(List<Integer> itemIds)` | Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, capped at `#COMPARE_CAP`, each untracked id given a read-only preview; then refreshes prices and the window. |
 | `private void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
 | `private void` | `applyGePrices(Map<Integer,WikiRealtimePriceClient.ItemPrices> all)` | Applies freshly fetched prices to every tracked item: records per-side deltas against the previous values, updates the LIVE window stats, seeds a cost basis on first successful price if one wasn't set, then re-evaluates notifications and refreshes the panel (including the open detail view). |
 | `private void` | `applyGeTrackLabel()` | Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state. |
@@ -15061,6 +15270,7 @@ executor.
 | `private int` | `currentGeOfferItem()` |  |
 | `public int` | `currentTick()` | Returns the current client game tick. |
 | `private void` | `deleteCategory(String name)` | Deletes a category, moving its items to Uncategorized, then persists and refreshes. |
+| `private void` | `deleteSavedComparison(String name)` | Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. |
 | `private void` | `detectVersionChange()` | Detects a new plugin version by comparing the changelog's current version to the last-seen version in config. |
 | `private void` | `ensureCategory(String name, boolean collapsed)` | Adds a category by name if one with that name doesn't already exist (case-insensitive). |
 | `private void` | `evaluateNotifications()` | Evaluates every item's notification rules and fires the configured notifier for any that are met. |
@@ -15077,8 +15287,10 @@ executor.
 | `private void` | `hideGeButton()` | Hides and forgets the injected GE button, if one is currently on the offer interface. |
 | `private void` | `hideGeTrackButton()` | Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). |
 | `private void` | `hydratePriceCache()` | Hydrates tracked items from the persisted price cache so the panel shows last-known values (dimmed by the existing staleness treatment once their trade times age past the threshold) instead of placeholders. |
+| `private void` | `importComparison(List<Integer> itemIds)` | Replaces the current compare set with the items from an imported shared code (#303): its canonical, de-duplicated ids up to `#COMPARE_CAP`. |
 | `void` | `importTrackedList(String token, Consumer<String> onResult)` | Merges a shared tracked-list code into the current profile: adds items that aren't already tracked (with their mode, category, and favorite flag) plus any missing categories they reference. |
 | `private boolean` | `inAutoCategorizeScope(TrackedItem item, boolean includeCategorized)` |  |
+| `private int` | `indexOfComparison(String name)` |  |
 | `private void` | `injectGeButton()` | Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container (#140). |
 | `private void` | `injectGeTrackButton()` | Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X) button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange" header font/weight) whose colour reflects the tracked state. |
 | `private String` | `injectPriceLines(String desc)` | Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines, always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is split off onto its own line, and any trailing convenience-fee line is kept. |
@@ -15101,6 +15313,8 @@ executor.
 | `private void` | `loadCategories()` | Restores the category definitions and group collapsed state from per-profile JSON. |
 | `private void` | `loadPersistedItems()` | Restores tracked items from the per-profile JSON written by `#persistTrackedItems()`. |
 | `private void` | `loadPortfolioHistory()` | Restores the per-item portfolio history from per-profile config, ignoring a corrupt value. |
+| `private void` | `loadSavedComparison(String name)` | Replaces the current compare set with the saved comparison named `name` (#303): its canonical, de-duplicated ids up to `#COMPARE_CAP`, each given a read-only preview when untracked. |
+| `private void` | `loadSavedComparisons()` | Loads the persisted saved comparisons into memory at startup (#303). |
 | `private TrackedItem` | `lookupItem(int itemId)` |  |
 | `private void` | `markWhatsNewSeen()` | Persists that the user has seen the current release's "What's New", quieting the indicator. |
 | `private long` | `marketUnitValue(int itemId)` |  |
@@ -15136,7 +15350,7 @@ executor.
 | `private void` | `openDetailWindow(TrackedItem item, boolean preview)` | Creates and registers a pop-out window for `item`, or focuses an existing one. |
 | `private void` | `openGeItemInStockpile(int itemId)` | Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. |
 | `public GrandExchangeOffer[]` | `openGeOffers()` | Returns the player's current Grand Exchange offers. |
-| `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
+| `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
 | `private int` | `overlayItemCount()` |  |
 | `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
@@ -15151,6 +15365,7 @@ executor.
 | `private String` | `priceLines()` |  |
 | `private void` | `promptCategoryForTrackedItem(int itemId)` | After an item is explicitly tracked (#211), asks the panel to prompt for its category. |
 | `StockpileConfig` | `provideConfig(ConfigManager configManager)` |  |
+| `private void` | `pushSavedNames()` | Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open. |
 | `private void` | `queueTradeSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)` | Turns the change in our own offer into pending suspend/un-suspend intents: items added to the offer left our inventory and should suspend, items withdrawn returned and should un-suspend. |
 | `private void` | `rebucketScreenOverlays()` | Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. |
 | `private void` | `rebuildCompareWindow(boolean focus)` | Snapshots the compare set into an ordered `CompareView.Entry` list (resolving each id to its live tracked item or its preview) and hands it to the EDT to open or update the window. |
@@ -15178,6 +15393,8 @@ executor.
 | `private void` | `resolveTradeabilityForAll()` | Applies wiki metadata (tradeability, buy limit, GE value, high/low alch) to every tracked item and the preview item now that the wiki mapping is available, then refreshes the panel. |
 | `private void` | `resolveTradeable(TrackedItem item)` | Narrows an item's tradeable flag using the wiki mapping: an item that the game composition reports as tradeable but which is absent from the Grand Exchange mapping (e.g. |
 | `private long` | `runePrice(int itemId)` |  |
+| `private void` | `saveCurrentComparison(String name)` | Saves the current compare set under `name` (#303), overwriting any existing comparison of that name (case-insensitive), then persists and refreshes the window's Load menu. |
+| `private List<String>` | `savedComparisonNames()` |  |
 | `private Widget` | `scanForCloseAction(Widget widget)` | Recursively searches a widget subtree for the first visible widget carrying a "Close" action. |
 | `private int` | `scanForItem(Widget widget)` | Recursively searches a widget subtree for the first child holding a real item id. |
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
@@ -15188,7 +15405,7 @@ executor.
 | `private void` | `setItemCompact(int itemId, boolean on)` | Toggles an item's per-item compact-row override (#210), then persists and refreshes. |
 | `private void` | `setOnOverlay(int itemId, boolean on)` | Adds/removes an item from the on-screen overlay set, enforcing the `#OVERLAY_MAX` cap (an add beyond the cap is ignored), then persists and refreshes. |
 | `private void` | `setSortMode(SortMode mode)` | Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel. |
-| `private void` | `showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)` | Opens the compare window (or updates the open one) with `entries`, disposing it when the set is empty. |
+| `private void` | `showOrUpdateCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids, boolean focus)` | Opens the compare window (or updates the open one) with `entries`, disposing it when the set is empty. |
 | `protected void` | `shutDown() throws Exception` | Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state. |
 | `public boolean` | `sourcePricing()` | Returns whether source-aware pricing is enabled in config. |
 | `protected void` | `startUp() throws Exception` | Builds the side panel (wiring its callbacks back to this plugin), registers the nav button and overlays, restores persisted items, and kicks off the metadata fetch and recurring price refresh. |
@@ -15849,6 +16066,13 @@ type/quantity varbit for the change has settled before it is read (#237).
 
 `private boolean runePouchSeenSinceLogin`
 
+#### savedComparisons
+
+`private final List<StockpilePersistence.SavedComparison> savedComparisons`
+
+The persisted named comparisons (#303), in saved order. Client-thread state, loaded at startup and
+written back through `#persistence` on every save/delete.
+
 #### screenOverlays
 
 `private final List<StockpileScreenOverlay> screenOverlays`
@@ -15985,6 +16209,15 @@ Tracks an item with a preset quantity and acquisition history (e.g. a restore), 
 `private void applyAutoCategorize(boolean includeCategorized)`
 
 Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign.
+
+#### applyCompareIds
+
+`private void applyCompareIds(List<Integer> itemIds)`
+
+Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, capped at
+`#COMPARE_CAP`, each untracked id given a read-only preview; then refreshes prices and the window.
+
+- **Parameter** `itemIds` — the item ids to load (a `null` list clears the set)
 
 #### applyGeHighLowLine
 
@@ -16395,6 +16628,12 @@ Returns the current client game tick.
 
 Deletes a category, moving its items to Uncategorized, then persists and refreshes.
 
+#### deleteSavedComparison
+
+`private void deleteSavedComparison(String name)`
+
+Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. Client thread.
+
 #### detectVersionChange
 
 `private void detectVersionChange()`
@@ -16516,6 +16755,15 @@ client thread after the persisted items have been restored — enqueued from bot
 initialization paths, since at startUp on the login screen the RS-profile config
 isn't available yet and only the `LOGGED_IN` load can hydrate.
 
+#### importComparison
+
+`private void importComparison(List<Integer> itemIds)`
+
+Replaces the current compare set with the items from an imported shared code (#303): its canonical,
+de-duplicated ids up to `#COMPARE_CAP`. Client thread.
+
+- **Parameter** `itemIds` — the imported item ids
+
 #### importTrackedList
 
 `void importTrackedList(String token, Consumer<String> onResult)`
@@ -16532,6 +16780,12 @@ on the EDT.
 `private boolean inAutoCategorizeScope(TrackedItem item, boolean includeCategorized)`
 
 - **Returns:** whether the item is in scope: always when re-categorizing, otherwise only when uncategorized.
+
+#### indexOfComparison
+
+`private int indexOfComparison(String name)`
+
+- **Returns:** the index of the saved comparison named `name` (case-insensitive), or -1 if none.
 
 #### injectGeButton
 
@@ -16717,6 +16971,21 @@ Restores tracked items from the per-profile JSON written by `#persistTrackedItem
 Restores the per-item portfolio history from per-profile config, ignoring a corrupt
 value. The pre-#152 aggregate format (a JSON array rather than an object) can't be
 split per item, so it is discarded — history simply rebuilds from the next snapshot.
+
+#### loadSavedComparison
+
+`private void loadSavedComparison(String name)`
+
+Replaces the current compare set with the saved comparison named `name` (#303): its canonical,
+de-duplicated ids up to `#COMPARE_CAP`, each given a read-only preview when untracked. Client thread.
+
+- **Parameter** `name` — the saved comparison to load
+
+#### loadSavedComparisons
+
+`private void loadSavedComparisons()`
+
+Loads the persisted saved comparisons into memory at startup (#303). Client thread.
 
 #### lookupItem
 
@@ -16980,12 +17249,14 @@ Returns the player's current Grand Exchange offers.
 
 #### openOrFocusCompareWindow
 
-`private void openOrFocusCompareWindow(List<CompareView.Entry> entries)`
+`private void openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)`
 
 Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or
 updates and focuses the already-open one. Runs on the EDT.
 
 - **Parameter** `entries` — the items to compare, in display order
+- **Parameter** `names` — the current saved-comparison names for the Load menu
+- **Parameter** `ids` — the current compare-set item ids, backing Export
 
 #### orderGeneratedCategories
 
@@ -17089,6 +17360,12 @@ is confirmed present. Only reached from explicit tracking — never from load, i
 #### provideConfig
 
 `StockpileConfig provideConfig(ConfigManager configManager)`
+
+#### pushSavedNames
+
+`private void pushSavedNames()`
+
+Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open.
 
 #### queueTradeSuspension
 
@@ -17322,6 +17599,21 @@ has loaded, so a slow fetch never mislabels a genuinely tradeable item.
 
 - **Returns:** a price for a rune (for alch calc): the tracked average if present, else the GE price.
 
+#### saveCurrentComparison
+
+`private void saveCurrentComparison(String name)`
+
+Saves the current compare set under `name` (#303), overwriting any existing comparison of that
+name (case-insensitive), then persists and refreshes the window's Load menu. Client thread.
+
+- **Parameter** `name` — the user-given comparison name
+
+#### savedComparisonNames
+
+`private List<String> savedComparisonNames()`
+
+- **Returns:** the saved-comparison names in saved order (#303). Client thread.
+
 #### scanForCloseAction
 
 `private Widget scanForCloseAction(Widget widget)`
@@ -17387,12 +17679,14 @@ Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel.
 
 #### showOrUpdateCompareWindow
 
-`private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)`
+`private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids, boolean focus)`
 
 Opens the compare window (or updates the open one) with `entries`, disposing it when the set is
 empty. Runs on the EDT.
 
 - **Parameter** `entries` — the items to compare, in display order
+- **Parameter** `names` — the current saved-comparison names for the Load menu
+- **Parameter** `ids` — the current compare-set item ids, backing Export
 - **Parameter** `focus` — whether to bring the window to the front after updating
 
 #### shutDown
