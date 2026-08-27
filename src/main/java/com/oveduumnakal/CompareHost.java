@@ -4,6 +4,8 @@
  */
 package com.oveduumnakal;
 
+import java.util.List;
+
 import net.runelite.client.game.ItemManager;
 
 /**
@@ -35,4 +37,16 @@ interface CompareHost
 
 	/** Clears the whole compare set and closes the window. */
 	void clearCompare();
+
+	/** Saves the current compare set under {@code name} (overwriting an existing one of that name) (#303). */
+	void saveComparison(String name);
+
+	/** Replaces the current compare set with the saved comparison named {@code name} (#303). */
+	void loadComparison(String name);
+
+	/** Deletes the saved comparison named {@code name} (#303). */
+	void deleteComparison(String name);
+
+	/** Replaces the current compare set with the items in an imported shared code (#303). */
+	void importComparison(List<Integer> itemIds);
 }

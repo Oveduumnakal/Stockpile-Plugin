@@ -46,4 +46,8 @@ class PersistedItem {
   pouchSuspendedQuantity: int
   quantity: int
 }
+class SavedComparison {
+  itemIds: List<Integer>
+  name: String
+}
 enum TimeWindow { NONE, LIVE, M5, H1, H3, H6, H12, H24, WEEK, MONTH, MONTH3, MONTH6, YEAR }

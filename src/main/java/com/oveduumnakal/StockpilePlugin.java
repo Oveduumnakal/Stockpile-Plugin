@@ -333,6 +333,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** The singleton compare window (#280), or {@code null} when none is open. EDT-only, like the detail windows. */
 	private CompareWindow compareWindow;
 
+	/**
+	 * The persisted named comparisons (#303), in saved order. Client-thread state, loaded at startup and
+	 * written back through {@link #persistence} on every save/delete.
+	 */
+	private final List<StockpilePersistence.SavedComparison> savedComparisons = new ArrayList<>();
+
 	/** The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). */
 	private int currentGeItem = -1;
 	/** The native-style button injected onto the GE offer screen in Button mode, or null. */
@@ -1083,6 +1089,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 			loadCategories();
 			loadPersistedItems();
+			loadSavedComparisons();
 			ledger.load();
 			loadPortfolioHistory();
 
@@ -1943,6 +1950,142 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		SwingUtilities.invokeLater(this::closeCompareWindow);
 	}
 
+	/** Loads the persisted saved comparisons into memory at startup (#303). Client thread. */
+	private void loadSavedComparisons()
+	{
+		savedComparisons.clear();
+		savedComparisons.addAll(persistence.loadComparisons());
+	}
+
+	/**
+	 * Saves the current compare set under {@code name} (#303), overwriting any existing comparison of that
+	 * name (case-insensitive), then persists and refreshes the window's Load menu. Client thread.
+	 *
+	 * @param name the user-given comparison name
+	 */
+	private void saveCurrentComparison(String name)
+	{
+		StockpilePersistence.SavedComparison saved = new StockpilePersistence.SavedComparison();
+		saved.name = name;
+		saved.itemIds = new ArrayList<>(compareIds);
+
+		int existing = indexOfComparison(name);
+		if (existing >= 0)
+			savedComparisons.set(existing, saved);
+		else
+			savedComparisons.add(saved);
+
+		persistence.saveComparisons(savedComparisons);
+		pushSavedNames();
+	}
+
+	/**
+	 * Replaces the current compare set with the saved comparison named {@code name} (#303): its canonical,
+	 * de-duplicated ids up to {@link #COMPARE_CAP}, each given a read-only preview when untracked. Client thread.
+	 *
+	 * @param name the saved comparison to load
+	 */
+	private void loadSavedComparison(String name)
+	{
+		int index = indexOfComparison(name);
+		if (index < 0)
+			return;
+
+		StockpilePersistence.SavedComparison saved = savedComparisons.get(index);
+		applyCompareIds(saved.itemIds);
+	}
+
+	/**
+	 * Replaces the current compare set with the items from an imported shared code (#303): its canonical,
+	 * de-duplicated ids up to {@link #COMPARE_CAP}. Client thread.
+	 *
+	 * @param itemIds the imported item ids
+	 */
+	private void importComparison(List<Integer> itemIds)
+	{
+		applyCompareIds(itemIds);
+	}
+
+	/**
+	 * Replaces the compare set with {@code itemIds} (#303): canonicalised, de-duplicated, capped at
+	 * {@link #COMPARE_CAP}, each untracked id given a read-only preview; then refreshes prices and the window.
+	 *
+	 * @param itemIds the item ids to load (a {@code null} list clears the set)
+	 */
+	private void applyCompareIds(List<Integer> itemIds)
+	{
+		compareIds.clear();
+		compareItems.clear();
+		if (itemIds != null)
+		{
+			for (int id : itemIds)
+			{
+				int canonicalId = itemManager.canonicalize(id);
+				if (canonicalId <= 0 || compareIds.contains(canonicalId))
+					continue;
+
+				if (compareIds.size() >= COMPARE_CAP)
+					break;
+
+				compareIds.add(canonicalId);
+				if (!trackedItems.containsKey(canonicalId))
+					compareItems.put(canonicalId, buildPreview(canonicalId));
+
+				requestDetailData(canonicalId);
+			}
+		}
+
+		refreshGePrices();
+		rebuildCompareWindow(true);
+	}
+
+	/** Deletes the saved comparison named {@code name} (#303), persists, and refreshes the Load menu. Client thread. */
+	private void deleteSavedComparison(String name)
+	{
+		int index = indexOfComparison(name);
+		if (index < 0)
+			return;
+
+		savedComparisons.remove(index);
+		persistence.saveComparisons(savedComparisons);
+		pushSavedNames();
+	}
+
+	/** @return the index of the saved comparison named {@code name} (case-insensitive), or -1 if none. */
+	private int indexOfComparison(String name)
+	{
+		for (int i = 0; i < savedComparisons.size(); i++)
+		{
+			String existing = savedComparisons.get(i).name;
+			if (existing != null && existing.equalsIgnoreCase(name))
+				return i;
+		}
+
+		return -1;
+	}
+
+	/** @return the saved-comparison names in saved order (#303). Client thread. */
+	private List<String> savedComparisonNames()
+	{
+		List<String> names = new ArrayList<>();
+		for (StockpilePersistence.SavedComparison saved : savedComparisons)
+			if (saved.name != null)
+				names.add(saved.name);
+
+		return names;
+	}
+
+	/** Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open. */
+	private void pushSavedNames()
+	{
+		final List<String> names = savedComparisonNames();
+		SwingUtilities.invokeLater(() ->
+		{
+			if (compareWindow != null)
+				compareWindow.setSavedNames(names);
+		});
+	}
+
 	/**
 	 * Snapshots the compare set into an ordered {@link CompareView.Entry} list (resolving each id to its
 	 * live tracked item or its preview) and hands it to the EDT to open or update the window. Client thread.
@@ -1952,7 +2095,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private void rebuildCompareWindow(boolean focus)
 	{
 		final List<CompareView.Entry> entries = compareEntries();
-		SwingUtilities.invokeLater(() -> showOrUpdateCompareWindow(entries, focus));
+		final List<String> names = savedComparisonNames();
+		final List<Integer> ids = new ArrayList<>(compareIds);
+		SwingUtilities.invokeLater(() -> showOrUpdateCompareWindow(entries, names, ids, focus));
 	}
 
 	/**
@@ -1988,7 +2133,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private void openCompareWindow()
 	{
 		final List<CompareView.Entry> entries = compareEntries();
-		SwingUtilities.invokeLater(() -> openOrFocusCompareWindow(entries));
+		final List<String> names = savedComparisonNames();
+		final List<Integer> ids = new ArrayList<>(compareIds);
+		SwingUtilities.invokeLater(() -> openOrFocusCompareWindow(entries, names, ids));
 	}
 
 	/**
@@ -1996,9 +2143,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * empty. Runs on the EDT.
 	 *
 	 * @param entries the items to compare, in display order
+	 * @param names the current saved-comparison names for the Load menu
+	 * @param ids the current compare-set item ids, backing Export
 	 * @param focus whether to bring the window to the front after updating
 	 */
-	private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)
+	private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, List<String> names,
+			List<Integer> ids, boolean focus)
 	{
 		if (entries.isEmpty())
 		{
@@ -2011,6 +2161,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		else
 			compareWindow.setEntries(entries);
 
+		compareWindow.setSavedNames(names);
+		compareWindow.setCurrentIds(ids);
 		if (focus)
 			compareWindow.focus();
 	}
@@ -2020,14 +2172,18 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * updates and focuses the already-open one. Runs on the EDT.
 	 *
 	 * @param entries the items to compare, in display order
+	 * @param names the current saved-comparison names for the Load menu
+	 * @param ids the current compare-set item ids, backing Export
 	 */
-	private void openOrFocusCompareWindow(List<CompareView.Entry> entries)
+	private void openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)
 	{
 		if (compareWindow == null)
 			compareWindow = new CompareWindow(compareHost(), entries, this::onCompareWindowClosed);
 		else
 			compareWindow.setEntries(entries);
 
+		compareWindow.setSavedNames(names);
+		compareWindow.setCurrentIds(ids);
 		compareWindow.focus();
 	}
 
@@ -2108,6 +2264,30 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			public void clearCompare()
 			{
 				clientThread.invokeLater(StockpilePlugin.this::clearCompareSet);
+			}
+
+			@Override
+			public void saveComparison(String name)
+			{
+				clientThread.invokeLater(() -> saveCurrentComparison(name));
+			}
+
+			@Override
+			public void loadComparison(String name)
+			{
+				clientThread.invokeLater(() -> loadSavedComparison(name));
+			}
+
+			@Override
+			public void deleteComparison(String name)
+			{
+				clientThread.invokeLater(() -> deleteSavedComparison(name));
+			}
+
+			@Override
+			public void importComparison(List<Integer> itemIds)
+			{
+				clientThread.invokeLater(() -> StockpilePlugin.this.importComparison(itemIds));
 			}
 		};
 	}
@@ -4781,6 +4961,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					pendingItemDeltas.clear();
 					loadCategories();
 					loadPersistedItems();
+					loadSavedComparisons();
 					ledger.load();
 					loadPortfolioHistory();
 					ledger.resetForLogin();

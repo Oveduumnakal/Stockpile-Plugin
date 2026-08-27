@@ -34,6 +34,8 @@ class StockpilePersistence
 
 	private static final Type CATEGORIES_TYPE = new TypeToken<CategoryData>(){}.getType();
 
+	private static final Type SAVED_COMPARISONS_TYPE = new TypeToken<List<SavedComparison>>(){}.getType();
+
 	private static final Type PORTFOLIO_HISTORY_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
 
 	private static final Type GE_LEDGER_TYPE = new TypeToken<Map<Integer, List<long[]>>>(){}.getType();
@@ -90,6 +92,18 @@ class StockpilePersistence
 		List<CategoryState> categories;
 		boolean favoritesCollapsed;
 		boolean uncategorizedCollapsed;
+	}
+
+	/**
+	 * Serializable snapshot of one named, saved item comparison (#303): a user-given name and the
+	 * canonical item ids it compares, in display order. Package-private so
+	 * {@code PersistedSchemaSnapshotTest} can guard it; any field change fails the schema snapshot
+	 * until it is regenerated and explained in the PR.
+	 */
+	static class SavedComparison
+	{
+		String name;
+		List<Integer> itemIds;
 	}
 
 	private final ConfigManager configManager;
@@ -155,6 +169,37 @@ class StockpilePersistence
 		{
 			log.warn("Failed to parse persisted category JSON; ignoring", e);
 			return null;
+		}
+	}
+
+	/** Serializes the named saved comparisons to per-profile config (#303). */
+	void saveComparisons(List<SavedComparison> comparisons)
+	{
+		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SAVED_COMPARISONS,
+				gson.toJson(comparisons, SAVED_COMPARISONS_TYPE));
+	}
+
+	/** @return the persisted saved comparisons, or an empty list when missing, non-array, or corrupt (#303). */
+	List<SavedComparison> loadComparisons()
+	{
+		String saved = configManager.getRSProfileConfiguration(
+				StockpileConfig.GROUP, StockpileConfig.KEY_SAVED_COMPARISONS);
+		if (saved == null || saved.trim().isEmpty())
+			return new ArrayList<>();
+
+		String trimmed = saved.trim();
+		if (!trimmed.startsWith("["))
+			return new ArrayList<>();
+
+		try
+		{
+			List<SavedComparison> list = gson.fromJson(trimmed, SAVED_COMPARISONS_TYPE);
+			return list == null ? new ArrayList<>() : list;
+		}
+		catch (JsonSyntaxException e)
+		{
+			log.warn("Failed to parse persisted comparison JSON; ignoring", e);
+			return new ArrayList<>();
 		}
 	}
 
