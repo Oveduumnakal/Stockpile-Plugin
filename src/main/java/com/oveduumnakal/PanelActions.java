@@ -35,6 +35,9 @@ public interface PanelActions
 	 */
 	void popOut(int itemId);
 
+	/** Adds {@code itemId} to the compare set (#280), opening or focusing the compare window. */
+	void addToCompare(int itemId);
+
 	/** Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. */
 	void openDashboard();
 

@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -312,6 +313,25 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** Latest nature/fire rune prices, cached for the pop-out windows' alch figures ({@link #requestDetailData}). */
 	private volatile long lastNatureRunePrice;
 	private volatile long lastFireRunePrice;
+
+	/** The most items the compare view holds at once (#280); adding past this is a no-op with a chat notice. */
+	private static final int COMPARE_CAP = 6;
+
+	/**
+	 * The shared compare set (#280): canonical item ids compared side by side, in insertion order.
+	 * Client-thread state (mutated alongside the price maps), transient (never persisted).
+	 */
+	private final Set<Integer> compareIds = new LinkedHashSet<>();
+
+	/**
+	 * Read-only preview instances backing untracked items in the compare set (#280), keyed by item id.
+	 * Client-thread state, the compare-set analogue of {@link #windowItems} so {@link #lookupItem} and the
+	 * per-tick request loop keep untracked compared items live.
+	 */
+	private final Map<Integer, TrackedItem> compareItems = new HashMap<>();
+
+	/** The singleton compare window (#280), or {@code null} when none is open. EDT-only, like the detail windows. */
+	private CompareWindow compareWindow;
 
 	/** The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). */
 	private int currentGeItem = -1;
@@ -884,6 +904,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void addToCompare(int itemId)
+					{
+						clientThread.invokeLater(() -> StockpilePlugin.this.addToCompare(itemId));
+					}
+
+					@Override
 					public void openDashboard()
 					{
 						openDashboardWindow();
@@ -1137,7 +1163,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		screenOverlays.forEach(overlayManager::remove);
 		screenOverlays.clear();
 		SwingUtilities.invokeLater(this::closeAllDetailWindows);
+		SwingUtilities.invokeLater(this::closeCompareWindow);
 		windowItems.clear();
+		compareIds.clear();
+		compareItems.clear();
 		panel.shutdown();
 		closeAllGroundSuspensions();
 		groundItems.clear();
@@ -1400,7 +1429,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (previewItem != null && previewItem.getItemId() == itemId)
 			return previewItem;
 
-		return windowItems.get(itemId);
+		TrackedItem window = windowItems.get(itemId);
+		if (window != null)
+			return window;
+
+		return compareItems.get(itemId);
 	}
 
 	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
@@ -1701,6 +1734,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			}
 
 			@Override
+			public void addToCompare(int id)
+			{
+				clientThread.invokeLater(() -> StockpilePlugin.this.addToCompare(id));
+			}
+
+			@Override
 			public void switchDetailItem(int id)
 			{
 				switchWindowItem(window, id);
@@ -1824,6 +1863,181 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	{
 		for (DetailWindow window : new ArrayList<>(detailWindows.values()))
 			window.refreshData();
+	}
+
+	/**
+	 * Adds {@code itemId} to the shared compare set and opens or focuses the compare window (#280). A
+	 * canonicalised id already present just focuses the window; a full set (see {@link #COMPARE_CAP})
+	 * focuses without adding. Untracked ids get a read-only preview instance so their column stays live.
+	 * A background data fetch fills in the new item's prices. Runs on the client thread.
+	 */
+	private void addToCompare(int itemId)
+	{
+		int canonicalId = itemManager.canonicalize(itemId);
+		if (canonicalId <= 0)
+			return;
+
+		if (compareIds.contains(canonicalId))
+		{
+			SwingUtilities.invokeLater(this::focusCompareWindow);
+			return;
+		}
+
+		if (compareIds.size() >= COMPARE_CAP)
+		{
+			SwingUtilities.invokeLater(this::focusCompareWindow);
+			return;
+		}
+
+		compareIds.add(canonicalId);
+		if (!trackedItems.containsKey(canonicalId))
+			compareItems.put(canonicalId, buildPreview(canonicalId));
+
+		requestDetailData(canonicalId);
+		rebuildCompareWindow(true);
+	}
+
+	/** Removes {@code itemId} from the compare set, closing the window when the set empties. Client thread. */
+	private void removeFromCompareId(int itemId)
+	{
+		if (!compareIds.remove(itemId))
+			return;
+
+		compareItems.remove(itemId);
+		rebuildCompareWindow(false);
+	}
+
+	/** Clears the whole compare set and closes the window. Client thread. */
+	private void clearCompareSet()
+	{
+		compareIds.clear();
+		compareItems.clear();
+		SwingUtilities.invokeLater(this::closeCompareWindow);
+	}
+
+	/**
+	 * Snapshots the compare set into an ordered {@link CompareView.Entry} list (resolving each id to its
+	 * live tracked item or its preview) and hands it to the EDT to open or update the window. Client thread.
+	 *
+	 * @param focus whether to bring the window to the front after updating (true when an item was just added)
+	 */
+	private void rebuildCompareWindow(boolean focus)
+	{
+		final List<CompareView.Entry> entries = new ArrayList<>();
+		for (int id : compareIds)
+		{
+			TrackedItem tracked = trackedItems.get(id);
+			if (tracked != null)
+			{
+				entries.add(new CompareView.Entry(tracked, true));
+			}
+			else
+			{
+				TrackedItem preview = compareItems.computeIfAbsent(id, this::buildPreview);
+				entries.add(new CompareView.Entry(preview, false));
+			}
+		}
+
+		SwingUtilities.invokeLater(() -> showOrUpdateCompareWindow(entries, focus));
+	}
+
+	/**
+	 * Opens the compare window (or updates the open one) with {@code entries}, disposing it when the set is
+	 * empty. Runs on the EDT.
+	 *
+	 * @param entries the items to compare, in display order
+	 * @param focus whether to bring the window to the front after updating
+	 */
+	private void showOrUpdateCompareWindow(List<CompareView.Entry> entries, boolean focus)
+	{
+		if (entries.isEmpty())
+		{
+			closeCompareWindow();
+			return;
+		}
+
+		if (compareWindow == null)
+			compareWindow = new CompareWindow(compareHost(), entries, this::onCompareWindowClosed);
+		else
+			compareWindow.setEntries(entries);
+
+		if (focus)
+			compareWindow.focus();
+	}
+
+	/** Brings the compare window to the front if one is open. Runs on the EDT. */
+	private void focusCompareWindow()
+	{
+		if (compareWindow != null)
+			compareWindow.focus();
+	}
+
+	/** Re-reads the compare columns from current prices, if a window is open. Client thread. */
+	private void refreshCompareWindow()
+	{
+		if (!compareIds.isEmpty())
+			rebuildCompareWindow(false);
+	}
+
+	/** Disposes the compare window (its close listener clears the set). Runs on the EDT. */
+	private void closeCompareWindow()
+	{
+		if (compareWindow != null)
+			compareWindow.dispose();
+	}
+
+	/** Drops the singleton reference and clears the set when the compare window is closed. */
+	private void onCompareWindowClosed()
+	{
+		compareWindow = null;
+		clientThread.invokeLater(() ->
+		{
+			compareIds.clear();
+			compareItems.clear();
+		});
+	}
+
+	/** Builds the {@link CompareHost} for the compare window, routing edits back onto the client thread. */
+	private CompareHost compareHost()
+	{
+		return new CompareHost()
+		{
+			@Override
+			public StockpileConfig config()
+			{
+				return config;
+			}
+
+			@Override
+			public ItemManager itemManager()
+			{
+				return itemManager;
+			}
+
+			@Override
+			public long natureRunePrice()
+			{
+				return lastNatureRunePrice;
+			}
+
+			@Override
+			public long fireRunePrice()
+			{
+				return lastFireRunePrice;
+			}
+
+			@Override
+			public void removeFromCompare(int itemId)
+			{
+				clientThread.invokeLater(() -> removeFromCompareId(itemId));
+			}
+
+			@Override
+			public void clearCompare()
+			{
+				clientThread.invokeLater(StockpilePlugin.this::clearCompareSet);
+			}
+		};
 	}
 
 	/** Wipes the portfolio value history (in memory and in config), e.g. when the whole tracked list is cleared. */
@@ -2335,10 +2549,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			trackedItems.clear();
 			clearPortfolioHistory();
+			compareIds.clear();
+			compareItems.clear();
 			SwingUtilities.invokeLater(() ->
 			{
 				panel.clearSessionBaseline();
 				closeAllDetailWindows();
+				closeCompareWindow();
 			});
 			persistTrackedItems();
 			refreshPanel();
@@ -2403,6 +2620,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					if (window != null)
 						window.refreshData();
 				});
+
+				if (compareIds.contains(itemId))
+					refreshCompareWindow();
+
 				refreshPanel();
 			});
 		});
@@ -2558,6 +2779,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		final Set<Integer> detailIds = new HashSet<>(windowItems.keySet());
 		detailIds.add(panel.getDetailItemId());
+		detailIds.addAll(compareIds);
 		for (TrackedItem item : trackedItems.values())
 		{
 			if (item.isTradeable() && item.hasPrices())
@@ -2578,6 +2800,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			if (!trackedItems.containsKey(windowItem.getItemId())
 					&& windowItem.isTradeable() && windowItem.hasPrices())
 				requestDetailData(windowItem.getItemId());
+		}
+
+		for (TrackedItem compareItem : compareItems.values())
+		{
+			if (!trackedItems.containsKey(compareItem.getItemId())
+					&& !windowItems.containsKey(compareItem.getItemId())
+					&& compareItem.isTradeable() && compareItem.hasPrices())
+				requestDetailData(compareItem.getItemId());
 		}
 	}
 
@@ -2863,7 +3093,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 */
 	private void addStockpileMenuSection(int canonicalId, boolean tracked)
 	{
-		if (!config.contextMenuTrack() && !config.contextMenuView() && !config.contextMenuDashboard())
+		if (!config.contextMenuTrack() && !config.contextMenuView() && !config.contextMenuDashboard()
+				&& !config.contextMenuCompare())
 			return;
 
 		final Menu submenu = client.getMenu()
@@ -2894,6 +3125,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					.setOption("Open in Dashboard")
 					.setType(MenuAction.RUNELITE)
 					.onClick(e -> SwingUtilities.invokeLater(() -> popOutDetail(canonicalId)));
+		}
+
+		if (config.contextMenuCompare())
+		{
+			submenu.createMenuEntry(0)
+					.setOption("Add to Compare")
+					.setType(MenuAction.RUNELITE)
+					.onClick(e -> addToCompare(canonicalId));
 		}
 	}
 
