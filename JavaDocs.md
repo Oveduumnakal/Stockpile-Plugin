@@ -85,6 +85,7 @@
 - [com.oveduumnakal.PriceStats](#comoveduumnakalpricestats)
 - [com.oveduumnakal.ProcessingBasis](#comoveduumnakalprocessingbasis)
 - [com.oveduumnakal.PulseEntry](#comoveduumnakalpulseentry)
+- [com.oveduumnakal.QuickActionDelivery](#comoveduumnakalquickactiondelivery)
 - [com.oveduumnakal.SectionSlot](#comoveduumnakalsectionslot)
 - [com.oveduumnakal.SessionStats](#comoveduumnakalsessionstats)
 - [com.oveduumnakal.SessionStats.Delta](#comoveduumnakalsessionstatsdelta)
@@ -9820,6 +9821,105 @@ One in-flight price-change pulse: the label being animated, its base color, and 
 
 ---
 
+## com.oveduumnakal.QuickActionDelivery
+
+_enum_
+
+`public enum QuickActionDelivery`
+
+How a tracked-item row surfaces its quick actions (remove, favorite, overlay, per-item
+compact, open in dashboard, view detail). `#HOVER_BUTTONS` keeps the current hover
+strip; `#RIGHT_CLICK_MENU` moves the actions into the row's right-click menu and
+hides the hover controls; `#BOTH` offers both delivery paths at once.
+
+<p>Public because it is the return type of a `@ConfigItem` accessor: the RuneLite
+config proxy lives in another module and must be able to access it, or the plugin fails
+to start with an `IllegalAccessError`.
+
+### Enum Constant Summary
+
+| Enum Constant | Description |
+|---|---|
+| `BOTH` | The `"Both"` option: hover strip and the row right-click menu. |
+| `HOVER_BUTTONS` | The `"Hover buttons"` option: the current hover strip only. |
+| `RIGHT_CLICK_MENU` | The `"Right-click menu"` option: actions in the row menu, no hover controls. |
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final String` | `label` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `QuickActionDelivery(String label)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `boolean` | `showsHoverButtons()` |  |
+| `boolean` | `showsRowMenuActions()` |  |
+| `public String` | `toString()` | Returns the display label shown in the UI. |
+
+### Enum Constant Detail
+
+#### BOTH
+
+`BOTH`
+
+The `"Both"` option: hover strip and the row right-click menu.
+
+#### HOVER_BUTTONS
+
+`HOVER_BUTTONS`
+
+The `"Hover buttons"` option: the current hover strip only.
+
+#### RIGHT_CLICK_MENU
+
+`RIGHT_CLICK_MENU`
+
+The `"Right-click menu"` option: actions in the row menu, no hover controls.
+
+### Field Detail
+
+#### label
+
+`private final String label`
+
+### Constructor Detail
+
+#### QuickActionDelivery
+
+`QuickActionDelivery(String label)`
+
+### Method Detail
+
+#### showsHoverButtons
+
+`boolean showsHoverButtons()`
+
+- **Returns:** whether the hover-revealed action buttons are shown in this mode.
+
+#### showsRowMenuActions
+
+`boolean showsRowMenuActions()`
+
+- **Returns:** whether the row right-click menu carries the full quick-action set in this mode.
+
+#### toString
+
+`public String toString()`
+
+Returns the display label shown in the UI.
+
+- **Returns:** the display label
+
+---
+
 ## com.oveduumnakal.SectionSlot
 
 _enum_
@@ -10861,6 +10961,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `String` | `KEY_PRICE_OVERVIEW_ROWS` | Persisted config key `"priceOverviewPreset"`. |
 | `String` | `KEY_PRICE_REFRESH_SECONDS` | Persisted config key `"priceRefreshSeconds"`. |
 | `String` | `KEY_PROMPT_CATEGORY_ON_TRACK` | Persisted config key `"promptCategoryOnTrack"`. |
+| `String` | `KEY_QUICK_ACTION_DELIVERY` | Persisted config key `"quickActionDelivery"`. |
 | `String` | `KEY_ROW_1_DATA` | Persisted config key `"row1Data"`. |
 | `String` | `KEY_ROW_2_DATA` | Persisted config key `"row2Data"`. |
 | `String` | `KEY_ROW_3_DATA` | Persisted config key `"row3Data"`. |
@@ -10934,6 +11035,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `default OverviewPreset` | `priceOverviewRows()` | How many time-window rows the Price Overview shows. |
 | `default int` | `priceRefreshSeconds()` | How often to refresh GE prices from the API. |
 | `default boolean` | `promptCategoryOnTrack()` | When you track an item, ask which category to put it in (choose an existing one, create a new one, or skip to Uncategorized). |
+| `default QuickActionDelivery` | `quickActionDelivery()` | How each tracked-item row surfaces its quick actions (remove, favorite, overlay, compact, dashboard, view detail): as hover buttons, in the row's right-click menu, or both. |
 | `default TimeWindow` | `row1Data()` | Price data shown on the first row. |
 | `default TimeWindow` | `row2Data()` | Price data shown on the second row. |
 | `default TimeWindow` | `row3Data()` | Price data shown on the third row. |
@@ -11160,6 +11262,12 @@ Persisted config key `"priceRefreshSeconds"`.
 `String KEY_PROMPT_CATEGORY_ON_TRACK`
 
 Persisted config key `"promptCategoryOnTrack"`.
+
+#### KEY_QUICK_ACTION_DELIVERY
+
+`String KEY_QUICK_ACTION_DELIVERY`
+
+Persisted config key `"quickActionDelivery"`.
 
 #### KEY_ROW_1_DATA
 
@@ -11583,6 +11691,14 @@ How often to refresh GE prices from the API. Minimum 30 seconds.
 
 When you track an item, ask which category to put it in (choose an existing one, create a new one, or skip to
 Uncategorized). Applies only to explicit tracking, not auto-added or view-only items.
+
+#### quickActionDelivery
+
+`default QuickActionDelivery quickActionDelivery()`
+
+How each tracked-item row surfaces its quick actions (remove, favorite, overlay, compact, dashboard,
+view detail): as hover buttons, in the row's right-click menu, or both. Defaults to the right-click
+menu; upgrading users with no stored value inherit this default.
 
 #### row1Data
 
@@ -12150,6 +12266,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `applyRowIcon(JLabel iconLabel, TrackedItem item)` | Sets a label's 18px quantity-aware item icon from `#rowIconCache`, loading asynchronously on a miss. |
 | `private void` | `applyTotalTooltip(JLabel label, long value, ValueFormat fmt)` | Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise. |
 | `private void` | `autoCategorizeFromDialog(JDialog dialog)` | Prompts for the auto-categorize scope (uncategorized only vs. |
+| `private static Color` | `blend(Color base, Color other, float t)` |  |
 | `private JComboBox<String>` | `buildCategoryPicker(TrackedItem item)` | Builds the per-row category picker used in the manage row: assigns the item to an existing category, clears it to Uncategorized, or prompts to create-and-assign a new one. |
 | `private JButton` | `buildChangelogBadge()` | Builds the top-right header badge that opens the changelog window; `#applyChangelogButtonStyle` sets its label and colour. |
 | `private JComponent` | `buildChangelogContent()` | Builds the changelog window: a left navigation column listing each release, with the selected release's sections expanded beneath it as quick-links that jump to that section, and the selected release's notes rendered on the right. |
@@ -12184,6 +12301,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `clearSessionBaseline()` | Drops the session baseline without re-priming (used on profile change): the next rebuild captures the new profile's holdings as the baseline. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
 | `private void` | `commitDrag()` | Commits the in-progress drag: places the dragged item at its new slot within its own group and rewrites the full tracked order accordingly (kept within-group, since groups render in global order). |
+| `private static Icon` | `compactMenuIcon(Color color)` | Draws two stacked bars (per-item compact) tinted `color`. |
 | `static Icon` | `compareIcon(Color color)` | Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted `color`. |
 | `private List<Integer>` | `computeDragGroup(int itemId)` | Determines the dragged item's group as the contiguous run of item rows between accordion headers in the rendered list (the whole list when ungrouped), returning its item ids in visual order. |
 | `private List<RowSection>` | `computeSections(List<TrackedItem> items)` | Computes the ordered, filtered display sections (#275): a single flat section when no grouping is active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized. |
@@ -12193,6 +12311,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `copyToClipboard(String text)` |  |
 | `private JLabel` | `createDeltaLabel()` | Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a value. |
 | `static Icon` | `dashboardIcon(Color color)` | Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title bar and three content columns, echoing the pop-out dashboard's panel layout (#109). |
+| `private static Icon` | `detailIcon(Color color)` | Draws a "view detail" glyph tinted `color`: a document with two text lines and a magnifying glass overlapping its lower-right corner, echoing the detail view's document-and-lens motif (#299). |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
@@ -12208,6 +12327,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static String` | `formatTotalGp(long value, ValueFormat fmt)` | Formats a totals value as either full or abbreviated gp per the configured `ValueFormat`. |
 | `private void` | `fullRebuild(List<RowSection> sections, PriceIndicatorMode indicatorMode, String sig)` | Rebuilds the whole list from scratch, repopulating the row/header caches and storing the signature (#275). |
 | `public int` | `getDetailItemId()` |  |
+| `private static String` | `hex(Color color)` |  |
 | `private void` | `hideSearchResults()` | Hides the floating search-results popup and clears its rows. |
 | `private static long` | `iconCacheKey(TrackedItem item)` |  |
 | `private void` | `importTrackedList()` | Prompts for a tracked-list code, merges it into the current profile, and reports the outcome. |
@@ -12227,7 +12347,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static Map<Integer,long[]>` | `liveSessionSnapshot(List<TrackedItem> items)` | Builds the session baseline snapshot (item id → [quantity, avg price]) from only the items whose prices came from a live fetch. |
 | `private JButton` | `makeRowControl(String glyph, String tooltip)` | Builds a compact, hover-revealed glyph button styled like the row's remove button. |
 | `private boolean` | `matchesFilter(TrackedItem item)` |  |
-| `private void` | `maybeShowRowMenu(MouseEvent e, int itemId)` | Shows the tracked-row right-click menu (#280) when `e` is a popup trigger: an "Add to Compare" action and an "Open in Dashboard" action for `itemId`. |
+| `private void` | `maybeShowRowMenu(MouseEvent e, int itemId)` | Shows the tracked-row right-click menu (#280) when `e` is a popup trigger. |
 | `private void` | `moveCategoryInDialog(JList<String> list, DefaultListModel<String> model, int delta)` | Moves the selected dialog category by `delta` and forwards the new index to the plugin. |
 | `public long` | `natureRunePrice()` | {@inheritDoc} Returns the nature-rune price the panel currently holds. |
 | `public void` | `notificationsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's notifications-edited callback when present. |
@@ -12251,7 +12371,9 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `rebuildChangelogNav(JPanel nav, List<Changelog.Release> releases, int selectedIndex, JEditorPane body)` | (Re)populates the changelog nav: one clickable row per release (selecting it loads its notes), and beneath the selected release its section quick-links, each of which scrolls the notes to that section. |
 | `public void` | `refreshDetailData(int itemId)` | Re-populates the open detail view with fresh data for `itemId` (no-op if a different item is shown). |
 | `private void` | `refreshFavoriteStar(JLabel star, boolean favorite)` | Applies a favorite star's visual from its row-hover/star-hover client flags: hidden when its row isn't hovered, the resting gold/grey glyph when the row is hovered, and a preview (light-gold fill to add, or grey outline to remove) when the star itself is hovered. |
+| `private static Color` | `removeHighlight()` |  |
 | `static void` | `removeHoverTint(JLabel label)` | Detaches any hover-tint listener from a label before its value is replaced. |
+| `private static Icon` | `removeMenuIcon(Color color)` | Draws an "✕" cross (remove) tinted `color`. |
 | `public void` | `removeSessionBaseline(int itemId)` | Drops one item's session-baseline entry when it is untracked, so removal is session-neutral. |
 | `private String` | `renderChangelogBody(String body)` | Renders a release's markdown body to HTML for the changelog window: `##`/`###`/`####` headings become sized/weighted/coloured headers that each indent one level deeper, their content indents one level further still, and `[#12](url)` issue links become clickable anchors. |
 | `private void` | `renderEmptyState()` | Clears the list to the "no items tracked" placeholder and resets the render cache (#275). |
@@ -12259,6 +12381,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `renderTrackedRows(List<TrackedItem> items, PriceIndicatorMode indicatorMode)` | Clears and re-renders the tracked-item rows (empty placeholder, or the grouped rows), retaining the inputs so `#toggleReorderMode()` can re-render the manage layout without a full plugin refresh. |
 | `public void` | `requestDetailData(int itemId)` | {@inheritDoc} Delegates to the panel's detail-data request callback when present. |
 | `public void` | `resetSession()` | Re-baselines the session to the current holdings, so "Session:" restarts from zero. |
+| `private JMenuItem` | `rowMenuItem(String label, Icon restIcon, Icon hoverIcon, String flatStyle, boolean enabled, ActionListener action)` | Builds a row right-click menu item: `restIcon` shown at rest (2px before the label) in the RuneScape small font, swapped to `hoverIcon` while the item is highlighted (icon only — the label and default row highlight are untouched). |
 | `private static long` | `sectionTotal(RowSection s)` |  |
 | `public void` | `setAlchRunePrices(long naturePrice, long firePrice)` | Supplies the latest nature/fire rune prices used to compute high-alch profit in the detail view. |
 | `private void` | `setTrackedFilterVisible(boolean visible)` | Sets the filter field's visibility, clearing any active filter when it is hidden. |
@@ -12270,6 +12393,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `shutdown()` | Stops the animation timers so the panel can be disposed cleanly. |
 | `static String` | `signedGp(long v)` |  |
 | `private static Icon` | `sparkleIcon(Color color)` | Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge. |
+| `private static Icon` | `starMenuIcon(Color color, boolean filled)` | Draws a five-point star (favorite) tinted `color`; `filled` fills it, else outlines it. |
 | `private void` | `startPulse(JLabel label, int delta)` | Begins a color pulse on a label (green up / red down) reflecting the sign of a price change. |
 | `private void` | `stopDragAutoscroll()` | Stops the edge-autoscroll timer, if running. |
 | `private String` | `structuralSignature(List<RowSection> sections)` |  |
@@ -13228,6 +13352,12 @@ Prompts for the auto-categorize scope (uncategorized only vs. everything), runs 
 `#categoryActions`, reports the result, and closes the dialog so it reopens with the
 freshly generated categories.
 
+#### blend
+
+`private static Color blend(Color base, Color other, float t)`
+
+- **Returns:** the linear blend of `base` and `other`, weighting `other` by `t` (0..1).
+
 #### buildCategoryPicker
 
 `private JComboBox<String> buildCategoryPicker(TrackedItem item)`
@@ -13456,6 +13586,12 @@ Commits the in-progress drag: places the dragged item at its new slot within its
 group and rewrites the full tracked order accordingly (kept within-group, since groups
 render in global order). A no-op drop is ignored.
 
+#### compactMenuIcon
+
+`private static Icon compactMenuIcon(Color color)`
+
+Draws two stacked bars (per-item compact) tinted `color`.
+
 #### compareIcon
 
 `static Icon compareIcon(Color color)`
@@ -13512,6 +13648,13 @@ Creates a fixed-size label that hosts the ▲/▼ price-change pulse next to a v
 
 Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title
 bar and three content columns, echoing the pop-out dashboard's panel layout (#109).
+
+#### detailIcon
+
+`private static Icon detailIcon(Color color)`
+
+Draws a "view detail" glyph tinted `color`: a document with two text lines and a magnifying
+glass overlapping its lower-right corner, echoing the detail view's document-and-lens motif (#299).
 
 #### dragAutoscrollTick
 
@@ -13604,6 +13747,12 @@ Rebuilds the whole list from scratch, repopulating the row/header caches and sto
 `public int getDetailItemId()`
 
 - **Returns:** the item id whose detail view is open, or a non-positive value when on the main list.
+
+#### hex
+
+`private static String hex(Color color)`
+
+- **Returns:** `color` as a `#RRGGBB` hex string for a FlatLaf style property.
 
 #### hideSearchResults
 
@@ -13743,8 +13892,10 @@ Builds a compact, hover-revealed glyph button styled like the row's remove butto
 
 `private void maybeShowRowMenu(MouseEvent e, int itemId)`
 
-Shows the tracked-row right-click menu (#280) when `e` is a popup trigger: an "Add to Compare"
-action and an "Open in Dashboard" action for `itemId`.
+Shows the tracked-row right-click menu (#280) when `e` is a popup trigger. Always offers
+"View detail", "Open in Dashboard" and "Add to Compare"; when `StockpileConfig#quickActionDelivery()`
+routes quick actions through the menu (#299), it also carries the row's favorite, overlay, per-item
+compact and remove actions so they need not live on the hover strip.
 
 #### moveCategoryInDialog
 
@@ -13906,11 +14057,24 @@ Applies a favorite star's visual from its row-hover/star-hover client flags: hid
 when its row isn't hovered, the resting gold/grey glyph when the row is hovered, and a
 preview (light-gold fill to add, or grey outline to remove) when the star itself is hovered.
 
+#### removeHighlight
+
+`private static Color removeHighlight()`
+
+- **Returns:** a light red-tinted blend of the current menu-item highlight colour, for the Remove entry's hover.
+        Kept light so the darker red ✕ icon stands out against it rather than blending in.
+
 #### removeHoverTint
 
 `static void removeHoverTint(JLabel label)`
 
 Detaches any hover-tint listener from a label before its value is replaced.
+
+#### removeMenuIcon
+
+`private static Icon removeMenuIcon(Color color)`
+
+Draws an "✕" cross (remove) tinted `color`.
 
 #### removeSessionBaseline
 
@@ -13958,6 +14122,15 @@ without a full plugin refresh.
 `public void resetSession()`
 
 Re-baselines the session to the current holdings, so "Session:" restarts from zero.
+
+#### rowMenuItem
+
+`private JMenuItem rowMenuItem(String label, Icon restIcon, Icon hoverIcon, String flatStyle, boolean enabled, ActionListener action)`
+
+Builds a row right-click menu item: `restIcon` shown at rest (2px before the label) in the RuneScape
+small font, swapped to `hoverIcon` while the item is highlighted (icon only — the label and default
+row highlight are untouched). Active toggles pass a gold rest icon that greys out on hover, mirroring the
+hover strip. A non-null `flatStyle` overrides the FlatLaf selection styling for this one item.
 
 #### sectionTotal
 
@@ -14030,6 +14203,12 @@ Stops the animation timers so the panel can be disposed cleanly.
 `private static Icon sparkleIcon(Color color)`
 
 Paints a small firework burst (eight rays capped with sparks) for the "What's New" badge.
+
+#### starMenuIcon
+
+`private static Icon starMenuIcon(Color color, boolean filled)`
+
+Draws a five-point star (favorite) tinted `color`; `filled` fills it, else outlines it.
 
 #### startPulse
 

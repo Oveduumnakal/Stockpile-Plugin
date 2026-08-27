@@ -96,6 +96,8 @@ public interface StockpileConfig extends Config
 	String KEY_SORT_MODE = "sortMode";
 	/** Persisted config key {@code "sortReversed"}. */
 	String KEY_SORT_REVERSED = "sortReversed";
+	/** Persisted config key {@code "quickActionDelivery"}. */
+	String KEY_QUICK_ACTION_DELIVERY = "quickActionDelivery";
 	/** Persisted config key {@code "portfolioHistory"}. */
 	String KEY_PORTFOLIO_HISTORY = "portfolioHistory";
 
@@ -485,6 +487,24 @@ public interface StockpileConfig extends Config
 	default boolean sortReversed()
 	{
 		return false;
+	}
+
+	/**
+	 * How each tracked-item row surfaces its quick actions (remove, favorite, overlay, compact, dashboard,
+	 * view detail): as hover buttons, in the row's right-click menu, or both. Defaults to the right-click
+	 * menu; upgrading users with no stored value inherit this default.
+	 */
+	@ConfigItem(
+			keyName = KEY_QUICK_ACTION_DELIVERY,
+			name = "Quick Actions",
+			description = "How each tracked item row surfaces its quick actions (remove, favorite, overlay, "
+					+ "compact, dashboard, view detail): as hover buttons, in the right-click menu, or both.",
+			section = trackedItemSection,
+			position = 13
+	)
+	default QuickActionDelivery quickActionDelivery()
+	{
+		return QuickActionDelivery.RIGHT_CLICK_MENU;
 	}
 
 	/**
