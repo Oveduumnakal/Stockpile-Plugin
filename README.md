@@ -3,7 +3,7 @@
 </p>
 <h1 align="center">Stockpile</h1>
 
-Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pick the items you want to follow and the plugin counts how many you have, looks up what they are worth right now on the Grand Exchange, and works out how much profit you have actually made. It watches how items really come and go — trading on the Grand Exchange, buying from shops, trading with players, cooking, crafting, and more — so the numbers reflect what actually happened. Charts, market details, on-screen overlays, and price alerts round it out.
+Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pick the items you want to follow and the plugin counts how many you have, looks up what they are worth right now on the Grand Exchange, and works out how much profit you have actually made. It watches how items really come and go — trading on the Grand Exchange, buying from shops, trading with players, cooking, crafting, and more — so the numbers reflect what actually happened. Charts, market details, side-by-side comparisons, on-screen overlays, and price alerts round it out.
 
 ## Features
 
@@ -89,6 +89,28 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
   <img src="docs/img/12-alchemy-values.png" alt="High and Low Alchemy values with the rune-cost-adjusted profit">
 
+### Compare items
+
+- **Line items up side by side**
+
+  Put up to six items next to each other in their own window and read them off in one go — prices, buy limit and GE tax, market ratings, alchemy, what you are holding and what you have made on it, and a trend line with trading volume underneath. Items you don't track can go in too, so you can weigh something up before committing to it. Open it from the panel's toolbar, an item's detail view, or a tracked item's right-click menu. Drag the columns into whatever order suits you, and drop one with the X on its header.
+
+  <img src="docs/img/26-compare-view.png" alt="The Compare window showing three items side by side with prices, market info, alchemy, holdings, and trend charts" width="700">
+
+- **Pick the time frame**
+
+  A Window dropdown switches every column at once between the latest prices and 5-minute, hourly, 6-hour, daily, weekly, or monthly figures, so the numbers and charts all cover the same stretch of time.
+
+  <img src="docs/img/27-compare-data-range.png" alt="The Compare window's Window dropdown open, listing Latest, 5m, 1 Hour, 6 Hour, 24 Hour, 1 Week, and 1 Month" width="250">
+
+- **Compare every variant at once**
+
+  One click fills the window with an item's whole family — all four doses of a potion, or the raw, cooked, and burnt forms of a food. Use **Compare all variants** from a tracked item's right-click menu, or the + on any column header once the window is open.
+
+- **Save, reload, and share a comparison**
+
+  Save a comparison under a name and bring it back whenever you want from the Load menu. Export one to a short code to send to a friend, or paste a friend's code in to load theirs. Your saved comparisons stay put between sessions.
+
 ### Organize your list
 
 - **Make the list your own**
@@ -96,6 +118,18 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
   Pin your favourites to the top, group items into your own collapsible categories, or let the plugin sort everything into sensible groups with one click. You can also sort by name, value, profit, or how much the price moved today, or simply drag items into any order you like.
 
   <img src="docs/img/13-categories-favourites.png" alt="The tracked list grouped into collapsible categories with favourites pinned on top" width="30%"> <a href="docs/img/14-auto-categorize.gif" title="Click to play the animation"><img src="docs/img/14-auto-categorize-still.png" alt="One click on auto-categorize reorganizing the list into sensible groups" width="68%"></a>
+
+- **Actions where you want them**
+
+  Every tracked row carries the same actions — view its detail, open it in the dashboard, add it to a comparison, favourite it, compact it, put it on the overlay, or stop tracking it. Choose how they reach you: a right-click menu, buttons that appear when you hover over the row, or both. The right-click menu is the default; switch to hover buttons in the settings if you prefer them.
+
+  <img src="docs/img/30-quick-actions.png" alt="A tracked item's right-click menu listing view detail, open in dashboard, compare, favourite, change category, compact, overlay, and remove" width="250">
+
+- **Move an item to another category**
+
+  Right-click a tracked item and pick **Change category** to move it into any category you already have, back to Uncategorized, or into a brand-new one you name on the spot.
+
+  <img src="docs/img/31-change-category.png" alt="The Change category submenu listing the player's categories with the item's current category ticked and a New category entry at the bottom" width="300">
 
 - **Handle long lists**
 
