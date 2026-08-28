@@ -120,6 +120,7 @@
 - [com.oveduumnakal.TradeApportioner](#comoveduumnakaltradeapportioner)
 - [com.oveduumnakal.TradeApportioner.Leg](#comoveduumnakaltradeapportionerleg)
 - [com.oveduumnakal.ValueFormat](#comoveduumnakalvalueformat)
+- [com.oveduumnakal.VariantFamily](#comoveduumnakalvariantfamily)
 - [com.oveduumnakal.WikiRealtimePriceClient](#comoveduumnakalwikirealtimepriceclient)
 - [com.oveduumnakal.WikiRealtimePriceClient.ItemMapping](#comoveduumnakalwikirealtimepriceclientitemmapping)
 - [com.oveduumnakal.WikiRealtimePriceClient.ItemPrices](#comoveduumnakalwikirealtimepriceclientitemprices)
@@ -7958,6 +7959,7 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `acquisitionsEdited(int itemId)` | Notifies the plugin that `itemId`'s acquisition lots were edited and must be persisted. |
 | `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId`, honouring how the user asked for it to be added. |
 | `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set (#280), opening or focusing the compare window. |
+| `void` | `addVariantsToCompare(int itemId)` | Adds every variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set (up to the cap), opening or focusing the compare window. |
 | `void` | `clearAcquisitions(int itemId)` | Clears all acquisition lots recorded for `itemId`. |
 | `void` | `clearAll()` | Stops tracking every item and clears all tracked state. |
 | `String` | `examineLookup(int itemId)` |  |
@@ -8003,6 +8005,13 @@ Tracks `itemId`, honouring how the user asked for it to be added.
 `void addToCompare(int itemId)`
 
 Adds `itemId` to the compare set (#280), opening or focusing the compare window.
+
+#### addVariantsToCompare
+
+`void addVariantsToCompare(int itemId)`
+
+Adds every variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare
+set (up to the cap), opening or focusing the compare window.
 
 #### clearAcquisitions
 
@@ -12334,6 +12343,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Consumer<Integer>` | `onAddToCompare` | Adds the item to the compare set, opening or focusing the compare window (#280). |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
 | `private final Runnable` | `onClearAll` |  |
+| `private final Consumer<Integer>` | `onCompareVariants` | Adds every variant of the item (dose line or cooking chain) to the compare set (#302). |
 | `private final Consumer<Consumer<String>>` | `onExportCsv` | Builds the acquisitions CSV on the client thread and delivers it back on the EDT. |
 | `private final Consumer<Consumer<String>>` | `onExportList` | Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. |
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
@@ -13073,6 +13083,12 @@ Adds the item to the compare set, opening or focusing the compare window (#280).
 #### onClearAll
 
 `private final Runnable onClearAll`
+
+#### onCompareVariants
+
+`private final Consumer<Integer> onCompareVariants`
+
+Adds every variant of the item (dose line or cooking chain) to the compare set (#302).
 
 #### onExportCsv
 
@@ -15256,6 +15272,7 @@ executor.
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)` | Tracks an item with a preset quantity and acquisition history (e.g. |
+| `private void` | `addVariantsToCompare(int itemId)` | Adds every resolved variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set in natural order, up to `#COMPARE_CAP`, then opens/focuses the window. |
 | `private void` | `applyAutoCategorize(boolean includeCategorized)` | Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. |
 | `private void` | `applyCompareIds(List<Integer> itemIds)` | Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, capped at `#COMPARE_CAP`, each untracked id given a read-only preview; then refreshes prices and the window. |
 | `private void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
@@ -15424,12 +15441,14 @@ executor.
 | `private long` | `resolveAlchValue(TrackedItem tracked, int canonicalId, boolean high)` | Resolves an item's alch value with a client-cache fallback (#238): prefers the cached wiki value on the tracked item, and when that has not loaded yet reads the item composition — `net.runelite.api.ItemComposition#getHaPrice()` for high alch, and the store value's 40% for low alch — so the `AcquisitionSource#ALCHEMY` claim is always registered regardless of whether the wiki mapping or the item's price series has been fetched this session. |
 | `private void` | `resolveTradeabilityForAll()` | Applies wiki metadata (tradeability, buy limit, GE value, high/low alch) to every tracked item and the preview item now that the wiki mapping is available, then refreshes the panel. |
 | `private void` | `resolveTradeable(TrackedItem item)` | Narrows an item's tradeable flag using the wiki mapping: an item that the game composition reports as tradeable but which is absent from the Grand Exchange mapping (e.g. |
+| `private List<Integer>` | `resolveVariantIds(int itemId)` | Resolves the canonical ids of `itemId`'s variant family in natural order (dose `(1)`→ `(4)`, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki mapping (`#variantNameIndex()`), falling back to `ItemManager#search` when it is empty. |
 | `private long` | `runePrice(int itemId)` |  |
 | `private void` | `saveCurrentComparison(String name)` | Saves the current compare set under `name` (#303), overwriting any existing comparison of that name (case-insensitive), then persists and refreshes the window's Load menu. |
 | `private List<String>` | `savedComparisonNames()` |  |
 | `private Widget` | `scanForCloseAction(Widget widget)` | Recursively searches a widget subtree for the first visible widget carrying a "Close" action. |
 | `private int` | `scanForItem(Widget widget)` | Recursively searches a widget subtree for the first child holding a real item id. |
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
+| `private Integer` | `searchItemIdByExactName(String lowerName)` | Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable item whose name equals `lowerName` (case-insensitive). |
 | `private void` | `setFavorite(int itemId, boolean favorite)` | Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes. |
 | `private void` | `setGlobalOrder(List<Integer> orderedIds)` | Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. |
 | `private void` | `setGroupCollapsed(String groupKey, boolean collapsed)` | Sets a list group's collapsed state (a category name, or a special-group key), then persists and refreshes. |
@@ -15459,6 +15478,7 @@ executor.
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
 | `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
 | `private long` | `untrackedInputValue(int itemId)` |  |
+| `private Map<String,Integer>` | `variantNameIndex()` | Builds a lowercased-name → item-id index from the cached wiki `#itemMappings` — the authoritative tradeable-item corpus (#302). |
 | `private void` | `viewInStockpile(int itemId)` | Opens `itemId`'s detailed view in the sidebar panel (a preview when untracked) and focuses the Stockpile panel &mdash; the "View in Stockpile" menu action (#285). |
 | `private DetailViewHost` | `windowHost(DetailWindow window)` | Builds the `DetailViewHost` for a pop-out window. |
 
@@ -16235,6 +16255,15 @@ tracked. Runs on the client thread.
 `private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)`
 
 Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications.
+
+#### addVariantsToCompare
+
+`private void addVariantsToCompare(int itemId)`
+
+Adds every resolved variant of `itemId` — its potion dose line or cooking chain (#302) — to
+the compare set in natural order, up to `#COMPARE_CAP`, then opens/focuses the window. Siblings
+beyond the cap or already present are skipped; when nothing new fits, the window is just focused.
+Client thread.
 
 #### applyAutoCategorize
 
@@ -17625,6 +17654,15 @@ mapping (e.g. coins, burnt food) is reclassified as non-tradeable so it shows
 "Item not tradeable" rather than a price-load failure. No-op until the mapping
 has loaded, so a slow fetch never mislabels a genuinely tradeable item.
 
+#### resolveVariantIds
+
+`private List<Integer> resolveVariantIds(int itemId)`
+
+Resolves the canonical ids of `itemId`'s variant family in natural order (dose `(1)`→
+`(4)`, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki
+mapping (`#variantNameIndex()`), falling back to `ItemManager#search` when it is empty.
+Always includes the clicked item, even when it has no family.
+
 #### runePrice
 
 `private long runePrice(int itemId)`
@@ -17663,6 +17701,15 @@ Recursively searches a widget subtree for the first child holding a real item id
 `private void scheduleRefresh()`
 
 (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task.
+
+#### searchItemIdByExactName
+
+`private Integer searchItemIdByExactName(String lowerName)`
+
+Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable
+item whose name equals `lowerName` (case-insensitive).
+
+- **Returns:** the matching item id, or `null` when none matches
 
 #### setFavorite
 
@@ -17872,6 +17919,14 @@ window to a fresh preview instead of the sidebar.
 `private long untrackedInputValue(int itemId)`
 
 - **Returns:** an untracked processing input's per-unit value under the configured fallback pricing.
+
+#### variantNameIndex
+
+`private Map<String,Integer> variantNameIndex()`
+
+Builds a lowercased-name → item-id index from the cached wiki `#itemMappings` — the
+authoritative tradeable-item corpus (#302). Empty until the mapping has been fetched, in which case
+the caller falls back to `#searchItemIdByExactName`.
 
 #### viewInStockpile
 
@@ -19210,6 +19265,88 @@ Returns the display label shown in the UI.
 
 ---
 
+## com.oveduumnakal.VariantFamily
+
+_class_
+
+`final class VariantFamily`
+
+Resolves an item's variant family from its display name (#302): the ordered sibling
+names of a potion's dose line (`(1)`–`(4)`) or a cooking chain
+(`Raw X → X → Burnt X`), so "Compare all variants" can fill the Compare set
+with the whole family in one gesture.
+
+<p>Grouping is purely name-based over the tradeable-item corpus (the caller maps the
+returned names to ids). The cooking chain only fires on a `Raw`/`Burnt`
+prefixed name — a bare cooked name (e.g. `Lobster`) is indistinguishable from a
+non-food item, so it is left out rather than risk a false family on everything.
+Client-free and unit-testable.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final String` | `BURNT_PREFIX` |  |
+| `private static final int` | `MAX_DOSES` | Highest dose a standard tradeable potion holds; shared with `DoseFamily`. |
+| `private static final String` | `RAW_PREFIX` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `VariantFamily()` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static boolean` | `hasFamily(String name)` |  |
+| `static List<String>` | `siblingNames(String name)` | Resolves the ordered, lowercased sibling names of `name`'s variant family. |
+
+### Field Detail
+
+#### BURNT_PREFIX
+
+`private static final String BURNT_PREFIX`
+
+#### MAX_DOSES
+
+`private static final int MAX_DOSES`
+
+Highest dose a standard tradeable potion holds; shared with `DoseFamily`.
+
+#### RAW_PREFIX
+
+`private static final String RAW_PREFIX`
+
+### Constructor Detail
+
+#### VariantFamily
+
+`private VariantFamily()`
+
+### Method Detail
+
+#### hasFamily
+
+`static boolean hasFamily(String name)`
+
+- **Parameter** `name` — the item's display name
+- **Returns:** whether `name` belongs to a recognised variant family, used to gate the
+        "Compare all variants" menu entry
+
+#### siblingNames
+
+`static List<String> siblingNames(String name)`
+
+Resolves the ordered, lowercased sibling names of `name`'s variant family.
+
+- **Parameter** `name` — the item's display name
+- **Returns:** the family's sibling names in natural order (dose `(1)`→`(4)`, or
+        raw→cooked→burnt), or an empty list when `name` carries no recognised family
+
+---
+
 ## com.oveduumnakal.WikiRealtimePriceClient
 
 _class_
@@ -19229,7 +19366,7 @@ individual bad entries are skipped.
 
 | Type | Description |
 |---|---|
-| _class_ [`ItemMapping`](#comoveduumnakalwikirealtimepriceclientitemmapping) | Static GE metadata for an item: buy `limit`, store `value`, high/low alch values, and the in-game `examine` text (`null` when absent). |
+| _class_ [`ItemMapping`](#comoveduumnakalwikirealtimepriceclientitemmapping) | Static GE metadata for an item: its display `name`, buy `limit`, store `value`, high/low alch values, and the in-game `examine` text (`name`/`examine` `null` when absent). |
 | _class_ [`ItemPrices`](#comoveduumnakalwikirealtimepriceclientitemprices) | The latest instant-buy (`high`) and instant-sell (`low`) prices for one item, each with the epoch-second timestamp of the trade that set it (`highTime`, `lowTime`). |
 | _class_ [`PricePoint`](#comoveduumnakalwikirealtimepriceclientpricepoint) | One sample from a time series: the average high/low prices and traded volumes over the bucket ending at `timestamp` (epoch seconds). |
 
@@ -19355,8 +19492,9 @@ _class_
 
 `public static class ItemMapping`
 
-Static GE metadata for an item: buy `limit`, store `value`, high/low
-alch values, and the in-game `examine` text (`null` when absent).
+Static GE metadata for an item: its display `name`, buy `limit`, store
+`value`, high/low alch values, and the in-game `examine` text
+(`name`/`examine` `null` when absent).
 
 ### Field Summary
 
@@ -19366,6 +19504,7 @@ alch values, and the in-game `examine` text (`null` when absent).
 | `long` | `highAlch` |  |
 | `int` | `limit` |  |
 | `long` | `lowAlch` |  |
+| `String` | `name` |  |
 | `long` | `value` |  |
 
 ### Field Detail
@@ -19385,6 +19524,10 @@ alch values, and the in-game `examine` text (`null` when absent).
 #### lowAlch
 
 `long lowAlch`
+
+#### name
+
+`String name`
 
 #### value
 

@@ -127,6 +127,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.http.api.item.ItemPrice;
 
 @Slf4j
 /**
@@ -913,6 +914,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					public void addToCompare(int itemId)
 					{
 						clientThread.invokeLater(() -> StockpilePlugin.this.addToCompare(itemId));
+					}
+
+					@Override
+					public void addVariantsToCompare(int itemId)
+					{
+						clientThread.invokeLater(() -> StockpilePlugin.this.addVariantsToCompare(itemId));
 					}
 
 					@Override
@@ -1909,6 +1916,112 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		requestDetailData(canonicalId);
 		refreshGePrices();
 		rebuildCompareWindow(true);
+	}
+
+	/**
+	 * Adds every resolved variant of {@code itemId} — its potion dose line or cooking chain (#302) — to
+	 * the compare set in natural order, up to {@link #COMPARE_CAP}, then opens/focuses the window. Siblings
+	 * beyond the cap or already present are skipped; when nothing new fits, the window is just focused.
+	 * Client thread.
+	 */
+	private void addVariantsToCompare(int itemId)
+	{
+		int canonicalId = itemManager.canonicalize(itemId);
+		if (canonicalId <= 0)
+			return;
+
+		boolean changed = false;
+		for (int id : resolveVariantIds(canonicalId))
+		{
+			if (compareIds.size() >= COMPARE_CAP)
+				break;
+
+			if (compareIds.contains(id))
+				continue;
+
+			compareIds.add(id);
+			if (!trackedItems.containsKey(id))
+				compareItems.put(id, buildPreview(id));
+
+			requestDetailData(id);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			refreshGePrices();
+			rebuildCompareWindow(true);
+		}
+		else
+		{
+			SwingUtilities.invokeLater(this::focusCompareWindow);
+		}
+	}
+
+	/**
+	 * Resolves the canonical ids of {@code itemId}'s variant family in natural order (dose {@code (1)}→
+	 * {@code (4)}, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki
+	 * mapping ({@link #variantNameIndex()}), falling back to {@link ItemManager#search} when it is empty.
+	 * Always includes the clicked item, even when it has no family.
+	 */
+	private List<Integer> resolveVariantIds(int itemId)
+	{
+		List<String> siblings = VariantFamily.siblingNames(itemManager.getItemComposition(itemId).getName());
+		List<Integer> ids = new ArrayList<>();
+		Map<String, Integer> byName = variantNameIndex();
+		for (String sibling : siblings)
+		{
+			Integer id = byName.isEmpty() ? searchItemIdByExactName(sibling) : byName.get(sibling);
+			if (id == null)
+				continue;
+
+			int canonicalSibling = itemManager.canonicalize(id);
+			if (canonicalSibling > 0 && !ids.contains(canonicalSibling))
+				ids.add(canonicalSibling);
+		}
+
+		if (!ids.contains(itemId))
+			ids.add(0, itemId);
+
+		return ids;
+	}
+
+	/**
+	 * Builds a lowercased-name → item-id index from the cached wiki {@link #itemMappings} — the
+	 * authoritative tradeable-item corpus (#302). Empty until the mapping has been fetched, in which case
+	 * the caller falls back to {@link #searchItemIdByExactName}.
+	 */
+	private Map<String, Integer> variantNameIndex()
+	{
+		Map<Integer, WikiRealtimePriceClient.ItemMapping> mappings = itemMappings;
+		Map<String, Integer> byName = new HashMap<>(mappings.size());
+		for (Map.Entry<Integer, WikiRealtimePriceClient.ItemMapping> entry : mappings.entrySet())
+		{
+			String name = entry.getValue().getName();
+			if (name == null || name.isEmpty())
+				continue;
+
+			byName.putIfAbsent(name.toLowerCase(Locale.ROOT), entry.getKey());
+		}
+
+		return byName;
+	}
+
+	/**
+	 * Offline fallback for {@link #resolveVariantIds}: searches the client's item index for a tradeable
+	 * item whose name equals {@code lowerName} (case-insensitive).
+	 *
+	 * @return the matching item id, or {@code null} when none matches
+	 */
+	private Integer searchItemIdByExactName(String lowerName)
+	{
+		for (ItemPrice price : itemManager.search(lowerName))
+		{
+			if (price.getName() != null && price.getName().equalsIgnoreCase(lowerName))
+				return price.getId();
+		}
+
+		return null;
 	}
 
 	/** Removes {@code itemId} from the compare set, closing the window when the set empties. Client thread. */
