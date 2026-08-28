@@ -105,7 +105,7 @@ Stockpile is a RuneLite plugin that keeps an eye on the items you care about. Pi
 
 - **Compare every variant at once**
 
-  One click fills the window with an item's whole family — all four doses of a potion, or the raw, cooked, and burnt forms of a food. Use **Compare all variants** from a tracked item's right-click menu, or the + on any column header once the window is open.
+  One click fills the window with an item's whole family — all four doses of a potion, or the raw and cooked forms of a food. Use **Compare all variants** from a tracked item's right-click menu, or the + on any column header once the window is open.
 
 - **Save, reload, and share a comparison**
 
