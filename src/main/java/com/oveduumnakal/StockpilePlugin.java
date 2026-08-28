@@ -1962,7 +1962,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * Resolves the canonical ids of {@code itemId}'s variant family in natural order (dose {@code (1)}→
 	 * {@code (4)}, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki
 	 * mapping ({@link #variantNameIndex()}), falling back to {@link ItemManager#search} when it is empty.
-	 * Always includes the clicked item, even when it has no family.
+	 * Siblings with no Grand Exchange data are dropped ({@link #hasMarketData}) so the Compare set never
+	 * gains a column that can never fill. Always includes the clicked item, even when it has no family.
 	 */
 	private List<Integer> resolveVariantIds(int itemId)
 	{
@@ -1976,7 +1977,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				continue;
 
 			int canonicalSibling = itemManager.canonicalize(id);
-			if (canonicalSibling > 0 && !ids.contains(canonicalSibling))
+			if (canonicalSibling > 0 && !ids.contains(canonicalSibling) && hasMarketData(canonicalSibling))
 				ids.add(canonicalSibling);
 		}
 
@@ -1984,6 +1985,22 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			ids.add(0, itemId);
 
 		return ids;
+	}
+
+	/**
+	 * @param itemId the candidate variant's canonical item id
+	 * @return whether the item has Grand Exchange data behind it — membership of the wiki mapping once
+	 *         that has loaded, else the client's own tradeable flag. Variants without it (the burnt
+	 *         hunter meats, which exist in game but never reach the GE) would add a permanently empty
+	 *         Compare column, so {@link #resolveVariantIds} drops them (#309).
+	 */
+	private boolean hasMarketData(int itemId)
+	{
+		Map<Integer, WikiRealtimePriceClient.ItemMapping> mappings = itemMappings;
+		if (!mappings.isEmpty())
+			return mappings.containsKey(itemId);
+
+		return itemManager.getItemComposition(itemId).isTradeable();
 	}
 
 	/**
@@ -2954,9 +2971,43 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
+	 * @param itemId the item whose live instances to collect
+	 * @return every in-memory {@link TrackedItem} carrying {@code itemId}: the tracked entry, the panel's
+	 *         view-only preview, a pop-out window's item, and the Compare set's preview. Unlike
+	 *         {@link #lookupItem} this returns ALL of them — the same id is routinely held by two at once
+	 *         (preview an untracked item, then add it to Compare), and a fetch that reaches only the first
+	 *         leaves the other view empty forever (#309).
+	 */
+	private List<TrackedItem> itemsFor(int itemId)
+	{
+		List<TrackedItem> items = new ArrayList<>(4);
+		TrackedItem tracked = trackedItems.get(itemId);
+		if (tracked != null)
+			items.add(tracked);
+
+		if (previewItem != null && previewItem.getItemId() == itemId)
+			items.add(previewItem);
+
+		TrackedItem window = windowItems.get(itemId);
+		if (window != null)
+			items.add(window);
+
+		TrackedItem compare = compareItems.get(itemId);
+		if (compare != null)
+			items.add(compare);
+
+		return items;
+	}
+
+	/**
 	 * Fetches all four history series (5m/1h/6h/24h) plus metadata for the
 	 * detail view in the background, then updates stats, alch rune prices, and the
 	 * detail panel on the appropriate threads.
+	 *
+	 * <p>The result is written to EVERY live instance of the item ({@link #itemsFor}), not just the first
+	 * one found: an untracked item can be held as the panel's preview and as a Compare preview at the same
+	 * time, and writing to only one leaves the other rendering a permanently empty trend, volume, and
+	 * ratings block (#309).
 	 */
 	private void requestDetailData(int itemId)
 	{
@@ -2968,16 +3019,19 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			List<WikiRealtimePriceClient.PricePoint> s24 = wikiPriceClient.fetchTimeseries(itemId, "24h");
 			clientThread.invokeLater(() ->
 			{
-				TrackedItem tracked = lookupItem(itemId);
-				if (tracked == null)
+				List<TrackedItem> targets = itemsFor(itemId);
+				if (targets.isEmpty())
 					return;
 
-				tracked.setSeries5m(s5);
-				tracked.setSeries1h(s1h);
-				tracked.setSeries6h(s6);
-				tracked.setSeries24h(s24);
-				applyItemMetadata(tracked);
-				recomputeWindowStats(tracked);
+				for (TrackedItem tracked : targets)
+				{
+					tracked.setSeries5m(s5);
+					tracked.setSeries1h(s1h);
+					tracked.setSeries6h(s6);
+					tracked.setSeries24h(s24);
+					applyItemMetadata(tracked);
+					recomputeWindowStats(tracked);
+				}
 
 				final long nature = runePrice(NATURE_RUNE_ID);
 				final long fire = runePrice(FIRE_RUNE_ID);

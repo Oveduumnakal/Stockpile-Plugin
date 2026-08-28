@@ -15371,6 +15371,7 @@ executor.
 | `Map<TileItem,Tile>` | `getGroundItems()` |  |
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
+| `private boolean` | `hasMarketData(int itemId)` |  |
 | `private void` | `hideGeButton()` | Hides and forgets the injected GE button, if one is currently on the offer interface. |
 | `private void` | `hideGeTrackButton()` | Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). |
 | `private void` | `hydratePriceCache()` | Hydrates tracked items from the persisted price cache so the panel shows last-known values (dimmed by the existing staleness treatment once their trade times age past the threshold) instead of placeholders. |
@@ -15396,6 +15397,7 @@ executor.
 | `private static boolean` | `isTradeCurrency(int itemId)` |  |
 | `private boolean` | `isWhatsNew()` |  |
 | `private int` | `itemInGeContainer(int componentId)` |  |
+| `private List<TrackedItem>` | `itemsFor(int itemId)` |  |
 | `static long[]` | `latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)` | Scans a price series newest-first for the most recent priced average high and low, returned as `[high, low]` (each 0 when the series holds no priced sample) (#142). |
 | `private void` | `loadCategories()` | Restores the category definitions and group collapsed state from per-profile JSON. |
 | `private void` | `loadPersistedItems()` | Restores tracked items from the per-profile JSON written by `#persistTrackedItems()`. |
@@ -16830,6 +16832,16 @@ Brings the compare window to the front if one is open. Runs on the EDT.
 
 - **Returns:** the tracked items shown on the overlay (in tracked order), capped at `#OVERLAY_MAX`.
 
+#### hasMarketData
+
+`private boolean hasMarketData(int itemId)`
+
+- **Parameter** `itemId` — the candidate variant's canonical item id
+- **Returns:** whether the item has Grand Exchange data behind it — membership of the wiki mapping once
+        that has loaded, else the client's own tradeable flag. Variants without it (the burnt
+        hunter meats, which exist in game but never reach the GE) would add a permanently empty
+        Compare column, so `#resolveVariantIds` drops them (#309).
+
 #### hideGeButton
 
 `private void hideGeButton()`
@@ -17040,6 +17052,17 @@ the literal string "null"; those must not open a preview.
 `private int itemInGeContainer(int componentId)`
 
 - **Returns:** the first item id found in the given GE container's subtree, or -1 when hidden/absent.
+
+#### itemsFor
+
+`private List<TrackedItem> itemsFor(int itemId)`
+
+- **Parameter** `itemId` — the item whose live instances to collect
+- **Returns:** every in-memory `TrackedItem` carrying `itemId`: the tracked entry, the panel's
+        view-only preview, a pop-out window's item, and the Compare set's preview. Unlike
+        `#lookupItem` this returns ALL of them — the same id is routinely held by two at once
+        (preview an untracked item, then add it to Compare), and a fetch that reaches only the first
+        leaves the other view empty forever (#309).
 
 #### latestSeriesHighLow
 
@@ -17644,6 +17667,11 @@ Fetches all four history series (5m/1h/6h/24h) plus metadata for the
 detail view in the background, then updates stats, alch rune prices, and the
 detail panel on the appropriate threads.
 
+<p>The result is written to EVERY live instance of the item (`#itemsFor`), not just the first
+one found: an untracked item can be held as the panel's preview and as a Compare preview at the same
+time, and writing to only one leaves the other rendering a permanently empty trend, volume, and
+ratings block (#309).
+
 #### requestGeLinePrices
 
 `private void requestGeLinePrices(int itemId)`
@@ -17699,7 +17727,8 @@ has loaded, so a slow fetch never mislabels a genuinely tradeable item.
 Resolves the canonical ids of `itemId`'s variant family in natural order (dose `(1)`→
 `(4)`, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki
 mapping (`#variantNameIndex()`), falling back to `ItemManager#search` when it is empty.
-Always includes the clicked item, even when it has no family.
+Siblings with no Grand Exchange data are dropped (`#hasMarketData`) so the Compare set never
+gains a column that can never fill. Always includes the clicked item, even when it has no family.
 
 #### runePrice
 
@@ -19311,20 +19340,33 @@ _class_
 
 Resolves an item's variant family from its display name (#302): the ordered sibling
 names of a potion's dose line (`(1)`–`(4)`) or a cooking chain
-(`Raw X → X → Burnt X`), so "Compare all variants" can fill the Compare set
-with the whole family in one gesture.
+(`Raw X → cooked X`), so "Compare all variants" can fill the Compare set with
+the whole family in one gesture.
 
 <p>Grouping is purely name-based over the tradeable-item corpus (the caller maps the
-returned names to ids). The cooking chain only fires on a `Raw`/`Burnt`
-prefixed name — a bare cooked name (e.g. `Lobster`) is indistinguishable from a
-non-food item, so it is left out rather than risk a false family on everything.
-Client-free and unit-testable.
+returned names to ids and silently drops the ones that do not resolve). The cooked
+form is named two different ways in game — bare (`Lobster`) for the classic
+foods and `Cooked`-prefixed (`Cooked pyre fox`) for the hunter meats —
+so the chain offers BOTH candidates and lets the caller keep whichever exists. Only
+one of them ever does, so the family cannot gain a duplicate column.
+
+<p>No burnt name is emitted: the only tradeable items whose name starts with
+`Burnt` are `Burnt bones` and `Burnt page`, so a burnt food could
+never resolve to a Compare column (#309). `Burnt` stays an ENTRY point — a
+player who right-clicks a burnt item still gets its family — it is just never a
+result.
+
+<p>The chain fires on a `Raw`/`Cooked`/`Burnt` prefixed name. A
+bare cooked name (e.g. `Lobster`) is indistinguishable from a non-food item, so
+it is left out rather than risk a false family on everything. Client-free and
+unit-testable.
 
 ### Field Summary
 
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `private static final String` | `BURNT_PREFIX` |  |
+| `private static final String` | `COOKED_PREFIX` |  |
 | `private static final int` | `MAX_DOSES` | Highest dose a standard tradeable potion holds; shared with `DoseFamily`. |
 | `private static final String` | `RAW_PREFIX` |  |
 
@@ -19346,6 +19388,10 @@ Client-free and unit-testable.
 #### BURNT_PREFIX
 
 `private static final String BURNT_PREFIX`
+
+#### COOKED_PREFIX
+
+`private static final String COOKED_PREFIX`
 
 #### MAX_DOSES
 
@@ -19381,7 +19427,8 @@ Resolves the ordered, lowercased sibling names of `name`'s variant family.
 
 - **Parameter** `name` — the item's display name
 - **Returns:** the family's sibling names in natural order (dose `(1)`→`(4)`, or
-        raw→cooked→burnt), or an empty list when `name` carries no recognised family
+        raw→cooked, the cooked step offering a bare and a `Cooked`-prefixed
+        candidate), or an empty list when `name` carries no recognised family
 
 ---
 

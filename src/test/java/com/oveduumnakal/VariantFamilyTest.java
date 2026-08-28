@@ -28,14 +28,14 @@ public class VariantFamilyTest
 	public void cookingChainFiresOnARawName()
 	{
 		List<String> siblings = VariantFamily.siblingNames("Raw lobster");
-		assertEquals(Arrays.asList("raw lobster", "lobster", "burnt lobster"), siblings);
+		assertEquals(Arrays.asList("raw lobster", "lobster", "cooked lobster"), siblings);
 	}
 
 	@Test
 	public void cookingChainFiresOnABurntName()
 	{
 		List<String> siblings = VariantFamily.siblingNames("Burnt shark");
-		assertEquals(Arrays.asList("raw shark", "shark", "burnt shark"), siblings);
+		assertEquals(Arrays.asList("raw shark", "shark", "cooked shark"), siblings);
 	}
 
 	@Test
@@ -59,5 +59,55 @@ public class VariantFamilyTest
 	{
 		assertTrue(VariantFamily.hasFamily("Saradomin brew(1)"));
 		assertTrue(VariantFamily.hasFamily("Raw swordfish"));
+	}
+
+	@Test
+	public void cookingChainOffersACookedPrefixedCandidate()
+	{
+		assertEquals(
+				Arrays.asList("raw pyre fox", "pyre fox", "cooked pyre fox"),
+				VariantFamily.siblingNames("Raw pyre fox"));
+	}
+
+	@Test
+	public void cookingChainFiresOnACookedPrefixedName()
+	{
+		assertEquals(
+				Arrays.asList("raw pyre fox", "pyre fox", "cooked pyre fox"),
+				VariantFamily.siblingNames("Cooked pyre fox"));
+		assertTrue(VariantFamily.hasFamily("Cooked pyre fox"));
+	}
+
+	@Test
+	public void everyEntryPointYieldsTheSameChain()
+	{
+		List<String> fromRaw = VariantFamily.siblingNames("Raw sunlight antelope");
+		assertEquals(fromRaw, VariantFamily.siblingNames("Cooked sunlight antelope"));
+		assertEquals(fromRaw, VariantFamily.siblingNames("Burnt sunlight antelope"));
+	}
+
+	@Test
+	public void chainKeepsRawBeforeCooked()
+	{
+		List<String> siblings = VariantFamily.siblingNames("Raw karambwan");
+		assertEquals(0, siblings.indexOf("raw karambwan"));
+		assertTrue(siblings.indexOf("cooked karambwan") > siblings.indexOf("raw karambwan"));
+	}
+
+	@Test
+	public void noBurntNameIsEverEmitted()
+	{
+		for (String entry : Arrays.asList("Raw lobster", "Cooked pyre fox", "Burnt shark"))
+		{
+			for (String sibling : VariantFamily.siblingNames(entry))
+				assertFalse(entry + " emitted a burnt name", sibling.startsWith("burnt "));
+		}
+	}
+
+	@Test
+	public void aCookedPrefixIsNeededForACookedNameToCount()
+	{
+		assertFalse(VariantFamily.hasFamily("Cooked"));
+		assertFalse(VariantFamily.hasFamily("Cookedmeat"));
 	}
 }
