@@ -9,6 +9,38 @@ Bug Fixes lists only bugs that shipped in a previous release; bugs introduced an
 fixed within the same release cycle are omitted, since users never saw them.
 -->
 
+# 1.6 - August 28 2026
+
+## Quick Overview
+
+Stockpile 1.6 is about seeing items next to each other. A new Compare window puts up to six items side by side — prices, market info, alchemy, your holdings, and a trend line with trading volume for each — and you can drop untracked items in to weigh something up before you commit to it. One click fills the window with an item's whole family, every dose of a potion or a food's raw and cooked forms, and you can save a comparison under a name, reload it later, or hand a friend a short code to open yours. Alongside that, the tracked list gets more direct: pick whether row actions arrive as hover buttons or a right-click menu, and move an item between categories straight from that menu.
+
+## Detailed Breakdown
+
+### Compare
+
+#### Compare items side by side
+Put up to six items next to each other in their own window and read them off in one go — prices, buy limit and GE tax, market ratings, alchemy, what you are holding and what you have made on it, and a trend line with trading volume underneath. Items you don't track can go in too, so you can size something up before committing to it. Open it from the panel's toolbar, an item's detail view, or a tracked item's right-click menu. A Window dropdown switches every column at once between the latest prices and 5-minute, hourly, 6-hour, daily, weekly, or monthly figures, and you can drag the columns into whatever order suits you.
+[#280](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/280)
+
+#### Compare every variant at once
+One click fills the window with an item's whole family — all four doses of a potion, or a food's raw and cooked forms. Use it from a tracked item's right-click menu, or from the + on any column header once the window is open.
+[#302](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/302)
+
+#### Save, reload, and share a comparison
+Save a comparison under a name and bring it back whenever you want from the Load menu. Export one to a short code to send to a friend, or paste a friend's code in to load theirs. Your saved comparisons stay put between sessions.
+[#303](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/303)
+
+### Organizing your list
+
+#### Choose how row actions reach you
+Every tracked row carries the same actions — view its detail, open it in the dashboard, add it to a comparison, favourite it, compact it, put it on the overlay, or stop tracking it. Now you choose how they reach you: a right-click menu, buttons that appear when you hover over the row, or both. The right-click menu is the new default; switch to hover buttons in the settings if you prefer them.
+[#299](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/299)
+
+#### Change an item's category from the right-click menu
+Right-click a tracked item and pick Change category to move it into any category you already have, back to Uncategorized, or into a brand-new one you name on the spot.
+[#300](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/300)
+
 # 1.5 - August 26 2026
 
 ## Quick Overview
