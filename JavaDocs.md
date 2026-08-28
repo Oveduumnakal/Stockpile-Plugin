@@ -12425,6 +12425,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `autoCategorizeFromDialog(JDialog dialog)` | Prompts for the auto-categorize scope (uncategorized only vs. |
 | `private static Color` | `blend(Color base, Color other, float t)` |  |
 | `private JComboBox<String>` | `buildCategoryPicker(TrackedItem item)` | Builds the per-row category picker used in the manage row: assigns the item to an existing category, clears it to Uncategorized, or prompts to create-and-assign a new one. |
+| `private JMenu` | `buildChangeCategoryMenu(int itemId, TrackedItem item)` | Builds the row menu's "Change category" submenu (#300): one child per existing category plus Uncategorized, each moving the item into that group, followed by a "New category…" child that prompts to create-and-assign. |
 | `private JButton` | `buildChangelogBadge()` | Builds the top-right header badge that opens the changelog window; `#applyChangelogButtonStyle` sets its label and colour. |
 | `private JComponent` | `buildChangelogContent()` | Builds the changelog window: a left navigation column listing each release, with the selected release's sections expanded beneath it as quick-links that jump to that section, and the selected release's notes rendered on the right. |
 | `private JLabel` | `buildChangelogNavLink(ChangelogSection section)` | Builds one indented, clickable section quick-link for the changelog nav. |
@@ -12453,7 +12454,9 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JPanel` | `buildTotalsRow(JLabel valueLabel, JLabel pulseLabel)` | Builds one estimate row pairing a totals value label with its pulse-indicator label. |
 | `private boolean` | `cacheCovers(List<RowSection> sections)` |  |
 | `private static Icon` | `categoriesIcon(Color color)` | Draws a bulleted-list glyph — three dots, each followed by a line — tinted `color`. |
+| `private JMenuItem` | `categoryMenuItem(String label, boolean current, ActionListener action)` | Builds a "Change category" child: the item's current category is marked with a check icon and disabled (selecting it would be a no-op); every other entry runs `action` on click. |
 | `private String` | `changelogButtonText()` |  |
+| `private static Icon` | `checkIcon(Color color)` | Draws a check-mark glyph tinted `color`, marking the item's current category. |
 | `public void` | `clearAcquisitions(int itemId)` | {@inheritDoc} Delegates to the panel's clear-acquisitions callback when present. |
 | `public void` | `clearSessionBaseline()` | Drops the session baseline without re-priming (used on profile change): the next rebuild captures the new profile's holdings as the baseline. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
@@ -12523,6 +12526,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `popOut(int itemId)` | {@inheritDoc} Delegates to the panel's pop-out callback. |
 | `private void` | `populateRow(RowView rv, TrackedItem item, PriceIndicatorMode indicatorMode)` | Refreshes a cached row's mutable content in place (#275): icon, name, quantity, the favourite star's resting state, and the price/compact/loading content slot (rebuilt cheaply and re-wired to the row's hover listener). |
 | `public void` | `promptCategoryForItem(int itemId)` | Category prompt shown at track time (#211): a modal dropdown of the existing categories plus Uncategorized and a create-new option. |
+| `private void` | `promptNewCategory(int itemId)` | Prompts for a new category name (reusing the manage-row prompt), then creates it and assigns `itemId` to it. |
 | `private void` | `pulseIfShown(JLabel label, int delta, PriceIndicatorMode mode)` | Starts a price pulse on the label unless the configured indicator mode suppresses it. |
 | `public void` | `rebuild(List<TrackedItem> rawItems, Instant newLastPriceRefresh, PriceIndicatorMode indicatorMode, boolean loggedIn, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed)` | Rebuilds the main item list from the latest tracked items and totals. |
 | `private void` | `rebuildChangelogNav(JPanel nav, List<Changelog.Release> releases, int selectedIndex, JEditorPane body)` | (Re)populates the changelog nav: one clickable row per release (selecting it loads its notes), and beneath the selected release its section quick-links, each of which scrolls the notes to that section. |
@@ -13522,6 +13526,14 @@ freshly generated categories.
 Builds the per-row category picker used in the manage row: assigns the item to an existing
 category, clears it to Uncategorized, or prompts to create-and-assign a new one.
 
+#### buildChangeCategoryMenu
+
+`private JMenu buildChangeCategoryMenu(int itemId, TrackedItem item)`
+
+Builds the row menu's "Change category" submenu (#300): one child per existing category plus
+Uncategorized, each moving the item into that group, followed by a "New category…" child that
+prompts to create-and-assign. The item's current category is shown checked and disabled.
+
 #### buildChangelogBadge
 
 `private JButton buildChangelogBadge()`
@@ -13710,11 +13722,24 @@ Builds one estimate row pairing a totals value label with its pulse-indicator la
 
 Draws a bulleted-list glyph — three dots, each followed by a line — tinted `color`.
 
+#### categoryMenuItem
+
+`private JMenuItem categoryMenuItem(String label, boolean current, ActionListener action)`
+
+Builds a "Change category" child: the item's current category is marked with a check icon and
+disabled (selecting it would be a no-op); every other entry runs `action` on click.
+
 #### changelogButtonText
 
 `private String changelogButtonText()`
 
 - **Returns:** the indicator label: highlighted "What's New" for a new release, else "Change log".
+
+#### checkIcon
+
+`private static Icon checkIcon(Color color)`
+
+Draws a check-mark glyph tinted `color`, marking the item's current category.
 
 #### clearAcquisitions
 
@@ -14174,6 +14199,13 @@ Category prompt shown at track time (#211): a modal dropdown of the existing cat
 Uncategorized and a create-new option. Choosing a category (or a freshly created one) assigns it
 to the just-tracked item; Uncategorized or cancel leaves it uncategorized. A no-op if the item
 is gone by the time this runs.
+
+#### promptNewCategory
+
+`private void promptNewCategory(int itemId)`
+
+Prompts for a new category name (reusing the manage-row prompt), then creates it and assigns
+`itemId` to it. A blank or cancelled entry does nothing.
 
 #### pulseIfShown
 
