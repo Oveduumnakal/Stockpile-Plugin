@@ -201,6 +201,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Integer> onPopOut;
 	/** Adds the item to the compare set, opening or focusing the compare window (#280). */
 	private final Consumer<Integer> onAddToCompare;
+	/** Adds every variant of the item (dose line or cooking chain) to the compare set (#302). */
+	private final Consumer<Integer> onCompareVariants;
 	/** Opens the item-less Stockpile dashboard window (#109). */
 	private final Runnable onOpenDashboard;
 
@@ -552,6 +554,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onUntrackToPreview = actions::untrackToPreview;
 		this.onPopOut = actions::popOut;
 		this.onAddToCompare = actions::addToCompare;
+		this.onCompareVariants = actions::addVariantsToCompare;
 		this.onOpenDashboard = actions::openDashboard;
 		this.onOpenCompare = actions::openCompare;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
@@ -4283,6 +4286,10 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				true, a -> onAddToCompare.accept(itemId)));
 
 		final TrackedItem item = currentItems.get(itemId);
+		if (item != null && VariantFamily.hasFamily(item.getName()))
+			menu.add(rowMenuItem("Compare all variants", compareIcon(grey), compareIcon(gold), null,
+					true, a -> onCompareVariants.accept(itemId)));
+
 		if (item != null && config.quickActionDelivery().showsRowMenuActions())
 		{
 			menu.addSeparator();

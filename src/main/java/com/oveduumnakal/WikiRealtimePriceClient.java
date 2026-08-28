@@ -90,12 +90,14 @@ public class WikiRealtimePriceClient
 	}
 
 	/**
-	 * Static GE metadata for an item: buy {@code limit}, store {@code value}, high/low
-	 * alch values, and the in-game {@code examine} text ({@code null} when absent).
+	 * Static GE metadata for an item: its display {@code name}, buy {@code limit}, store
+	 * {@code value}, high/low alch values, and the in-game {@code examine} text
+	 * ({@code name}/{@code examine} {@code null} when absent).
 	 */
 	@Value
 	public static class ItemMapping
 	{
+		String name;
 		int limit;
 		long value;
 		long highAlch;
@@ -211,6 +213,9 @@ public class WikiRealtimePriceClient
 						continue;
 
 					int id = obj.get("id").getAsInt();
+					String name = obj.has("name") && !obj.get("name").isJsonNull()
+							? obj.get("name").getAsString()
+							: null;
 					int limit = (int) readLong(obj, "limit");
 					long value = readLong(obj, "value");
 					long highAlch = readLong(obj, "highalch");
@@ -218,7 +223,7 @@ public class WikiRealtimePriceClient
 					String examine = obj.has("examine") && !obj.get("examine").isJsonNull()
 							? obj.get("examine").getAsString()
 							: null;
-					result.put(id, new ItemMapping(limit, value, highAlch, lowAlch, examine));
+					result.put(id, new ItemMapping(name, limit, value, highAlch, lowAlch, examine));
 				}
 				catch (IllegalStateException | NumberFormatException e)
 				{

@@ -38,6 +38,12 @@ public interface PanelActions
 	/** Adds {@code itemId} to the compare set (#280), opening or focusing the compare window. */
 	void addToCompare(int itemId);
 
+	/**
+	 * Adds every variant of {@code itemId} — its potion dose line or cooking chain (#302) — to the compare
+	 * set (up to the cap), opening or focusing the compare window.
+	 */
+	void addVariantsToCompare(int itemId);
+
 	/** Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. */
 	void openDashboard();
 
