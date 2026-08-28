@@ -32,6 +32,12 @@ interface CompareHost
 	/** Removes {@code itemId} from the compare set (its column disappears; the window closes if empty). */
 	void removeFromCompare(int itemId);
 
+	/**
+	 * Adds every variant of {@code itemId} &mdash; its potion dose line or cooking chain (#302) &mdash; to
+	 * the compare set, up to the cap, then focuses the window. Siblings already present are skipped.
+	 */
+	void addVariantsToCompare(int itemId);
+
 	/** Moves {@code itemId} to {@code toIndex} in the compare order, reordering the columns (drag-reorder). */
 	void moveCompare(int itemId, int toIndex);
 

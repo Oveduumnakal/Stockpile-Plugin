@@ -2368,6 +2368,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			}
 
 			@Override
+			public void addVariantsToCompare(int itemId)
+			{
+				clientThread.invokeLater(() -> StockpilePlugin.this.addVariantsToCompare(itemId));
+			}
+
+			@Override
 			public void moveCompare(int itemId, int toIndex)
 			{
 				clientThread.invokeLater(() -> moveCompareId(itemId, toIndex));

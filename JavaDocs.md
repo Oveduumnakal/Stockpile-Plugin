@@ -1184,6 +1184,7 @@ through this interface rather than direct field access.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `void` | `addVariantsToCompare(int itemId)` | Adds every variant of `itemId` &mdash; its potion dose line or cooking chain (#302) &mdash; to the compare set, up to the cap, then focuses the window. |
 | `void` | `clearCompare()` | Clears the whole compare set and closes the window. |
 | `StockpileConfig` | `config()` |  |
 | `void` | `deleteComparison(String name)` | Deletes the saved comparison named `name` (#303). |
@@ -1197,6 +1198,13 @@ through this interface rather than direct field access.
 | `void` | `saveComparison(String name)` | Saves the current compare set under `name` (overwriting an existing one of that name) (#303). |
 
 ### Method Detail
+
+#### addVariantsToCompare
+
+`void addVariantsToCompare(int itemId)`
+
+Adds every variant of `itemId` &mdash; its potion dose line or cooking chain (#302) &mdash; to
+the compare set, up to the cap, then focuses the window. Siblings already present are skipped.
 
 #### clearCompare
 
@@ -1316,6 +1324,7 @@ columns scroll horizontally. All construction happens on the Swing EDT.
 | `private static final int` | `SECTION_H` | Height of a section-title row in pixels. |
 | `private static final Color` | `SECTION_RULE` | The horizontal section rule colour: the vertical `StockpileColors#DIVIDER` shifted 66% toward the column background so the row separators read fainter than the column separators. |
 | `private static final int` | `SPARK_H` | Height of the trend sparkline row in pixels. |
+| `private static final Color` | `VARIANTS_HOVER` | The colour the variants control turns on hover, matching the panel's accent. |
 | `private static final int` | `VOL_H` | Height of the mini volume-bar row beneath the trend, in pixels. |
 | `private int` | `dragItemId` | The item id of the column being dragged, valid while `#dragging`. |
 | `private int` | `dragPointerX` | The drag pointer's current x in this view's coordinates, valid while `#dragging`. |
@@ -1361,6 +1370,7 @@ columns scroll horizontally. All construction happens on the Swing EDT.
 | `private Cell` | `holdingValueCell(Entry entry)` |  |
 | `private int` | `insertionIndex(int x)` |  |
 | `private void` | `installHeaderDrag(JComponent handle, int itemId)` | Makes a header handle drag its column to a new position: pressing shows a move cursor, and releasing far enough away drops the column over whichever column the cursor is above. |
+| `private void` | `installHeaderMenu(JComponent handle, Entry entry, boolean hasVariants)` | Attaches the column header's right-click menu to `handle`: "Compare all variants" (disabled when the item has no recognised family) and "Remove from compare". |
 | `private static PriceStats` | `latestFivePoint(TrackedItem item)` |  |
 | `private static JLabel` | `mutedLabel(String text, int alignment)` |  |
 | `protected void` | `paintChildren(Graphics g)` | Paints the columns, then — while a header drag is in progress — a translucent highlight over the grabbed column and a bright vertical line marking where it will drop. |
@@ -1374,6 +1384,7 @@ columns scroll horizontally. All construction happens on the Swing EDT.
 | `void` | `setEntries(List<Entry> entries)` | Retains `entries` and rebuilds the grid, honouring the current section-visibility config. |
 | `private static Font` | `smallFont()` |  |
 | `private Cell` | `taxCell(TrackedItem item)` |  |
+| `private JComponent` | `variantsControl(Entry entry)` | Builds the header's variants control: a `+` glyph, sized and placed to mirror the remove control opposite it, that fills the compare set with the column item's variant family (#302). |
 | `private int` | `viewX(JComponent source, MouseEvent e)` |  |
 | `private static long` | `vol24(TrackedItem item)` |  |
 | `private Cell` | `volumeCell(TrackedItem item)` |  |
@@ -1490,6 +1501,12 @@ the column background so the row separators read fainter than the column separat
 `private static final int SPARK_H`
 
 Height of the trend sparkline row in pixels.
+
+#### VARIANTS_HOVER
+
+`private static final Color VARIANTS_HOVER`
+
+The colour the variants control turns on hover, matching the panel's accent.
 
 #### VOL_H
 
@@ -1716,6 +1733,17 @@ releasing far enough away drops the column over whichever column the cursor is a
 - **Parameter** `handle` — the header component the drag is attached to (the identity panel, icon, or name)
 - **Parameter** `itemId` — the id of the column being dragged
 
+#### installHeaderMenu
+
+`private void installHeaderMenu(JComponent handle, Entry entry, boolean hasVariants)`
+
+Attaches the column header's right-click menu to `handle`: "Compare all variants" (disabled
+when the item has no recognised family) and "Remove from compare".
+
+- **Parameter** `handle` — the header component the menu is attached to
+- **Parameter** `entry` — the column's entry, supplying the item the actions target
+- **Parameter** `hasVariants` — whether the item belongs to a variant family, which enables the variants entry
+
 #### latestFivePoint
 
 `private static PriceStats latestFivePoint(TrackedItem item)`
@@ -1803,6 +1831,16 @@ label column and every item column are rebuilt from one shared row list so the r
 `private Cell taxCell(TrackedItem item)`
 
 - **Returns:** the item's GE-tax cell, or a placeholder when the item has no price.
+
+#### variantsControl
+
+`private JComponent variantsControl(Entry entry)`
+
+Builds the header's variants control: a `+` glyph, sized and placed to mirror the remove
+control opposite it, that fills the compare set with the column item's variant family (#302).
+
+- **Parameter** `entry` — the column's entry, whose item the family is resolved from
+- **Returns:** the control, balancing the remove control so the identity block stays centred
 
 #### viewX
 

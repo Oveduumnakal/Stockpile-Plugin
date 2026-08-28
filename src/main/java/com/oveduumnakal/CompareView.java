@@ -32,7 +32,9 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JViewport;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
@@ -114,6 +116,9 @@ final class CompareView extends JPanel implements Scrollable
 
 	/** The red the remove control turns on hover, matching the tracked list's remove button. */
 	private static final Color REMOVE_HOVER = new Color(200, 60, 60);
+
+	/** The colour the variants control turns on hover, matching the panel's accent. */
+	private static final Color VARIANTS_HOVER = ColorScheme.BRAND_ORANGE;
 
 	private final CompareHost host;
 
@@ -320,6 +325,13 @@ final class CompareView extends JPanel implements Scrollable
 			installHeaderDrag(name, itemId);
 		}
 
+		boolean hasVariants = VariantFamily.hasFamily(entry.item.getName());
+		installHeaderMenu(header, entry, hasVariants);
+		installHeaderMenu(center, entry, hasVariants);
+		installHeaderMenu(identity, entry, hasVariants);
+		installHeaderMenu(icon, entry, hasVariants);
+		installHeaderMenu(name, entry, hasVariants);
+
 		JButton remove = new JButton("✕");
 		Font removeFont = FontManager.getRunescapeSmallFont();
 		remove.setFont(removeFont.deriveFont(removeFont.getSize() * 1.125f));
@@ -351,9 +363,93 @@ final class CompareView extends JPanel implements Scrollable
 		corner.setOpaque(false);
 		corner.add(remove, BorderLayout.CENTER);
 		header.add(corner, BorderLayout.EAST);
-		header.add(Box.createHorizontalStrut(REMOVE_W), BorderLayout.WEST);
+		header.add(hasVariants ? variantsControl(entry) : Box.createHorizontalStrut(REMOVE_W), BorderLayout.WEST);
 
 		return header;
+	}
+
+	/**
+	 * Builds the header's variants control: a {@code +} glyph, sized and placed to mirror the remove
+	 * control opposite it, that fills the compare set with the column item's variant family (#302).
+	 *
+	 * @param entry the column's entry, whose item the family is resolved from
+	 * @return the control, balancing the remove control so the identity block stays centred
+	 */
+	private JComponent variantsControl(Entry entry)
+	{
+		JButton variants = new JButton("+");
+		Font glyphFont = FontManager.getRunescapeSmallFont();
+		variants.setFont(glyphFont.deriveFont(glyphFont.getSize() * 1.125f));
+		variants.setForeground(StockpileColors.MUTED);
+		variants.setBorderPainted(false);
+		variants.setContentAreaFilled(false);
+		variants.setFocusPainted(false);
+		variants.setMargin(new Insets(0, 0, 0, 0));
+		variants.setPreferredSize(new Dimension(REMOVE_W, REMOVE_W));
+		variants.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		variants.setToolTipText("Compare all variants");
+		variants.addActionListener(e -> host.addVariantsToCompare(entry.item.getItemId()));
+		variants.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				variants.setForeground(VARIANTS_HOVER);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				variants.setForeground(StockpileColors.MUTED);
+			}
+		});
+
+		JPanel corner = new JPanel(new BorderLayout());
+		corner.setOpaque(false);
+		corner.add(variants, BorderLayout.CENTER);
+		return corner;
+	}
+
+	/**
+	 * Attaches the column header's right-click menu to {@code handle}: "Compare all variants" (disabled
+	 * when the item has no recognised family) and "Remove from compare".
+	 *
+	 * @param handle the header component the menu is attached to
+	 * @param entry the column's entry, supplying the item the actions target
+	 * @param hasVariants whether the item belongs to a variant family, which enables the variants entry
+	 */
+	private void installHeaderMenu(JComponent handle, Entry entry, boolean hasVariants)
+	{
+		handle.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				maybeShow(e);
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				maybeShow(e);
+			}
+
+			private void maybeShow(MouseEvent e)
+			{
+				if (!e.isPopupTrigger())
+					return;
+
+				JPopupMenu menu = new JPopupMenu();
+				JMenuItem variants = new JMenuItem("Compare all variants");
+				variants.setEnabled(hasVariants);
+				variants.addActionListener(a -> host.addVariantsToCompare(entry.item.getItemId()));
+				menu.add(variants);
+				JMenuItem remove = new JMenuItem("Remove from compare");
+				remove.addActionListener(a -> host.removeFromCompare(entry.item.getItemId()));
+				menu.add(remove);
+				menu.show(e.getComponent(), e.getX(), e.getY());
+			}
+		});
 	}
 
 	/**
