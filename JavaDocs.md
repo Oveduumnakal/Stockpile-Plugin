@@ -3136,6 +3136,10 @@ is informational, not pricing, and stays on either way.
 Restores the GE buy ledger (as durable claims) and buy-limit windows from the RS profile
 config, defaulting to empty.
 
+<p>A limit window that is `null` or shorter than `[startMillis, quantity]` is
+skipped rather than stored: it is valid JSON of the wrong shape, so it parses cleanly and
+would otherwise throw when indexed, aborting the rest of the login block (#329).
+
 #### mergeClosed
 
 `private boolean mergeClosed(List<AcquisitionRecord> records, int qty, long boughtAt, long soldAtPrice, AcquisitionSource sellSource)`
@@ -10703,6 +10707,10 @@ always written, so no schema change results from folding the ledger into the cor
 
 Rebuilds the durable (GE buy) claims from a persisted ledger; the reloaded chunks are GE
 trades. Call after `#clearDurable` so a login replaces rather than duplicates them.
+
+<p>A chunk that is `null` or shorter than `[quantity, unitPrice]` is skipped
+rather than indexed into: the value is valid JSON of the wrong shape, so it parses cleanly
+and would otherwise throw here, inside the login block (#329).
 
 #### reconcileDurable
 
