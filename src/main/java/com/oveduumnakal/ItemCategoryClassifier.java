@@ -5,6 +5,8 @@
 package com.oveduumnakal;
 
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -59,8 +61,14 @@ public final class ItemCategoryClassifier
 	private static Map<String, String> loadCategories()
 	{
 		Map<String, String> categories = new HashMap<>();
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-				ItemCategoryClassifier.class.getResourceAsStream("item-categories.txt"), StandardCharsets.UTF_8)))
+		InputStream stream = ItemCategoryClassifier.class.getResourceAsStream("item-categories.txt");
+		if (stream == null)
+		{
+			log.warn("Item category snapshot is missing; auto-categorize will assign \"{}\" only", OTHER);
+			return categories;
+		}
+
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)))
 		{
 			String line;
 			while ((line = reader.readLine()) != null)
@@ -70,7 +78,7 @@ public final class ItemCategoryClassifier
 					categories.put(line.substring(0, tab), line.substring(tab + 1));
 			}
 		}
-		catch (Exception ex)
+		catch (IOException ex)
 		{
 			log.warn("Failed to load the item category snapshot; auto-categorize will assign \"{}\" only", OTHER, ex);
 		}

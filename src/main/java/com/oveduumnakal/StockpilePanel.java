@@ -343,22 +343,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	/** The logged-out placeholder card; tracked so {@link #cardsHost} can fill the viewport while it shows. */
 	private JPanel loggedOutCard;
 
-
-
-
-
-
-
-
-
-
-
 	private long natureRunePrice;
 	private long fireRunePrice;
-
-
-
-
 
 	private final IconTextField searchField;
 	private JPopupMenu searchResultsPopup;
@@ -4983,11 +4969,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		return (hours / 24) + "d ago";
 	}
 
-
-
-
-
-
 	/** Gives a totals label a full-number tooltip when its text is abbreviated, none otherwise. */
 	private void applyTotalTooltip(JLabel label, long value, ValueFormat fmt)
 	{
@@ -5002,17 +4983,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		return fmt == ValueFormat.FULL ? GpFormat.fullGp(value) : GpFormat.shortGp(value);
 	}
-
-
-
-
-
-
-
-
-
-
-
 
 	/** @return the item id whose detail view is open, or a non-positive value when on the main list. */
 	public int getDetailItemId()
@@ -5066,32 +5036,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		detailView.show(itemId);
 	}
 
-
-
-
-
-
-
-
-
-
 	private final List<PopoutHandle> openPopouts = new ArrayList<>();
 	/** Re-fetch actions for open portfolio-chart pop-outs; run on every rebuild so they update live. */
 	private final List<Runnable> portfolioPopoutRefreshers = new ArrayList<>();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 	/** Paints the small line-chart icon used to open the portfolio value chart. */
 	private Icon buildChartIcon()
@@ -5111,7 +5058,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		g.dispose();
 		return new ImageIcon(img);
 	}
-
 
 	/** Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight. */
 	static JButton buildIconButton(Icon icon, String tooltip, Runnable onClick)
@@ -5142,21 +5088,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		});
 		return btn;
 	}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 	/**
 	 * Opens a read-only preview of an untracked item in the detail view. Unlike
@@ -5229,15 +5160,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	/** Loads the bundled {@code eye.png} scaled to a square icon for the view-only button. */
 	private Icon buildEyeIcon(int size)
 	{
-		try
-		{
-			BufferedImage img = ImageUtil.loadImageResource(getClass(), "eye.png");
-			return new ImageIcon(img.getScaledInstance(size, size, Image.SCALE_SMOOTH));
-		}
-		catch (Exception ex)
-		{
+		BufferedImage img = ImageUtil.loadImageResource(getClass(), "eye.png");
+		if (img == null)
 			return new ImageIcon(new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB));
-		}
+
+		return new ImageIcon(img.getScaledInstance(size, size, Image.SCALE_SMOOTH));
 	}
 
 	/** {@inheritDoc} Supplies the panel's live plugin config to the detail view. */
@@ -5362,11 +5289,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		showMain();
 	}
 
-
-
-
-
-
 	/** Prompts for confirmation, then clears all tracked items via the plugin callback. */
 	private void confirmAndClearAll()
 	{
@@ -5385,10 +5307,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			onClearAll.run();
 	}
 
-
-
-
-
 	/** Detaches any hover-tint listener from a label before its value is replaced. */
 	static void removeHoverTint(JLabel label)
 	{
@@ -5398,12 +5316,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				label.removeMouseListener(ml);
 		}
 	}
-
-
-
-
-
-
 
 	/** @return the value as a comma-grouped gp string with an explicit {@code +} when positive. */
 	static String signedGp(long v)

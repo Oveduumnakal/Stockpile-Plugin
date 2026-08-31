@@ -2793,15 +2793,11 @@ public class DetailView extends JPanel implements Scrollable
 	/** Loads the bundled {@code broom.png} scaled to a 12px icon for the clear-acquisitions button. */
 	private Icon buildBrushIcon()
 	{
-		try
-		{
-			BufferedImage img = ImageUtil.loadImageResource(getClass(), "broom.png");
-			return new ImageIcon(img.getScaledInstance(12, 12, Image.SCALE_SMOOTH));
-		}
-		catch (Exception ex)
-		{
+		BufferedImage img = ImageUtil.loadImageResource(getClass(), "broom.png");
+		if (img == null)
 			return new ImageIcon(new BufferedImage(12, 12, BufferedImage.TYPE_INT_ARGB));
-		}
+
+		return new ImageIcon(img.getScaledInstance(12, 12, Image.SCALE_SMOOTH));
 	}
 
 	/** Builds a centred bold section title, optionally topped with a divider rule. */
@@ -3072,7 +3068,7 @@ public class DetailView extends JPanel implements Scrollable
 					item.getSeries24h(), item.getAvgPrice());
 
 		applyBuyLimit(item);
-		long tax = geTax(item.getAvgPrice());
+		long tax = MarketMath.geTax(item.getAvgPrice());
 		miGeTax.setText(hasPrices ? "~" + StockpilePanel.formatTotalGp(tax, full) : "—");
 		applyTradeTime(miLastBought, item.getLatestHighTime());
 		applyTradeTime(miLastSold, item.getLatestLowTime());
@@ -3304,12 +3300,6 @@ public class DetailView extends JPanel implements Scrollable
 				+ "− " + NUMBER_FORMAT.format(host.natureRunePrice()) + " (nature rune)<br>"
 				+ "− " + fireQty + " × " + NUMBER_FORMAT.format(host.fireRunePrice()) + " (fire rune)<br>"
 				+ "= " + StockpilePanel.signedGp(profit) + "</html>";
-	}
-
-	/** @return the Grand Exchange sell tax on a unit at {@code avgPrice} (per the live GE tax rules). */
-	private long geTax(long avgPrice)
-	{
-		return MarketMath.geTax(avgPrice);
 	}
 
 	/** Sets the market-info volatility rating from the item's week series via {@link MarketClassifier}. */

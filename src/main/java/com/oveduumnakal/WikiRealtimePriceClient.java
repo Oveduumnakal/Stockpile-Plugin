@@ -341,7 +341,6 @@ public class WikiRealtimePriceClient
 		long highSum = 0, lowSum = 0;
 		int highCount = 0, lowCount = 0;
 		long weightedSum = 0;
-		long totalVol = 0;
 		long volume = 0;
 
 		for (PricePoint p : points)
@@ -364,15 +363,14 @@ public class WikiRealtimePriceClient
 			}
 
 			weightedSum += p.getAvgHighPrice() * hv + p.getAvgLowPrice() * lv;
-			totalVol += hv + lv;
 			volume += hv + lv;
 		}
 
 		long high = highCount > 0 ? Math.round((double) highSum / highCount) : 0;
 		long low = lowCount > 0 ? Math.round((double) lowSum / lowCount) : 0;
 		long avg;
-		if (totalVol > 0)
-			avg = Math.round((double) weightedSum / totalVol);
+		if (volume > 0)
+			avg = Math.round((double) weightedSum / volume);
 		else
 			avg = (high + low) / 2;
 

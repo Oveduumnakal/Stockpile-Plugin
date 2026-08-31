@@ -38,6 +38,7 @@ every Java source file:
  17. No unused imports: an imported simple name (or, for a static import, the
      member name) must appear somewhere else in the file. A name referenced only
      from a Javadoc `{@link}` counts as used.
+ 18. At most one consecutive blank line anywhere in a file.
 
 Not mechanized (judgement calls, enforced by review): the Stream-API preference,
 the two-tab continuation indent and ternary-break shape (both already bounded by
@@ -468,6 +469,9 @@ def check_file(path):
     # Rule 17: every import is used somewhere else in the file.
     check_unused_imports(path, lines)
 
+    # Rule 18: no run of two or more consecutive blank lines.
+    check_blank_runs(path, lines)
+
 
 def check_unused_imports(path, lines):
     """Flags an import whose simple name appears nowhere else in the file.
@@ -492,6 +496,23 @@ def check_unused_imports(path, lines):
         name = spec.rsplit('.', 1)[-1]
         if not re.search(r'\b' + re.escape(name) + r'\b', haystack):
             report(path, i, 'unused-import', line)
+
+def check_blank_runs(path, lines):
+    """Flags a run of two or more consecutive blank lines.
+
+    Rule 3 only forbids a blank line at a brace edge, so multi-line gaps left behind by a deletion
+    survive it; one blank line is the whole vocabulary for separating declarations.
+    """
+    run = 0
+    for i, line in enumerate(lines, 1):
+        if line.strip() == '':
+            run += 1
+            continue
+
+        if run > 1:
+            report(path, i - run, 'blank-line-run', f"{run} consecutive blank lines")
+
+        run = 0
 
 def import_group(imp):
     """Sort bucket for an import line: 0 java/javax, 2 net.runelite, 3 static, 1 everything else."""
