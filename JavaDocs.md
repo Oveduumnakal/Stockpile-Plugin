@@ -8723,7 +8723,8 @@ category definitions) to a single compact, shareable token and back.
 gzipped JSON, so a whole watchlist pastes as one line into chat. `#decode`
 also accepts the raw JSON directly (for hand-editing/debugging), detected by a
 leading brace. Decoding is defensive: any malformed input yields `null`
-rather than throwing, so an import dialog can report a friendly error.
+rather than throwing, so an import dialog can report a friendly error. That includes a
+deliberately oversized payload - decoding is bounded at both ends (#330).
 
 ### Nested Type Summary
 
@@ -8736,6 +8737,8 @@ rather than throwing, so an import dialog can report a friendly error.
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `static final int` | `MAX_INFLATED_BYTES` | Ceiling on the inflated payload, about 100x the largest realistic watchlist. |
+| `static final int` | `MAX_TOKEN_CHARS` | Ceiling on the compressed token body, so an oversized paste is rejected before it is decoded. |
 | `static final String` | `PREFIX` | Token marker + format version; a future breaking change bumps the digit. |
 | `private final Gson` | `gson` |  |
 
@@ -8751,9 +8754,22 @@ rather than throwing, so an import dialog can report a friendly error.
 |---|---|---|
 | `public Snapshot` | `decode(String input)` | Parses a token (or raw JSON) back into a snapshot. |
 | `public String` | `encode(Snapshot snapshot)` |  |
-| `private String` | `inflate(String token)` | Base64-decodes and gunzips a token body; `null` on any corruption. |
+| `private String` | `inflate(String token)` | Base64-decodes and gunzips a token body; `null` on any corruption or on a payload that exceeds `#MAX_TOKEN_CHARS` compressed or `#MAX_INFLATED_BYTES` inflated. |
 
 ### Field Detail
+
+#### MAX_INFLATED_BYTES
+
+`static final int MAX_INFLATED_BYTES`
+
+Ceiling on the inflated payload, about 100x the largest realistic watchlist. Past it the token
+is treated as unreadable, which the import dialog already reports as a friendly error.
+
+#### MAX_TOKEN_CHARS
+
+`static final int MAX_TOKEN_CHARS`
+
+Ceiling on the compressed token body, so an oversized paste is rejected before it is decoded.
 
 #### PREFIX
 
@@ -8796,7 +8812,13 @@ Parses a token (or raw JSON) back into a snapshot.
 
 `private String inflate(String token)`
 
-Base64-decodes and gunzips a token body; `null` on any corruption.
+Base64-decodes and gunzips a token body; `null` on any corruption or on a payload that
+exceeds `#MAX_TOKEN_CHARS` compressed or `#MAX_INFLATED_BYTES` inflated.
+
+<p>The token comes from someone else - users are encouraged to paste each other's codes - and
+gzip reaches roughly 1000:1 on repetitive data, so an unbounded read turns a few KB of input
+into gigabytes. That throws `OutOfMemoryError`, which this method's catch does not cover
+and which takes the client with it, on the client thread (#330).
 
 ---
 
