@@ -145,6 +145,22 @@ public class CostBasisLedgerTest
 		}
 	}
 
+	/** A persistence stub that records how many GE-state writes it was asked for (#328). */
+	private static final class CountingPersistence extends NoopPersistence
+	{
+		private int saves;
+		private Map<Integer, List<long[]>> lastLedger = new HashMap<>();
+		private Map<Integer, long[]> lastLimits = new HashMap<>();
+
+		@Override
+		void saveGeState(Map<Integer, List<long[]>> ledger, Map<Integer, long[]> limits)
+		{
+			saves++;
+			lastLedger = ledger;
+			lastLimits = limits;
+		}
+	}
+
 	/** A persistence stub that hands back deliberately malformed buy-limit windows (#329). */
 	private static final class CorruptLimitsPersistence extends NoopPersistence
 	{
@@ -482,5 +498,53 @@ public class CostBasisLedgerTest
 			corrupt.applyBuyLimitFields(other);
 			assertEquals(0, other.getLimitBought());
 		}
+	}
+
+	/**
+	 * The GE state used to be written on a one-minute debounce and flushed unconditionally only at
+	 * plugin shutdown. Logging out or hopping accounts inside that window lost the fill's durable
+	 * claim, because the next login's load() overwrites memory with whatever was last on disk - and
+	 * the collected units then priced at fallbackPrice instead of what they actually cost (#328).
+	 */
+	@Test
+	public void aBuyFillPersistsTheLedgerImmediately()
+	{
+		CountingPersistence saved = new CountingPersistence();
+		CostBasisLedger eager = new CostBasisLedger(host, saved);
+
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		assertEquals("placing an offer alone writes nothing", 0, saved.saves);
+
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+		assertEquals("the fill is written the moment it lands", 1, saved.saves);
+		assertEquals(5, saved.lastLedger.get(ITEM).get(0)[0]);
+		assertEquals(100, saved.lastLedger.get(ITEM).get(0)[1]);
+	}
+
+	/** A second fill is written too - the debounce used to swallow everything for the next minute. */
+	@Test
+	public void everyBuyFillPersists()
+	{
+		CountingPersistence saved = new CountingPersistence();
+		CostBasisLedger eager = new CostBasisLedger(host, saved);
+
+		eager.onGeOffer(0, ITEM, true, false, false, 10, 0, 0);
+		eager.onGeOffer(0, ITEM, true, false, false, 10, 4, 400);
+		eager.onGeOffer(0, ITEM, true, false, false, 10, 10, 1000);
+		assertEquals(2, saved.saves);
+	}
+
+	/** Buy-limit windows are persisted even with source pricing off, where no durable claim is made. */
+	@Test
+	public void buyLimitWindowsPersistWithoutSourcePricing()
+	{
+		host.sourcePricing = false;
+		CountingPersistence saved = new CountingPersistence();
+		CostBasisLedger eager = new CostBasisLedger(host, saved);
+
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+		assertEquals(1, saved.saves);
+		assertEquals(5, saved.lastLimits.get(ITEM)[1]);
 	}
 }
