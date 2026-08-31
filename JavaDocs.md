@@ -8001,7 +8001,7 @@ lets a new feature add a method rather than another positional lambda.
 | `List<long[]>` | `portfolioHistory()` |  |
 | `int` | `portfolioPointCount()` |  |
 | `void` | `removeItem(int itemId)` | Stops tracking `itemId` and removes it from the list entirely. |
-| `void` | `reorder(int from, int to)` | Moves the item at index `from` to index `to` in the manual order. |
+| `void` | `reorder(int itemId, int toIndex)` | Moves one item to a new position in the manual order. |
 | `void` | `requestDetailData(int itemId)` | Requests a fresh market/detail data load for `itemId`. |
 | `void` | `setFavorite(int itemId, boolean favorite)` | Sets whether `itemId` is marked as a favourite. |
 | `void` | `setGlobalOrder(List<Integer> order)` | Replaces the manual ordering with the given item-id order. |
@@ -8123,9 +8123,17 @@ Stops tracking `itemId` and removes it from the list entirely.
 
 #### reorder
 
-`void reorder(int from, int to)`
+`void reorder(int itemId, int toIndex)`
 
-Moves the item at index `from` to index `to` in the manual order.
+Moves one item to a new position in the manual order.
+
+<p>Both parameters are `int` but they are not the same kind of number: the first is an
+<em>item id</em>, the second a <em>list index</em>. The javadoc used to describe two indices,
+which would have compiled fine at a call site passing a row index and then silently no-opped,
+since no item would carry that id (#336).
+
+- **Parameter** `itemId` — the id of the item to move
+- **Parameter** `toIndex` — the position to move it to, clamped to the list bounds
 
 #### requestDetailData
 
@@ -12442,7 +12450,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Supplier<List<long[]>>` | `onPortfolioHistory` | Supplies the portfolio value history points (`{epochSeconds, value, costBasis`}) for the chart. |
 | `private final IntSupplier` | `onPortfolioPointCount` | Supplies the cheap aggregate point count for the chart button's per-rebuild visibility check (#184). |
 | `private final Consumer<Integer>` | `onRemoveItem` |  |
-| `private final BiConsumer<Integer,Integer>` | `onReorder` | Reorder callback: (itemId, targetIndex) — moves the item to a new position in the tracked list. |
+| `private final BiConsumer<Integer,Integer>` | `onReorder` | Reorder callback: `(itemId, targetIndex)` — moves the item with that id to a new position in the tracked list. |
 | `private final Consumer<Integer>` | `onRequestDetailData` |  |
 | `private final BiConsumer<Integer,Boolean>` | `onSetFavorite` | Favorite toggle callback: (itemId, favorite) — pins/unpins an item to the top Favorites group. |
 | `private final Consumer<List<Integer>>` | `onSetGlobalOrder` | Drag-reorder callback: replaces the full tracked-item order with the given id sequence. |
@@ -13231,7 +13239,9 @@ Supplies the cheap aggregate point count for the chart button's per-rebuild visi
 
 `private final BiConsumer<Integer,Integer> onReorder`
 
-Reorder callback: (itemId, targetIndex) — moves the item to a new position in the tracked list.
+Reorder callback: `(itemId, targetIndex)` — moves the item with that id to a new position
+in the tracked list. The first argument is an item id, not a row index; see
+`PanelActions#reorder`.
 
 #### onRequestDetailData
 

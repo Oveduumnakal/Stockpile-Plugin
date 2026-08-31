@@ -187,7 +187,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Consumer<Integer> onNotificationsEdited;
 	private final Runnable onClearAll;
 	private final IntFunction<String> examineLookup;
-	/** Reorder callback: (itemId, targetIndex) — moves the item to a new position in the tracked list. */
+	/**
+	 * Reorder callback: {@code (itemId, targetIndex)} — moves the item with that id to a new position
+	 * in the tracked list. The first argument is an item id, not a row index; see
+	 * {@link PanelActions#reorder}.
+	 */
 	private final BiConsumer<Integer, Integer> onReorder;
 	/** Drag-reorder callback: replaces the full tracked-item order with the given id sequence. */
 	private final Consumer<List<Integer>> onSetGlobalOrder;
