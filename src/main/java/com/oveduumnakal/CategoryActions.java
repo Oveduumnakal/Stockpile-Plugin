@@ -4,6 +4,8 @@
  */
 package com.oveduumnakal;
 
+import java.util.function.Consumer;
+
 /** The category management operations the panel invokes; implemented by the plugin. */
 public interface CategoryActions
 {
@@ -26,9 +28,13 @@ public interface CategoryActions
 	 * Auto-assigns tracked items to generated categories from the bundled wiki
 	 * category snapshot.
 	 *
+	 * <p>Asynchronous: the count and the mutation both run on the client thread, which owns the
+	 * tracked-item map, and {@code onResult} is delivered back on the EDT once they have. It cannot
+	 * return the summary directly, because counting on the caller's thread is what #319 was.
+	 *
 	 * @param includeCategorized when {@code true} also re-categorizes items already in a
 	 *                           category; otherwise only uncategorized items are touched
-	 * @return a user-facing summary of how many items were categorized
+	 * @param onResult receives a user-facing summary of how many items were categorized, on the EDT
 	 */
-	String autoCategorize(boolean includeCategorized);
+	void autoCategorize(boolean includeCategorized, Consumer<String> onResult);
 }

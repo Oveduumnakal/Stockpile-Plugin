@@ -854,7 +854,7 @@ The category management operations the panel invokes; implemented by the plugin.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `String` | `autoCategorize(boolean includeCategorized)` | Auto-assigns tracked items to generated categories from the bundled wiki category snapshot. |
+| `void` | `autoCategorize(boolean includeCategorized, Consumer<String> onResult)` | Auto-assigns tracked items to generated categories from the bundled wiki category snapshot. |
 | `void` | `create(String name)` | Creates a new empty category named `name`. |
 | `void` | `delete(String name)` | Deletes the category `name`, leaving its items uncategorized. |
 | `void` | `rename(String oldName, String newName)` | Renames the category `oldName` to `newName`. |
@@ -865,14 +865,18 @@ The category management operations the panel invokes; implemented by the plugin.
 
 #### autoCategorize
 
-`String autoCategorize(boolean includeCategorized)`
+`void autoCategorize(boolean includeCategorized, Consumer<String> onResult)`
 
 Auto-assigns tracked items to generated categories from the bundled wiki
 category snapshot.
 
+<p>Asynchronous: the count and the mutation both run on the client thread, which owns the
+tracked-item map, and `onResult` is delivered back on the EDT once they have. It cannot
+return the summary directly, because counting on the caller's thread is what #319 was.
+
 - **Parameter** `includeCategorized` — when `true` also re-categorizes items already in a
                           category; otherwise only uncategorized items are touched
-- **Returns:** a user-facing summary of how many items were categorized
+- **Parameter** `onResult` — receives a user-facing summary of how many items were categorized, on the EDT
 
 #### create
 
@@ -13645,7 +13649,8 @@ Gives a totals label a full-number tooltip when its text is abbreviated, none ot
 
 Prompts for the auto-categorize scope (uncategorized only vs. everything), runs it via
 `#categoryActions`, reports the result, and closes the dialog so it reopens with the
-freshly generated categories.
+freshly generated categories. The report and the dispose land in the callback, since the work
+itself happens on the client thread (#319).
 
 #### blend
 
@@ -15410,7 +15415,7 @@ executor.
 | `private void` | `applyPersistedDeathSuspension(int itemId, int quantity, Long suspendedAtEpoch)` | Restores a persisted death suspension after its item has been added, so a recovery spanning a relog still un-suspends instead of opening new lots. |
 | `private void` | `applyPersistedGrouping(int itemId, boolean favorite, String category, boolean onOverlay, boolean compact)` | Applies a persisted item's favorite/category/overlay/compact grouping after it has been added. |
 | `private void` | `applyPersistedPouchSuspension(int itemId, int quantity)` | Restores a persisted fur/meat-pouch suspension after its item has been added, so furs "Fill"ed in before a logout still un-suspend (keeping their original source and basis) when the pouch is emptied in a later session (#214). |
-| `String` | `autoCategorize(boolean includeCategorized)` | Auto-assigns tracked items to wiki-derived categories (see `ItemCategoryClassifier`), creating any missing categories. |
+| `void` | `autoCategorize(boolean includeCategorized, Consumer<String> onResult)` | Auto-assigns tracked items to wiki-derived categories (see `ItemCategoryClassifier`), creating any missing categories. |
 | `float` | `breathingAlpha()` |  |
 | `void` | `buildAcquisitionsCsv(Consumer<String> onResult)` | Builds the acquisitions log of all tracked items as CSV (see `AcquisitionCsvExporter`) on the client thread — the items and their acquisition lists are client-thread state — and hands it to `onResult` on the EDT. |
 | `private TrackedItem` | `buildPreview(int itemId)` | Builds a transient read-only preview item (name, tradeability, GE metadata) for an untracked id. |
@@ -16482,14 +16487,19 @@ Client-thread-deferred like `#applyPersistedGrouping`.
 
 #### autoCategorize
 
-`String autoCategorize(boolean includeCategorized)`
+`void autoCategorize(boolean includeCategorized, Consumer<String> onResult)`
 
 Auto-assigns tracked items to wiki-derived categories (see `ItemCategoryClassifier`),
 creating any missing categories. Non-destructive unless `includeCategorized` is set:
-by default only uncategorized items are touched, so manual assignments are preserved. The
-mutation runs on the client thread; the returned message reports the outcome.
+by default only uncategorized items are touched, so manual assignments are preserved.
 
-- **Returns:** a user-facing summary of how many items were categorized
+<p>The panel calls this from the EDT, but `trackedItems` is client-thread state - the
+same rule `buildShareToken` and `buildAcquisitionsCsv` already hop for. Counting on
+the EDT could throw `ConcurrentModificationException` and, because it ran before the
+deferred mutation, could report a number the mutation never produced. Both now run in one
+client-thread pass and the summary comes back on the EDT (#319).
+
+- **Parameter** `onResult` — receives a user-facing summary of how many items were categorized, on the EDT
 
 #### breathingAlpha
 

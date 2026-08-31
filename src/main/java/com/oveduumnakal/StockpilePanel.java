@@ -3296,7 +3296,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	/**
 	 * Prompts for the auto-categorize scope (uncategorized only vs. everything), runs it via
 	 * {@link #categoryActions}, reports the result, and closes the dialog so it reopens with the
-	 * freshly generated categories.
+	 * freshly generated categories. The report and the dispose land in the callback, since the work
+	 * itself happens on the client thread (#319).
 	 */
 	private void autoCategorizeFromDialog(JDialog dialog)
 	{
@@ -3309,9 +3310,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		if (choice != 0 && choice != 1)
 			return;
 
-		String result = categoryActions.autoCategorize(choice == 1);
-		JOptionPane.showMessageDialog(dialog, result, "Auto-categorize", JOptionPane.INFORMATION_MESSAGE);
-		dialog.dispose();
+		categoryActions.autoCategorize(choice == 1, result ->
+		{
+			JOptionPane.showMessageDialog(dialog, result, "Auto-categorize", JOptionPane.INFORMATION_MESSAGE);
+			dialog.dispose();
+		});
 	}
 
 	/**
