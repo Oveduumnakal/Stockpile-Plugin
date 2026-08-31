@@ -952,6 +952,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
+					public void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation,
+							Runnable onApplied)
+					{
+						StockpilePlugin.this.editAcquisitions(itemId, mutation, onApplied);
+					}
+
+					@Override
 					public void requestDetailData(int itemId)
 					{
 						StockpilePlugin.this.requestDetailData(itemId);
@@ -1761,6 +1768,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			public void acquisitionsEdited(int id)
 			{
 				onAcquisitionsEdited(id);
+			}
+
+			@Override
+			public void editAcquisitions(int id, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)
+			{
+				StockpilePlugin.this.editAcquisitions(id, mutation, onApplied);
 			}
 
 			@Override
@@ -5805,6 +5818,28 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * sells, trades, drops, deaths), which {@code quantity} must exclude — otherwise an
 	 * edit made mid-suspension would double-count the suspended units as held.
 	 */
+	/**
+	 * Applies an acquisition-log edit on the client thread, which owns the list, then persists,
+	 * refreshes, and hands control back to the EDT. See {@link DetailViewHost#editAcquisitions} for
+	 * why the editor may not touch the list directly (#315).
+	 */
+	void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)
+	{
+		clientThread.invokeLater(() ->
+		{
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+				return;
+
+			mutation.accept(tracked.getAcquisitions());
+			tracked.setCostBasisInitialized(true);
+			tracked.setQuantity(Math.max(0, tracked.getRecordQuantitySum() - tracked.getTotalSuspendedQuantity()));
+			persistTrackedItems();
+			refreshPanel();
+			SwingUtilities.invokeLater(onApplied);
+		});
+	}
+
 	void onAcquisitionsEdited(int itemId)
 	{
 		clientThread.invokeLater(() ->

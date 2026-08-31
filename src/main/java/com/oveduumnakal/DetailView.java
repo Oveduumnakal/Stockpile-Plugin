@@ -637,7 +637,7 @@ public class DetailView extends JPanel implements Scrollable
 			detailCard.add(dashboardEmptyMessage, BorderLayout.CENTER);
 		}
 
-		acquisitionsModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> boundItemId, false);
+		acquisitionsModel = new AcquisitionsTableModel(config, host::editAcquisitions, () -> boundItemId, false);
 		acquisitionsTable = new JTable(acquisitionsModel)
 		{
 			@Override
@@ -744,19 +744,22 @@ public class DetailView extends JPanel implements Scrollable
 					return;
 
 				long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-				t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
-				acquisitionsModel.fireTableDataChanged();
-				acquisitionsTable.revalidate();
-				onAcquisitionsEdited.accept(boundItemId);
-				int newRow = acquisitionsModel.getRowCount() - 1;
-				scrollAcquisitionsToBottom();
-				if (newRow >= 0 && acquisitionsTable.editCellAt(newRow, 0))
-				{
-					acquisitionsTable.changeSelection(newRow, 0, false, false);
-					Component editor = acquisitionsTable.getEditorComponent();
-					if (editor != null)
-						editor.requestFocusInWindow();
-				}
+				host.editAcquisitions(boundItemId,
+						records -> records.add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL)),
+						() ->
+						{
+							acquisitionsModel.fireTableDataChanged();
+							acquisitionsTable.revalidate();
+							int newRow = acquisitionsModel.getRowCount() - 1;
+							scrollAcquisitionsToBottom();
+							if (newRow >= 0 && acquisitionsTable.editCellAt(newRow, 0))
+							{
+								acquisitionsTable.changeSelection(newRow, 0, false, false);
+								Component editor = acquisitionsTable.getEditorComponent();
+								if (editor != null)
+									editor.requestFocusInWindow();
+							}
+						});
 			}
 		});
 
@@ -780,11 +783,14 @@ public class DetailView extends JPanel implements Scrollable
 				return;
 
 			long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-			t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
-			acquisitionsModel.fireTableDataChanged();
-			acquisitionsTable.revalidate();
-			onAcquisitionsEdited.accept(boundItemId);
-			scrollAcquisitionsToBottom();
+			host.editAcquisitions(boundItemId,
+					records -> records.add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL)),
+					() ->
+					{
+						acquisitionsModel.fireTableDataChanged();
+						acquisitionsTable.revalidate();
+						scrollAcquisitionsToBottom();
+					});
 		});
 
 		JButton removeRowBtn = new JButton("− Remove");
@@ -810,18 +816,20 @@ public class DetailView extends JPanel implements Scrollable
 			if (selected.length == 0)
 				return;
 
-			List<AcquisitionRecord> records = t.getAcquisitions();
 			Arrays.sort(selected);
-			for (int i = selected.length - 1; i >= 0; i--)
+			host.editAcquisitions(boundItemId, records ->
 			{
-				int idx = selected[i];
-				if (idx >= 0 && idx < records.size())
-					records.remove(idx);
-			}
-
-			acquisitionsModel.fireTableDataChanged();
-			acquisitionsTable.revalidate();
-			onAcquisitionsEdited.accept(boundItemId);
+				for (int i = selected.length - 1; i >= 0; i--)
+				{
+					int idx = selected[i];
+					if (idx >= 0 && idx < records.size())
+						records.remove(idx);
+				}
+			}, () ->
+			{
+				acquisitionsModel.fireTableDataChanged();
+				acquisitionsTable.revalidate();
+			});
 		};
 
 		removeRowBtn.addActionListener(e -> removeSelectedRows.run());
@@ -852,13 +860,11 @@ public class DetailView extends JPanel implements Scrollable
 			if (t == null)
 				return;
 
-			boolean removed = t.getAcquisitions().removeIf(r -> r.getQuantity() == 0);
-			if (!removed)
-				return;
-
-			acquisitionsModel.fireTableDataChanged();
-			acquisitionsTable.revalidate();
-			onAcquisitionsEdited.accept(boundItemId);
+			host.editAcquisitions(boundItemId, records -> records.removeIf(r -> r.getQuantity() == 0), () ->
+			{
+				acquisitionsModel.fireTableDataChanged();
+				acquisitionsTable.revalidate();
+			});
 		});
 
 		JButton clearBtn = new JButton("Clear");
@@ -2236,7 +2242,7 @@ public class DetailView extends JPanel implements Scrollable
 		if (acqPopoutModel != null)
 			return;
 
-		acqPopoutModel = new AcquisitionsTableModel(config, onAcquisitionsEdited, () -> boundItemId, true);
+		acqPopoutModel = new AcquisitionsTableModel(config, host::editAcquisitions, () -> boundItemId, true);
 		acqPopoutTable = new JTable(acqPopoutModel);
 		final JTable table = acqPopoutTable;
 		final AcquisitionsTableModel model = acqPopoutModel;
@@ -2350,28 +2356,31 @@ public class DetailView extends JPanel implements Scrollable
 			return;
 
 		long price = t.getAvgPrice() > 0 ? t.getAvgPrice() : 0;
-		t.getAcquisitions().add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL));
-		model.fireTableDataChanged();
-		table.revalidate();
-		onAcquisitionsEdited.accept(boundItemId);
-		JScrollPane sp = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, table);
-		if (sp != null)
-		{
-			SwingUtilities.invokeLater(() ->
-			{
-				JScrollBar bar = sp.getVerticalScrollBar();
-				bar.setValue(bar.getMaximum());
-			});
-		}
+		host.editAcquisitions(boundItemId,
+				records -> records.add(new AcquisitionRecord(0, price, null, AcquisitionSource.MANUAL)),
+				() ->
+				{
+					model.fireTableDataChanged();
+					table.revalidate();
+					JScrollPane sp = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, table);
+					if (sp != null)
+					{
+						SwingUtilities.invokeLater(() ->
+						{
+							JScrollBar bar = sp.getVerticalScrollBar();
+							bar.setValue(bar.getMaximum());
+						});
+					}
 
-		int newRow = model.getRowCount() - 1;
-		if (newRow >= 0 && table.editCellAt(newRow, 0))
-		{
-			table.changeSelection(newRow, 0, false, false);
-			Component editor = table.getEditorComponent();
-			if (editor != null)
-				editor.requestFocusInWindow();
-		}
+					int newRow = model.getRowCount() - 1;
+					if (newRow >= 0 && table.editCellAt(newRow, 0))
+					{
+						table.changeSelection(newRow, 0, false, false);
+						Component editor = table.getEditorComponent();
+						if (editor != null)
+							editor.requestFocusInWindow();
+					}
+				});
 	}
 
 	/** Removes the selected acquisition rows and commits the change. */
@@ -2389,17 +2398,19 @@ public class DetailView extends JPanel implements Scrollable
 		if (selected.length == 0)
 			return;
 
-		List<AcquisitionRecord> records = t.getAcquisitions();
 		Arrays.sort(selected);
-		for (int i = selected.length - 1; i >= 0; i--)
+		host.editAcquisitions(boundItemId, records ->
 		{
-			if (selected[i] >= 0 && selected[i] < records.size())
-				records.remove(selected[i]);
-		}
-
-		model.fireTableDataChanged();
-		table.revalidate();
-		onAcquisitionsEdited.accept(boundItemId);
+			for (int i = selected.length - 1; i >= 0; i--)
+			{
+				if (selected[i] >= 0 && selected[i] < records.size())
+					records.remove(selected[i]);
+			}
+		}, () ->
+		{
+			model.fireTableDataChanged();
+			table.revalidate();
+		});
 	}
 
 	/** Consolidates the acquisitions log, merging like rows and dropping empty ones. */
@@ -2409,11 +2420,8 @@ public class DetailView extends JPanel implements Scrollable
 		if (t == null)
 			return;
 
-		if (t.getAcquisitions().removeIf(r -> r.getQuantity() == 0))
-		{
-			model.fireTableDataChanged();
-			onAcquisitionsEdited.accept(boundItemId);
-		}
+		host.editAcquisitions(boundItemId, records -> records.removeIf(r -> r.getQuantity() == 0),
+				model::fireTableDataChanged);
 	}
 
 	/** Clears all acquisitions for the current item after confirmation, via the plugin callback. */

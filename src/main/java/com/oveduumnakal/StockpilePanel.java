@@ -182,6 +182,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 	private final Runnable onOpenCompare;
 	private final Consumer<Integer> onAcquisitionsEdited;
+
+	/** The client-thread acquisition-edit seam the detail view commits through (#315). */
+	private final AcquisitionsTableModel.AcquisitionEditor onEditAcquisitions;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
 	private final Consumer<Integer> onNotificationsEdited;
@@ -522,6 +525,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onOpenDashboard = actions::openDashboard;
 		this.onOpenCompare = actions::openCompare;
 		this.onAcquisitionsEdited = actions::acquisitionsEdited;
+		this.onEditAcquisitions = actions::editAcquisitions;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
 		this.onNotificationsEdited = actions::notificationsEdited;
@@ -5290,6 +5294,14 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		if (onAcquisitionsEdited != null)
 			onAcquisitionsEdited.accept(itemId);
+	}
+
+	/** {@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present. */
+	@Override
+	public void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)
+	{
+		if (onEditAcquisitions != null)
+			onEditAcquisitions.edit(itemId, mutation, onApplied);
 	}
 
 	/** {@inheritDoc} Delegates to the panel's clear-acquisitions callback when present. */

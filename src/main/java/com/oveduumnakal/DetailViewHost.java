@@ -4,6 +4,9 @@
  */
 package com.oveduumnakal;
 
+import java.util.List;
+import java.util.function.Consumer;
+
 import net.runelite.client.game.ItemManager;
 
 /**
@@ -39,6 +42,24 @@ public interface DetailViewHost
 
 	/** Signals that the acquisitions log for {@code itemId} was edited in-view. */
 	void acquisitionsEdited(int itemId);
+
+	/**
+	 * Applies {@code mutation} to the item's acquisition list on the client thread, then signals the
+	 * edit and runs {@code onApplied} back on the EDT.
+	 *
+	 * <p>The list is client-thread state: the FIFO cost-basis engine adds, removes and re-prices lots
+	 * from there while GE offers fill and containers change. The editor used to mutate the very same
+	 * {@code ArrayList} from the EDT, so two threads did structural writes with no synchronisation -
+	 * an interleaving can silently drop a record or overwrite a quantity, which corrupts cost basis
+	 * and every profit figure derived from it, and it bites exactly when someone edits the log while
+	 * offers are filling (#315). {@code buildShareToken} and {@code buildAcquisitionsCsv} already hop
+	 * for this reason and say so; the editor never got the same treatment.
+	 *
+	 * @param itemId the item whose log to edit; a no-op when it is not tracked
+	 * @param mutation applied to the live list on the client thread
+	 * @param onApplied run on the EDT once the mutation has been applied
+	 */
+	void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied);
 
 	/** Clears the acquisitions log for {@code itemId}. */
 	void clearAcquisitions(int itemId);
