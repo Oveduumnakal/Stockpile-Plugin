@@ -10,9 +10,9 @@ import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.LinearGradientPaint;
+import java.awt.MultipleGradientPaint;
 import java.awt.RenderingHints;
-import java.awt.Shape;
-import java.awt.geom.RoundRectangle2D;
 import javax.swing.JPanel;
 
 import net.runelite.client.ui.ColorScheme;
@@ -62,6 +62,12 @@ final class PriceRangeBar extends JPanel
 				(int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
 	}
 
+	/** Gradient stop positions for the range bar: red at 0, gold at the midpoint, green at 1. */
+	private static final float[] GRADIENT_FRACTIONS = {0f, 0.5f, 1f};
+
+	/** Gradient stop colours matching {@link #GRADIENT_FRACTIONS}. */
+	private static final Color[] GRADIENT_COLORS = {RANGE_RED, RANGE_GOLD, RANGE_GREEN};
+
 	/** @return the gradient colour at fraction {@code f}: red through gold (0.5) to green. */
 	private static Color colorAt(double f)
 	{
@@ -102,15 +108,10 @@ final class PriceRangeBar extends JPanel
 				return;
 			}
 
-			Shape oldClip = g2.getClip();
-			g2.setClip(new RoundRectangle2D.Double(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC));
-			for (int x = 0; x < barW; x++)
-			{
-				g2.setColor(colorAt((double) x / Math.max(1, barW - 1)));
-				g2.drawLine(x, barY, x, barY + BAR_H);
-			}
-
-			g2.setClip(oldClip);
+			g2.setPaint(new LinearGradientPaint(0, barY, Math.max(1, barW - 1), barY,
+					GRADIENT_FRACTIONS, GRADIENT_COLORS,
+					MultipleGradientPaint.CycleMethod.NO_CYCLE));
+			g2.fillRoundRect(0, barY, barW, BAR_H, BAR_ARC, BAR_ARC);
 
 			double frac = Math.max(0, Math.min(1, (double) (live - min) / (max - min)));
 			int tx = (int) Math.round(frac * (barW - 1));

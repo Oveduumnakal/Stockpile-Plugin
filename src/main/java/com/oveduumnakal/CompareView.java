@@ -1095,14 +1095,18 @@ final class CompareView extends JPanel implements Scrollable
 	 */
 	private static final class Sparkline extends JComponent
 	{
-		private final List<WikiRealtimePriceClient.PricePoint> series;
+		/**
+		 * The plotted midpoints, derived once at construction. The series is fixed for this
+		 * component's life, so rebuilding a boxed list on every repaint bought nothing (#327).
+		 */
+		private final List<Long> points;
 
 		/**
 		 * @param series the price points to plot (an empty list paints nothing)
 		 */
 		Sparkline(List<WikiRealtimePriceClient.PricePoint> series)
 		{
-			this.series = series;
+			this.points = midpoints(series);
 			setBackground(ColorScheme.DARK_GRAY_COLOR);
 		}
 
@@ -1110,7 +1114,6 @@ final class CompareView extends JPanel implements Scrollable
 		protected void paintComponent(Graphics g)
 		{
 			super.paintComponent(g);
-			List<Long> points = midpoints();
 			if (points.size() < 2)
 				return;
 
@@ -1151,7 +1154,7 @@ final class CompareView extends JPanel implements Scrollable
 		}
 
 		/** @return the in-order series midpoints (high/low average), skipping points with no price. */
-		private List<Long> midpoints()
+		private static List<Long> midpoints(List<WikiRealtimePriceClient.PricePoint> series)
 		{
 			List<Long> out = new ArrayList<>();
 			for (WikiRealtimePriceClient.PricePoint p : series)
@@ -1176,14 +1179,26 @@ final class CompareView extends JPanel implements Scrollable
 	 */
 	private static final class VolumeChart extends JComponent
 	{
-		private final List<WikiRealtimePriceClient.PricePoint> series;
+		/**
+		 * The plotted volumes, derived once at construction. The series is fixed for this component's
+		 * life, so rebuilding a boxed list on every repaint bought nothing (#327).
+		 */
+		private final List<Long> volumes;
+
+		/** The largest value in {@link #volumes}, so each paint does not re-scan for it. */
+		private final long max;
 
 		/**
 		 * @param series the price points whose volumes to plot (an empty list paints nothing)
 		 */
 		VolumeChart(List<WikiRealtimePriceClient.PricePoint> series)
 		{
-			this.series = series;
+			this.volumes = volumes(series);
+			long peak = 0;
+			for (long v : volumes)
+				peak = Math.max(peak, v);
+
+			this.max = peak;
 			setBackground(ColorScheme.DARK_GRAY_COLOR);
 		}
 
@@ -1191,11 +1206,6 @@ final class CompareView extends JPanel implements Scrollable
 		protected void paintComponent(Graphics g)
 		{
 			super.paintComponent(g);
-			List<Long> volumes = volumes();
-			long max = 0;
-			for (long v : volumes)
-				max = Math.max(max, v);
-
 			if (max <= 0)
 				return;
 
@@ -1223,7 +1233,7 @@ final class CompareView extends JPanel implements Scrollable
 		}
 
 		/** @return each point's total traded volume (high plus low) in series order. */
-		private List<Long> volumes()
+		private static List<Long> volumes(List<WikiRealtimePriceClient.PricePoint> series)
 		{
 			List<Long> out = new ArrayList<>();
 			for (WikiRealtimePriceClient.PricePoint p : series)
