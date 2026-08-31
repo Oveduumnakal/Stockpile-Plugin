@@ -3094,8 +3094,8 @@ public class DetailView extends JPanel implements Scrollable
 		boolean laKnown = la > 0 && hasPrices;
 		applyProfitLabel(haProfit, haP, alchKnown);
 		applyProfitLabel(laProfit, laP, laKnown);
-		haProfit.setToolTipText(alchKnown ? alchProfitTooltip("High", ha, avg, 5) : null);
-		laProfit.setToolTipText(laKnown ? alchProfitTooltip("Low", la, avg, 3) : null);
+		haProfit.setToolTipText(alchKnown ? alchProfitTooltip("High", ha, avg, MarketMath.HIGH_ALCH_FIRE_RUNES) : null);
+		laProfit.setToolTipText(laKnown ? alchProfitTooltip("Low", la, avg, MarketMath.LOW_ALCH_FIRE_RUNES) : null);
 		boolean showAlchProfit = colQty > 0 && alchKnown;
 		alchEstProfitRow.setVisible(showAlchProfit);
 		if (showAlchProfit)
