@@ -35,6 +35,9 @@ every Java source file:
  16. Imports are grouped java/javax, then other third-party, then net.runelite,
      then static; groups are separated by a single blank line, no blank line
      falls inside a group, and each group is alphabetized.
+ 17. No unused imports: an imported simple name (or, for a static import, the
+     member name) must appear somewhere else in the file. A name referenced only
+     from a Javadoc `{@link}` counts as used.
 
 Not mechanized (judgement calls, enforced by review): the Stream-API preference,
 the two-tab continuation indent and ternary-break shape (both already bounded by
@@ -462,6 +465,33 @@ def check_file(path):
     # alphabetized by path, groups separated by a single blank line.
     check_import_order(path, lines)
 
+    # Rule 17: every import is used somewhere else in the file.
+    check_unused_imports(path, lines)
+
+
+def check_unused_imports(path, lines):
+    """Flags an import whose simple name appears nowhere else in the file.
+
+    A static import is matched on its member name rather than the owning class, and a name used only
+    inside a Javadoc {@link} or @see reference counts as used — dropping such an import would break
+    the doclint pass.
+    """
+    body = [l for l in lines if not l.startswith('import ')]
+    haystack = '\n'.join(body)
+    for i, line in enumerate(lines, 1):
+        if not line.startswith('import '):
+            continue
+
+        spec = line[len('import '):].strip().rstrip(';').strip()
+        if spec.endswith('*'):
+            continue
+
+        if spec.startswith('static '):
+            spec = spec[len('static '):].strip()
+
+        name = spec.rsplit('.', 1)[-1]
+        if not re.search(r'\b' + re.escape(name) + r'\b', haystack):
+            report(path, i, 'unused-import', line)
 
 def import_group(imp):
     """Sort bucket for an import line: 0 java/javax, 2 net.runelite, 3 static, 1 everything else."""

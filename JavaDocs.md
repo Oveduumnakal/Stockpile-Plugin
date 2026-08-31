@@ -3663,7 +3663,6 @@ populated detail card and a loading placeholder.
 | `private JComponent` | `buildDetailSectionTitleRow(String title, JButton popBtn)` | Builds a divider-topped section title row with the title centred between a strut matching the pop-out button's width (so the title stays optically centred) and the button itself. |
 | `private JComponent` | `buildDetailSectionTitleRow(String title, Runnable onPopout)` | Builds a section title row with a pop-out button wired to the given action. |
 | `private JPanel` | `buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)` | Builds a titled detail-view section whose title row carries a pop-out button. |
-| `private Icon` | `buildEyeIcon(int size)` | Loads the bundled `eye.png` scaled to a square icon for the view-only button. |
 | `private Icon` | `buildLeftArrowIcon()` | Paints the small left-pointing triangle used by the detail view's Back button. |
 | `private JButton` | `buildLinkButton(String text, String tooltip, Runnable onClick)` | Builds a detail-view link button that runs the given action when clicked. |
 | `private JPanel` | `buildLinksBlock()` | Builds the Links detail section's content: Wiki and Live Prices buttons for the current item. |
@@ -4509,12 +4508,6 @@ Builds a section title row with a pop-out button wired to the given action.
 `private JPanel buildDetailSectionWithPopout(String title, Runnable onPopout, Component... contents)`
 
 Builds a titled detail-view section whose title row carries a pop-out button.
-
-#### buildEyeIcon
-
-`private Icon buildEyeIcon(int size)`
-
-Loads the bundled `eye.png` scaled to a square icon for the view-only button.
 
 #### buildLeftArrowIcon
 
@@ -12483,7 +12476,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JPanel` | `buildDividerStrip()` | Builds the horizontal divider strip drawn between the totals block and the footer. |
 | `private Icon` | `buildEyeIcon(int size)` | Loads the bundled `eye.png` scaled to a square icon for the view-only button. |
 | `private JLabel` | `buildFavoriteStar(TrackedItem item)` | Builds the favorite-toggle star shown beneath each row's remove button. |
-| `private JButton` | `buildFooterLink(String text, Runnable onClick, String tooltip)` | Builds a small footer button that runs the given action when clicked. |
 | `private JButton` | `buildFooterMenu(String text, JPopupMenu menu, String tooltip)` | A footer button that drops `menu` below itself, grouping related actions so the footer stays one row. |
 | `private JMenuItem` | `buildFooterMenuItem(String text, Runnable onClick, String tooltip)` | One action inside a footer dropdown, styled to match the footer links. |
 | `private JPanel` | `buildGroupHeader(String title, String groupKey, boolean collapsed, long groupTotal)` | Builds a clickable accordion header (chevron + title + group total value) that toggles the group's collapsed state. |
@@ -13648,12 +13640,6 @@ Loads the bundled `eye.png` scaled to a square icon for the view-only button.
 Builds the favorite-toggle star shown beneath each row's remove button. Like the
 remove button it is hidden until the row is hovered; hovering the star itself previews
 the toggle (fills light gold to add a favorite, or drops the gold to remove one).
-
-#### buildFooterLink
-
-`private JButton buildFooterLink(String text, Runnable onClick, String tooltip)`
-
-Builds a small footer button that runs the given action when clicked.
 
 #### buildFooterMenu
 
