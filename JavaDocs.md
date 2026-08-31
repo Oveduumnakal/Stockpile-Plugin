@@ -15476,7 +15476,8 @@ executor.
 | `private boolean` | `isDestroyedProduct(int itemId)` |  |
 | `private boolean` | `isDosePotion(int itemId)` |  |
 | `public boolean` | `isEmptyContainer(int itemId)` | Returns whether the given item id is a known empty-container placeholder. |
-| `private static boolean` | `isPouchDepositMessage(String message)` |  |
+| `static boolean` | `isGameMessage(ChatMessageType type)` |  |
+| `static boolean` | `isPouchDepositMessage(String message)` |  |
 | `private static boolean` | `isPouchTarget(String target)` |  |
 | `private boolean` | `isRealItem(int itemId)` |  |
 | `public boolean` | `isRecoverableAmmo(int itemId)` |  |
@@ -15502,7 +15503,7 @@ executor.
 | `private OptionalDouble` | `numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)` | Resolves the current numeric reading of a metric for an item over a window (price, volume, profit, HA profit, Δ% vs. |
 | `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
-| `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66). |
+| `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync, evaluates notifications, and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
 | `private void` | `onCompareWindowClosed()` | Drops the singleton reference and clears the set when the compare window is closed. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
@@ -17073,9 +17074,17 @@ Returns whether the given item id is a known empty-container placeholder.
 - **Parameter** `itemId` — the item id
 - **Returns:** `true` if the id is an empty container (e.g. an empty vial)
 
+#### isGameMessage
+
+`static boolean isGameMessage(ChatMessageType type)`
+
+- **Returns:** whether `type` is one the server itself emits, as opposed to anything a player
+        can type. `ChatMessageType#GAMEMESSAGE` and `ChatMessageType#SPAM` together
+        cover every server line the detectors below look for.
+
 #### isPouchDepositMessage
 
-`private static boolean isPouchDepositMessage(String message)`
+`static boolean isPouchDepositMessage(String message)`
 
 - **Returns:** whether a chat line signals a hunting pouch emptying into the bank — either the
         per-pouch "Empty" deposit ("You deposit some &lt;fur/meat&gt; into your bank.") or
@@ -17280,7 +17289,14 @@ Marks the local player's death, opening the death-loss suspension window (#70).
 
 `public void onChatMessage(ChatMessage event)`
 
-Registers the completed trade's claims when the game confirms the exchange (#66).
+Registers the completed trade's claims when the game confirms the exchange (#66), and picks up
+the pouch-deposit and reward-loot signals.
+
+<p>All three lines are server-generated, so all three are filtered by message type. Without
+that filter on the last two, any player in range could type `"You found some loot:"` in
+public chat to set `rewardContainerTick`, and `correlateReward` would then claim
+every tracked inventory gain on that tick as `AcquisitionSource#REWARD` at 0 gp - writing
+zero-cost lots into someone else's cost basis (#317).
 
 #### onClientTick
 
