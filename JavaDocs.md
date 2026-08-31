@@ -6989,8 +6989,8 @@ duplicating the formulas.
 | `private static final long` | `GE_TAX_CAP` | The Grand Exchange sell tax is capped at this many gp per item. |
 | `private static final long` | `GE_TAX_MIN_PRICE` | The Grand Exchange sell tax is waived on items priced below this many gp. |
 | `private static final double` | `GE_TAX_RATE` | The Grand Exchange sell tax is 2% of the sale price. |
-| `private static final int` | `HIGH_ALCH_FIRE_RUNES` | High-alchemy consumes five fire runes per cast. |
-| `private static final int` | `LOW_ALCH_FIRE_RUNES` | Low-alchemy consumes three fire runes per cast. |
+| `static final int` | `HIGH_ALCH_FIRE_RUNES` | High-alchemy consumes five fire runes per cast. |
+| `static final int` | `LOW_ALCH_FIRE_RUNES` | Low-alchemy consumes three fire runes per cast. |
 
 ### Constructor Summary
 
@@ -7029,13 +7029,13 @@ The Grand Exchange sell tax is 2% of the sale price.
 
 #### HIGH_ALCH_FIRE_RUNES
 
-`private static final int HIGH_ALCH_FIRE_RUNES`
+`static final int HIGH_ALCH_FIRE_RUNES`
 
 High-alchemy consumes five fire runes per cast.
 
 #### LOW_ALCH_FIRE_RUNES
 
-`private static final int LOW_ALCH_FIRE_RUNES`
+`static final int LOW_ALCH_FIRE_RUNES`
 
 Low-alchemy consumes three fire runes per cast.
 
