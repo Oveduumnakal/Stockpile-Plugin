@@ -4067,13 +4067,22 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				continue;
 
 			PriceStats stats = item.getWindowStats().get(window);
+			boolean isLive = window == TimeWindow.LIVE;
+			boolean noData = !isLive && stats == null;
 			long h, l, a, vol;
-			if (window == TimeWindow.LIVE || stats == null)
+			if (isLive)
 			{
 				h = item.getHighPrice();
 				l = item.getLowPrice();
 				a = item.getAvgPrice();
-				vol = stats != null ? stats.getVolume() : 0;
+				vol = 0;
+			}
+			else if (noData)
+			{
+				h = 0;
+				l = 0;
+				a = 0;
+				vol = 0;
 			}
 			else
 			{
@@ -4082,8 +4091,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				a = stats.getAvg();
 				vol = stats.getVolume();
 			}
-
-			boolean isLive = window == TimeWindow.LIVE;
 
 			JLabel windowLbl = new JLabel(window.toString());
 			windowLbl.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -4104,7 +4111,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				JLabel cell = new JLabel("", SwingConstants.CENTER);
 				cell.setFont(FontManager.getRunescapeSmallFont());
 				cell.setForeground(COLOR_HIGH);
-				installItemValue(cell, h, "", "High", TINT_HIGH);
+				if (noData)
+					installNoData(cell);
+				else
+					installItemValue(cell, h, "", "High", TINT_HIGH);
+
 				if (isLive)
 					applyLiveStaleness(cell, h, "High", "Last Buy", item.getLatestHighTime(),
 							COLOR_HIGH, COLOR_HIGH_STALE);
@@ -4117,7 +4128,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				JLabel cell = new JLabel("", SwingConstants.CENTER);
 				cell.setFont(FontManager.getRunescapeSmallFont());
 				cell.setForeground(COLOR_LOW);
-				installItemValue(cell, l, "", "Low", TINT_LOW);
+				if (noData)
+					installNoData(cell);
+				else
+					installItemValue(cell, l, "", "Low", TINT_LOW);
+
 				if (isLive)
 					applyLiveStaleness(cell, l, "Low", "Last Sell", item.getLatestLowTime(),
 							COLOR_LOW, COLOR_LOW_STALE);
@@ -4130,7 +4145,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				JLabel cell = new JLabel("", SwingConstants.CENTER);
 				cell.setFont(FontManager.getRunescapeSmallFont());
 				cell.setForeground(COLOR_AVG);
-				installItemValue(cell, a, "", "Avg", TINT_AVG);
+				if (noData)
+					installNoData(cell);
+				else
+					installItemValue(cell, a, "", "Avg", TINT_AVG);
+
 				visibleCells.add(cell);
 			}
 
@@ -4139,9 +4158,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				JLabel cell = new JLabel("", SwingConstants.CENTER);
 				cell.setForeground(COLOR_VOLUME);
 				cell.setFont(FontManager.getRunescapeSmallFont());
-				String volText = window == TimeWindow.LIVE ? "-" : GpFormat.shortValue(vol);
+				String volText = isLive || noData ? "-" : GpFormat.shortValue(vol);
 				cell.setText(volText);
-				if (window != TimeWindow.LIVE)
+				if (!isLive && !noData)
 					cell.setToolTipText("Volume: " + GpFormat.grouped(vol));
 
 				HoverTintListener volListener = new HoverTintListener(cell, volText, TINT_VOLUME);
@@ -4895,6 +4914,17 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private void installItemValue(JLabel label, long value, String prefix, Color tint)
 	{
 		installItemValue(label, value, prefix, null, tint);
+	}
+
+	/**
+	 * Marks a price cell as having no data, for a window whose history series has not loaded (#333).
+	 * Clears any hover tint and tooltip so nothing suggests the dash is a real figure.
+	 */
+	private static void installNoData(JLabel label)
+	{
+		label.setText("-");
+		label.setToolTipText(null);
+		removeHoverTint(label);
 	}
 
 	/** Installs a prefixed compact gp value on a label via {@link #installShortValue}. */
