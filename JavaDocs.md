@@ -84,6 +84,7 @@
 - [com.oveduumnakal.PriceRangeBar](#comoveduumnakalpricerangebar)
 - [com.oveduumnakal.PriceStats](#comoveduumnakalpricestats)
 - [com.oveduumnakal.ProcessingBasis](#comoveduumnakalprocessingbasis)
+- [com.oveduumnakal.ProfileConfigStore](#comoveduumnakalprofileconfigstore)
 - [com.oveduumnakal.PulseEntry](#comoveduumnakalpulseentry)
 - [com.oveduumnakal.QuickActionDelivery](#comoveduumnakalquickactiondelivery)
 - [com.oveduumnakal.SectionSlot](#comoveduumnakalsectionslot)
@@ -9963,6 +9964,46 @@ no known basis and contribute 0. Client-free and unit-testable.
 
 ---
 
+## com.oveduumnakal.ProfileConfigStore
+
+_interface_
+
+`interface ProfileConfigStore`
+
+The RS-profile config seam `StockpilePersistence` reads and writes through, in the same
+shape as the plugin's other host interfaces. It exists so the persistence layer's corrupt-value
+fallbacks — the behaviour that class's javadoc promises — can be exercised without a live
+`ConfigManager`, which has no constructor a test can reach.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `String` | `get(String group, String key)` |  |
+| `void` | `set(String group, String key, String value)` | Stores `value` under `group`/`key` for the active RS profile. |
+
+### Method Detail
+
+#### get
+
+`String get(String group, String key)`
+
+- **Parameter** `group` — the config group
+- **Parameter** `key` — the config key within the group
+- **Returns:** the stored value, or `null` when the key is unset
+
+#### set
+
+`void set(String group, String key, String value)`
+
+Stores `value` under `group`/`key` for the active RS profile.
+
+- **Parameter** `group` — the config group
+- **Parameter** `key` — the config key within the group
+- **Parameter** `value` — the serialized value to store
+
+---
+
 ## com.oveduumnakal.PulseEntry
 
 _class_
@@ -14763,7 +14804,9 @@ Stockpile state to the RS-profile config. Extracted verbatim from `StockpilePlug
 plugin keeps only the orchestration (building snapshots from live `TrackedItem`s and applying
 loaded ones on the client thread) while the JSON shape, config keys, and corrupt-value handling
 live in one testable place. Loaders default to empty/`null` on a missing or unparseable value
-exactly as the originals did, so history/state simply rebuilds rather than throwing.
+exactly as the originals did, so history/state simply rebuilds rather than throwing. Reads and
+writes go through `ProfileConfigStore` so those fallbacks are testable without a live
+`ConfigManager`.
 
 ### Nested Type Summary
 
@@ -14785,7 +14828,7 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 | `private static final Type` | `PORTFOLIO_HISTORY_TYPE` |  |
 | `private static final Type` | `PRICE_CACHE_TYPE` |  |
 | `private static final Type` | `SAVED_COMPARISONS_TYPE` |  |
-| `private final ConfigManager` | `configManager` |  |
+| `private final ProfileConfigStore` | `config` |  |
 | `private final Gson` | `gson` |  |
 
 ### Constructor Summary
@@ -14793,11 +14836,13 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 | Constructor | Description |
 |---|---|
 | `StockpilePersistence(ConfigManager configManager, Gson gson)` |  |
+| `StockpilePersistence(ProfileConfigStore config, Gson gson)` |  |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `private static ProfileConfigStore` | `backedBy(ConfigManager configManager)` | Adapts a live `ConfigManager` to the `ProfileConfigStore` seam. |
 | `CategoryData` | `loadCategories()` |  |
 | `List<SavedComparison>` | `loadComparisons()` |  |
 | `Map<Integer,long[]>` | `loadGeBuyLimits()` |  |
@@ -14842,9 +14887,9 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 
 `private static final Type SAVED_COMPARISONS_TYPE`
 
-#### configManager
+#### config
 
-`private final ConfigManager configManager`
+`private final ProfileConfigStore config`
 
 #### gson
 
@@ -14856,7 +14901,17 @@ exactly as the originals did, so history/state simply rebuilds rather than throw
 
 `StockpilePersistence(ConfigManager configManager, Gson gson)`
 
+#### StockpilePersistence
+
+`StockpilePersistence(ProfileConfigStore config, Gson gson)`
+
 ### Method Detail
+
+#### backedBy
+
+`private static ProfileConfigStore backedBy(ConfigManager configManager)`
+
+Adapts a live `ConfigManager` to the `ProfileConfigStore` seam.
 
 #### loadCategories
 

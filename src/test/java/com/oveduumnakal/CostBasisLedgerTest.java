@@ -123,7 +123,7 @@ public class CostBasisLedgerTest
 	{
 		NoopPersistence()
 		{
-			super(null, null);
+			super((ProfileConfigStore) null, null);
 		}
 
 		@Override
