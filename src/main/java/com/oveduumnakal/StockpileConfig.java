@@ -694,16 +694,22 @@ public interface StockpileConfig extends Config
 	}
 
 	/**
-	 * Automatically add collection-log entries from inventory/bank changes. When off, items are only tracked once you
-	 * add them yourself (manual edits still work). The price a change with no observed source buys in at is set
+	 * Automatically record collection-log entries when a tracked item's inventory or bank count changes. Turning it
+	 * off stops new lots being opened and closed for you; the tracked quantity still follows your containers either
+	 * way, and you can still add and edit lots by hand. The price a change with no observed source buys in at is set
 	 * separately by "Fallback Pricing".
+	 *
+	 * <p>The key is still {@code autoAddItems} so existing profiles keep their setting; only the label and the
+	 * description changed, to say what the flag has always actually done (#316).
 	 */
 	@ConfigItem(
 			keyName = KEY_AUTO_ADD_ITEMS,
-			name = "Auto Add Items",
-			description = "Automatically add collection-log entries from inventory/bank changes. When off, items "
-					+ "are only tracked once you add them yourself (manual edits still work). The price a change "
-					+ "with no observed source buys in at is set separately by \"Fallback Pricing\".",
+			name = "Auto-record acquisitions",
+			description = "Automatically record collection-log entries when a tracked item's inventory or bank "
+					+ "count changes. Turning it off stops new lots being opened and closed for you; the tracked "
+					+ "quantity still follows your containers either way, and you can still add and edit lots by "
+					+ "hand. The price a change with no observed source buys in at is set separately by "
+					+ "\"Fallback Pricing\".",
 			section = detailViewSection,
 			position = 11
 	)
