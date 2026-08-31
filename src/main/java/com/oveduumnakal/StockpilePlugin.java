@@ -969,9 +969,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
-					public void reorder(int from, int to)
+					public void reorder(int itemId, int toIndex)
 					{
-						reorderTrackedItem(from, to);
+						reorderTrackedItem(itemId, toIndex);
 					}
 
 					@Override

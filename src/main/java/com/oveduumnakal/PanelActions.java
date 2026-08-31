@@ -68,8 +68,18 @@ public interface PanelActions
 	/** @return the examine text for {@code itemId}, or a placeholder when none is cached. */
 	String examineLookup(int itemId);
 
-	/** Moves the item at index {@code from} to index {@code to} in the manual order. */
-	void reorder(int from, int to);
+	/**
+	 * Moves one item to a new position in the manual order.
+	 *
+	 * <p>Both parameters are {@code int} but they are not the same kind of number: the first is an
+	 * <em>item id</em>, the second a <em>list index</em>. The javadoc used to describe two indices,
+	 * which would have compiled fine at a call site passing a row index and then silently no-opped,
+	 * since no item would carry that id (#336).
+	 *
+	 * @param itemId the id of the item to move
+	 * @param toIndex the position to move it to, clamped to the list bounds
+	 */
+	void reorder(int itemId, int toIndex);
 
 	/** Replaces the manual ordering with the given item-id order. */
 	void setGlobalOrder(List<Integer> order);
