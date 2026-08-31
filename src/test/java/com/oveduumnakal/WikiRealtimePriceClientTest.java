@@ -8,15 +8,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
+import com.google.gson.Gson;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link WikiRealtimePriceClient#computeStats}, the static aggregation half of the
- * wiki client: window cutoff filtering, the volume-weighted average, the zero-volume midpoint
- * fallback, and the all-zero result for absent data. No HTTP is involved.
+ * Tests for {@link WikiRealtimePriceClient}: the static {@code computeStats} aggregation — window
+ * cutoff filtering, the volume-weighted average, the zero-volume midpoint fallback, and the all-zero
+ * result for absent data — plus {@code fetchAll}'s handling of a degenerate response body, served by
+ * an interceptor so no network call is made.
  */
 public class WikiRealtimePriceClientTest
 {
@@ -134,5 +144,60 @@ public class WikiRealtimePriceClientTest
 		assertEquals(0, stats.getLow());
 		assertEquals(0, stats.getAvg());
 		assertEquals(0, stats.getVolume());
+	}
+
+	/** A client whose every call short-circuits to a 200 carrying {@code body}, so no socket is opened. */
+	private static WikiRealtimePriceClient clientServing(String body)
+	{
+		OkHttpClient http = new OkHttpClient.Builder()
+				.addInterceptor(chain -> new Response.Builder()
+						.request(chain.request())
+						.protocol(Protocol.HTTP_1_1)
+						.code(200)
+						.message("OK")
+						.body(ResponseBody.create(MediaType.parse("application/json"), body))
+						.build())
+				.build();
+
+		return new WikiRealtimePriceClient(http, new Gson());
+	}
+
+	/**
+	 * Gson parses an empty or whitespace-only body to {@code null}. Dereferencing that threw an NPE
+	 * past the method's catch, and an exception escaping the scheduled refresh cancels it for the
+	 * rest of the session (#318).
+	 */
+	@Test
+	public void fetchAllReturnsAnEmptyMapForADegenerateBody()
+	{
+		for (String body : Arrays.asList("", "   ", "\n", "null"))
+		{
+			Map<Integer, WikiRealtimePriceClient.ItemPrices> prices = clientServing(body).fetchAll();
+			assertNotNull(body, prices);
+			assertTrue(body, prices.isEmpty());
+		}
+	}
+
+	/** A body whose {@code data} is absent, null, or the wrong JSON type is equally not an error. */
+	@Test
+	public void fetchAllReturnsAnEmptyMapWhenDataIsAbsent()
+	{
+		for (String body : Arrays.asList("{}", "{\"data\":null}", "{\"data\":[]}", "{\"data\":7}"))
+		{
+			Map<Integer, WikiRealtimePriceClient.ItemPrices> prices = clientServing(body).fetchAll();
+			assertNotNull(body, prices);
+			assertTrue(body, prices.isEmpty());
+		}
+	}
+
+	/** A normal body still parses, so the guard did not change the success path. */
+	@Test
+	public void fetchAllParsesANormalBody()
+	{
+		String body = "{\"data\":{\"560\":{\"high\":120,\"low\":110,\"highTime\":5,\"lowTime\":4}}}";
+		Map<Integer, WikiRealtimePriceClient.ItemPrices> prices = clientServing(body).fetchAll();
+		assertEquals(1, prices.size());
+		assertEquals(120, prices.get(560).getHigh());
+		assertEquals(110, prices.get(560).getLow());
 	}
 }

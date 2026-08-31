@@ -143,9 +143,11 @@ public class WikiRealtimePriceClient
 			}
 
 			JsonObject root = gson.fromJson(response.body().charStream(), JsonObject.class);
-			JsonObject data = root.getAsJsonObject("data");
-			if (data == null)
+			JsonElement dataEl = root == null ? null : root.get("data");
+			if (dataEl == null || !dataEl.isJsonObject())
 				return Collections.emptyMap();
+
+			JsonObject data = dataEl.getAsJsonObject();
 
 			Map<Integer, ItemPrices> result = new HashMap<>(data.size());
 			for (Map.Entry<String, JsonElement> entry : data.entrySet())
@@ -268,9 +270,11 @@ public class WikiRealtimePriceClient
 			}
 
 			JsonObject root = gson.fromJson(response.body().charStream(), JsonObject.class);
-			JsonArray data = root == null ? null : root.getAsJsonArray("data");
-			if (data == null)
+			JsonElement dataEl = root == null ? null : root.get("data");
+			if (dataEl == null || !dataEl.isJsonArray())
 				return Collections.emptyList();
+
+			JsonArray data = dataEl.getAsJsonArray();
 
 			List<PricePoint> points = new ArrayList<>(data.size());
 			for (JsonElement el : data)
