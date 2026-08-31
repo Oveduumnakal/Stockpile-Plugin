@@ -22,10 +22,10 @@ final class MarketMath
 	private static final long GE_TAX_CAP = 5_000_000L;
 
 	/** High-alchemy consumes five fire runes per cast. */
-	private static final int HIGH_ALCH_FIRE_RUNES = 5;
+	static final int HIGH_ALCH_FIRE_RUNES = 5;
 
 	/** Low-alchemy consumes three fire runes per cast. */
-	private static final int LOW_ALCH_FIRE_RUNES = 3;
+	static final int LOW_ALCH_FIRE_RUNES = 3;
 
 	private MarketMath()
 	{

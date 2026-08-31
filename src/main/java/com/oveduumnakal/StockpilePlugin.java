@@ -5843,15 +5843,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				if (avg <= 0 || item.getHighAlch() <= 0)
 					return OptionalDouble.empty();
 
-				return OptionalDouble.of(item.getHighAlch() - avg - runePrice(NATURE_RUNE_ID)
-						- 5 * runePrice(FIRE_RUNE_ID));
+				return OptionalDouble.of(MarketMath.highAlchProfit(item.getHighAlch(), avg,
+						runePrice(NATURE_RUNE_ID), runePrice(FIRE_RUNE_ID)));
 			case DELTA_PCT:
 			{
-				long current = item.getAvgPrice();
-				if (current <= 0 || avg <= 0)
+				double pct = MarketMath.changePct(item.getAvgPrice(), avg);
+				if (Double.isNaN(pct))
 					return OptionalDouble.empty();
 
-				double pct = Math.round(((double) (current - avg) / avg) * 1000.0) / 10.0;
 				return Math.abs(pct) > MAX_DELTA_PCT ? OptionalDouble.empty() : OptionalDouble.of(pct);
 			}
 			default:
