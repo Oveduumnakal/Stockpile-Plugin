@@ -3682,7 +3682,6 @@ populated detail card and a loading placeholder.
 | `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
 | `private static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
 | `private static String` | `fullWindowLabel(TimeWindow w)` |  |
-| `private long` | `geTax(long avgPrice)` |  |
 | `public int` | `getBoundItemId()` |  |
 | `public Dimension` | `getPreferredScrollableViewportSize()` |  |
 | `public int` | `getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)` |  |
@@ -4628,12 +4627,6 @@ Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` dura
 `private static String fullWindowLabel(TimeWindow w)`
 
 - **Returns:** the long-form window name used by the pop-out overview grid.
-
-#### geTax
-
-`private long geTax(long avgPrice)`
-
-- **Returns:** the Grand Exchange sell tax on a unit at `avgPrice` (per the live GE tax rules).
 
 #### getBoundItemId
 
@@ -6117,6 +6110,9 @@ _class_
 `private static final class SlotState`
 
 Cumulative progress last seen for one GE slot, used to compute each event's increment.
+`itemId` identifies which offer that progress belongs to, so a slot reused for a
+different item without an intervening empty state restarts from a fresh baseline instead
+of subtracting the previous offer's counters.
 
 ### Field Summary
 

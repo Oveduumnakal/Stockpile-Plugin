@@ -14,7 +14,8 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link GeOfferTracker}: placement vs. incremental fills vs. cancellation,
  * a cancellation carrying a simultaneous final fill, under-offer buy pricing, the
- * login-replay baseline guard, and slot reset on empty.
+ * login-replay baseline guard, slot reset on empty, and the guard against a slot reused for a
+ * different item without an intervening empty state.
  */
 public class GeOfferTrackerTest
 {
@@ -143,6 +144,23 @@ public class GeOfferTrackerTest
 		GeOfferTracker.Event placed = only(sell(0, 50, 0, 0));
 		assertEquals(GeOfferTracker.Type.PLACED, placed.type);
 		assertEquals(50, placed.quantity);
+	}
+
+	@Test
+	public void slotReusedForAnotherItemWithoutEmptyStartsFromAFreshBaseline()
+	{
+		buy(0, 100, 60, 60 * 90L);
+		buy(0, 100, 100, 100 * 90L);
+
+		GeOfferTracker.Event placed = only(tracker.onOffer(0, 561, true, false, false, 20, 0, 0));
+		assertEquals(GeOfferTracker.Type.PLACED, placed.type);
+		assertEquals(561, placed.itemId);
+		assertEquals(20, placed.quantity);
+
+		GeOfferTracker.Event fill = only(tracker.onOffer(0, 561, true, false, false, 20, 5, 5 * 40L));
+		assertEquals(GeOfferTracker.Type.FILL, fill.type);
+		assertEquals(5, fill.quantity);
+		assertEquals(40, fill.unitPrice);
 	}
 
 	@Test

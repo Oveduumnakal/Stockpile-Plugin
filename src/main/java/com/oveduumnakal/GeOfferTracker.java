@@ -48,7 +48,12 @@ class GeOfferTracker
 		}
 	}
 
-	/** Cumulative progress last seen for one GE slot, used to compute each event's increment. */
+	/**
+	 * Cumulative progress last seen for one GE slot, used to compute each event's increment.
+	 * {@code itemId} identifies which offer that progress belongs to, so a slot reused for a
+	 * different item without an intervening empty state restarts from a fresh baseline instead
+	 * of subtracting the previous offer's counters.
+	 */
 	private static final class SlotState
 	{
 		int itemId;
@@ -80,6 +85,9 @@ class GeOfferTracker
 
 		Kind kind = buying ? Kind.BUY : Kind.SELL;
 		SlotState state = slots.get(slot);
+		if (state != null && state.itemId > 0 && itemId > 0 && state.itemId != itemId)
+			state = null;
+
 		if (state == null)
 		{
 			state = new SlotState();
