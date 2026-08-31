@@ -25,6 +25,7 @@ public class SortModeTest
 		t.setAvgPrice(avg);
 		t.setCostBasisInitialized(true);
 		t.setAcquisitions(Arrays.asList(lots));
+		t.refreshCosts();
 		return t;
 	}
 
@@ -103,12 +104,13 @@ public class SortModeTest
 	}
 
 	/**
-	 * {@code Comparator.comparingLong} re-invokes its extractor for both operands of every
-	 * comparison and does not memoize, so the key - which streams the whole acquisitions list twice -
-	 * used to run about {@code 2n log n} times per sort, on the EDT, on every panel rebuild.
+	 * {@code Comparator.comparingLong} re-invokes its extractor for both operands of every comparison
+	 * and does not memoize, so the key - which streams the whole acquisitions list twice - used to run
+	 * about {@code 2n log n} times per sort, on the EDT, on every panel rebuild (#322). It now comes
+	 * from the client-thread cost snapshot, so a sort streams the list zero times (#315).
 	 */
 	@Test
-	public void profitKeyIsComputedOncePerItemPerSort()
+	public void sortingNeverStreamsTheAcquisitionsList()
 	{
 		List<TrackedItem> items = new ArrayList<>();
 		for (int i = 0; i < 32; i++)
@@ -118,13 +120,15 @@ public class SortModeTest
 			item.setAvgPrice(200 + i);
 			item.setCostBasisInitialized(true);
 			item.setAcquisitions(Arrays.asList(new AcquisitionRecord(100, 100, null)));
+			item.refreshCosts();
+			item.profitCalls = 0;
 			items.add(item);
 		}
 
 		SortMode.PROFIT.sort(items, false);
 
 		for (TrackedItem item : items)
-			assertEquals(item.getName(), 1, ((CountingItem) item).profitCalls);
+			assertEquals(item.getName(), 0, ((CountingItem) item).profitCalls);
 	}
 
 	/** The materialized keys must not change the order the comparator produces. */

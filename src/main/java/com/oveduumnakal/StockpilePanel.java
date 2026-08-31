@@ -2358,11 +2358,11 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				totalLow  += item.getLowValue();
 				totalAvg  += item.getAvgValue();
 				totalSuspendedValue += item.getSuspendedValue();
-				long realized = item.getRealizedProfit();
+				long realized = item.getCosts().getRealizedProfit();
 				totalRealized += realized;
 				if (item.isCostBasisInitialized())
 				{
-					totalCostBasis += item.getCostBasis();
+					totalCostBasis += item.getCosts().getCostBasis();
 					anyProfitData = true;
 				}
 
@@ -4241,7 +4241,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		if (config.showItemProfitRow()
 				&& item.isCostBasisInitialized() && item.hasPrices())
 		{
-			long itemProfit = item.getProfitAt(item.getAvgPrice());
+			long itemProfit = item.getCosts().getProfitAtAvg();
 			String sign = itemProfit > 0 ? "+" : "";
 			ValueFormat fmt = config.geEstimatesFormat();
 

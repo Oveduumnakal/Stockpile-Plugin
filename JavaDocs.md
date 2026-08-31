@@ -119,6 +119,7 @@
 - [com.oveduumnakal.TimeWindow](#comoveduumnakaltimewindow)
 - [com.oveduumnakal.TrackItemMode](#comoveduumnakaltrackitemmode)
 - [com.oveduumnakal.TrackedItem](#comoveduumnakaltrackeditem)
+- [com.oveduumnakal.TrackedItem.CostSnapshot](#comoveduumnakaltrackeditemcostsnapshot)
 - [com.oveduumnakal.TrackedItem.SuspensionState](#comoveduumnakaltrackeditemsuspensionstate)
 - [com.oveduumnakal.TradeApportioner](#comoveduumnakaltradeapportioner)
 - [com.oveduumnakal.TradeApportioner.Leg](#comoveduumnakaltradeapportionerleg)
@@ -19318,6 +19319,7 @@ accessors derive figures from `quantity`, the current prices, and the
 
 | Type | Description |
 |---|---|
+| _class_ [`CostSnapshot`](#comoveduumnakaltrackeditemcostsnapshot) | Derived cost figures for one item, computed together on the client thread. |
 | _class_ [`SuspensionState`](#comoveduumnakaltrackeditemsuspensionstate) | Mutable per-source suspension counter and its (optional) recovery-expiry timestamp. |
 
 ### Field Summary
@@ -19331,6 +19333,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `private String` | `category` |  |
 | `private boolean` | `compact` |  |
 | `private boolean` | `costBasisInitialized` |  |
+| `private volatile CostSnapshot` | `costs` | Derived cost figures snapshotted on the client thread, for the panel to read on the EDT. |
 | `private boolean` | `favorite` |  |
 | `private long` | `geValue` |  |
 | `private boolean` | `hasDeltas` |  |
@@ -19390,6 +19393,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `public boolean` | `hasPrices()` |  |
 | `public int` | `iconStackSize()` |  |
 | `public int` | `reduceSuspended(SuspensionSource source, int qty)` | Restores up to `qty` units from `source`'s suspension, clearing the entry (and its timestamp) once it empties. |
+| `public void` | `refreshCosts()` | Recomputes `#costs` from the current lots at the current average price. |
 | `public void` | `restoreSuspended(SuspensionSource source, int qty, Instant at)` | Seeds `source`'s suspension to `qty` at timestamp `at` when restoring persisted (death/pouch) state on login, so the recovery-expiry clock resumes from where it was saved rather than restarting now. |
 | `public void` | `setSuspended(SuspensionSource source, int qty)` | Sets `source`'s suspended count outright, stamping per policy; drops the entry when 0. |
 | `private Map<SuspensionSource,SuspensionState>` | `suspensions()` |  |
@@ -19423,6 +19427,14 @@ accessors derive figures from `quantity`, the current prices, and the
 #### costBasisInitialized
 
 `private boolean costBasisInitialized`
+
+#### costs
+
+`private volatile CostSnapshot costs`
+
+Derived cost figures snapshotted on the client thread, for the panel to read on the EDT.
+Refreshed by `#refreshCosts()` on every panel refresh, which every mutation path already
+triggers.
 
 #### favorite
 
@@ -19712,6 +19724,13 @@ and 5m points for anything shorter.
 Restores up to `qty` units from `source`'s suspension, clearing the entry (and its
 timestamp) once it empties. Returns the number actually restored.
 
+#### refreshCosts
+
+`public void refreshCosts()`
+
+Recomputes `#costs` from the current lots at the current average price.
+Client thread only &mdash; it streams the live acquisitions list.
+
 #### restoreSuspended
 
 `public void restoreSuspended(SuspensionSource source, int qty, Instant at)`
@@ -19732,6 +19751,63 @@ Sets `source`'s suspended count outright, stamping per policy; drops the entry w
 
 - **Returns:** the suspension map, lazily created. Lazy because Gson deserializes a legacy record
         through `Unsafe` without running field initializers, leaving the field null.
+
+---
+
+## com.oveduumnakal.TrackedItem.CostSnapshot
+
+_class_
+
+`public static class CostSnapshot`
+
+Derived cost figures for one item, computed together on the client thread.
+
+<p>Each of these streams the acquisitions list, which the FIFO cost-basis engine mutates on
+the client thread. Reading them from the panel on the EDT could throw
+`ConcurrentModificationException` mid-rebuild, leaving the panel half-rendered, so the
+panel reads this snapshot instead (#315).
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `public static final CostSnapshot` | `EMPTY` | The zero snapshot an item starts with and an untracked preview keeps. |
+| `long` | `costBasis` | Total gp paid for the lots still held. |
+| `long` | `profitAtAvg` | Realized plus unrealized profit marked at the item's average price. |
+| `long` | `realizedProfit` | Profit already locked in from sold lots. |
+| `int` | `recordQuantitySum` | Total units across the lots still held. |
+
+### Field Detail
+
+#### EMPTY
+
+`public static final CostSnapshot EMPTY`
+
+The zero snapshot an item starts with and an untracked preview keeps.
+
+#### costBasis
+
+`long costBasis`
+
+Total gp paid for the lots still held.
+
+#### profitAtAvg
+
+`long profitAtAvg`
+
+Realized plus unrealized profit marked at the item's average price.
+
+#### realizedProfit
+
+`long realizedProfit`
+
+Profit already locked in from sold lots.
+
+#### recordQuantitySum
+
+`int recordQuantitySum`
+
+Total units across the lots still held.
 
 ---
 

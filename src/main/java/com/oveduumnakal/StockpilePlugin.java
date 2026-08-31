@@ -6042,7 +6042,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 				? config.priceChangeIndicator()
 				: PriceIndicatorMode.OFF;
 		for (TrackedItem item : trackedItems.values())
+		{
 			ledger.applyBuyLimitFields(item);
+			item.refreshCosts();
+		}
 
 		final List<TrackedItem> items = new ArrayList<>(trackedItems.values());
 

@@ -821,7 +821,7 @@ final class CompareView extends JPanel implements Scrollable
 		if (!entry.tracked)
 			return Cell.placeholder();
 
-		long profit = entry.item.getRealizedProfit();
+		long profit = entry.item.getCosts().getRealizedProfit();
 		Color color = profit > 0 ? StockpileColors.HIGH : (profit < 0 ? StockpileColors.LOW : Color.WHITE);
 		return new Cell(GpFormat.signedGrouped(profit), color, GpFormat.signedGrouped(profit) + " gp realized");
 	}

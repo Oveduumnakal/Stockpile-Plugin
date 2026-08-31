@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.Map;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import lombok.Value;
 
 /**
  * The full state of one item being tracked: its identity and quantity, the
@@ -251,6 +254,52 @@ public class TrackedItem
 	public boolean hasLivePrices()
 	{
 		return hasPrices() && !priceCacheHydrated;
+	}
+
+	/**
+	 * Derived cost figures for one item, computed together on the client thread.
+	 *
+	 * <p>Each of these streams the acquisitions list, which the FIFO cost-basis engine mutates on
+	 * the client thread. Reading them from the panel on the EDT could throw
+	 * {@code ConcurrentModificationException} mid-rebuild, leaving the panel half-rendered, so the
+	 * panel reads this snapshot instead (#315).
+	 */
+	@Value
+	public static class CostSnapshot
+	{
+		/** The zero snapshot an item starts with and an untracked preview keeps. */
+		public static final CostSnapshot EMPTY = new CostSnapshot(0, 0, 0, 0);
+
+		/** Total gp paid for the lots still held. */
+		long costBasis;
+
+		/** Profit already locked in from sold lots. */
+		long realizedProfit;
+
+		/** Total units across the lots still held. */
+		int recordQuantitySum;
+
+		/** Realized plus unrealized profit marked at the item's average price. */
+		long profitAtAvg;
+	}
+
+	/**
+	 * Derived cost figures snapshotted on the client thread, for the panel to read on the EDT.
+	 * Refreshed by {@link #refreshCosts()} on every panel refresh, which every mutation path already
+	 * triggers.
+	 */
+	@EqualsAndHashCode.Exclude
+	@ToString.Exclude
+	private volatile CostSnapshot costs = CostSnapshot.EMPTY;
+
+	/**
+	 * Recomputes {@link #costs} from the current lots at the current average price.
+	 * Client thread only &mdash; it streams the live acquisitions list.
+	 */
+	public void refreshCosts()
+	{
+		costs = new CostSnapshot(getCostBasis(), getRealizedProfit(), getRecordQuantitySum(),
+				getProfitAt(avgPrice));
 	}
 
 	/** @return total gp paid for the lots still held (unsold acquisitions). */

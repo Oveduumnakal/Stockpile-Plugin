@@ -3044,7 +3044,7 @@ public class DetailView extends JPanel implements Scrollable
 		long vol24 = windowVolume(item, TimeWindow.H24);
 		icvVolume.setText("Volume (24h): " + (vol24 > 0 ? GpFormat.grouped(vol24) : "—"));
 
-		int colQty = item.getRecordQuantitySum();
+		int colQty = item.getCosts().getRecordQuantitySum();
 		ccvSection.setVisible(showMarket && colQty > 0);
 		if (colQty > 0)
 		{
@@ -3055,7 +3055,7 @@ public class DetailView extends JPanel implements Scrollable
 			ccvLow.setText("Low: " + (hasPrices ? StockpilePanel.formatTotalGp(cLow, full) : "—"));
 			ccvAvg.setText("Average: " + (hasPrices ? StockpilePanel.formatTotalGp(cAvg, full) : "—"));
 			ccvQuantity.setText("Quantity: " + GpFormat.grouped(colQty));
-			long estProfit = cAvg - item.getCostBasis();
+			long estProfit = cAvg - item.getCosts().getCostBasis();
 			String sign = estProfit > 0 ? "+" : "";
 			ccvProfit.setText("Est. Profit: "
 					+ (hasPrices ? sign + StockpilePanel.formatTotalGp(estProfit, full) : "—"));
