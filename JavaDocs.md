@@ -29,12 +29,14 @@
 - [com.oveduumnakal.CompareWindow](#comoveduumnakalcomparewindow)
 - [com.oveduumnakal.CostBasisLedger](#comoveduumnakalcostbasisledger)
 - [com.oveduumnakal.DecantBasis](#comoveduumnakaldecantbasis)
+- [com.oveduumnakal.DeltaDetectors](#comoveduumnakaldeltadetectors)
 - [com.oveduumnakal.DestroyedOutputSources](#comoveduumnakaldestroyedoutputsources)
 - [com.oveduumnakal.DetailView](#comoveduumnakaldetailview)
 - [com.oveduumnakal.DetailView.Layout](#comoveduumnakaldetailviewlayout)
 - [com.oveduumnakal.DetailView.WeightedColumnsLayout](#comoveduumnakaldetailviewweightedcolumnslayout)
 - [com.oveduumnakal.DetailViewHost](#comoveduumnakaldetailviewhost)
 - [com.oveduumnakal.DetailWindow](#comoveduumnakaldetailwindow)
+- [com.oveduumnakal.DetectorHost](#comoveduumnakaldetectorhost)
 - [com.oveduumnakal.DoseFamily](#comoveduumnakaldosefamily)
 - [com.oveduumnakal.DoseFamily.Parsed](#comoveduumnakaldosefamilyparsed)
 - [com.oveduumnakal.EllipsisText](#comoveduumnakalellipsistext)
@@ -3470,6 +3472,217 @@ or loss. Client-free and unit-testable.
 
 ---
 
+## com.oveduumnakal.DeltaDetectors
+
+_class_
+
+`class DeltaDetectors`
+
+The per-tick source detectors that read a tick's net item deltas and attribute them (#334).
+
+<p>Extracted from `StockpilePlugin` in the shape `CostBasisLedger` and
+`SourceAttributionCore` already use: everything the client provides comes through
+`DetectorHost`, so the logic itself is pure and testable. It was previously the subtlest
+code in the project with no direct coverage at all, since reaching it needed a live client.
+
+<p>Order matters and is the caller's responsibility: processing, then the dose swap, then
+combine, then reward, then gather and thieving. Each later pass skips ids an earlier one has
+already queued or claimed, which is what gives the documented precedence
+(Processing &gt; Reward &gt; Gather/Thieving &gt; Unknown).
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final Set<Integer>` | `doseSwapClaimedIds` | Ids claimed by this tick's dose-swap pass, which the combine detector must not re-claim. |
+| `private final DetectorHost` | `host` |  |
+| `private final CostBasisLedger` | `ledger` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `DeltaDetectors(DetectorHost host, CostBasisLedger ledger)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `correlateCombine(Map<Integer,Integer> deltas)` | Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`, so the ingredients' cost basis carries onto the product instead of both sides falling to Unknown at market value (#231). |
+| `void` | `correlateDecant(Map<Integer,Integer> deltas)` | Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so cost basis follows the liquid across the item-id change rather than being realized as a sale. |
+| `private void` | `correlateDoseSwapFamily(List<int[]> members)` | Applies the dose-family basis transfer to one family's members (`{id, delta, doses`}): a dose-conserving swap (consumed doses equal produced doses) is a decant under `AcquisitionSource#DECANT`; a swap that loses doses while leaving some (a dose drunk) is a consume-down under `AcquisitionSource#CONSUMED`. |
+| `void` | `correlateGathering(Map<Integer,Integer> deltas)` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#GATHER` at 0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores, fish, logs, harvested herbs. |
+| `void` | `correlateProcessing(Map<Integer,Integer> deltas)` | Pairs this tick's consumed inputs with the produced output when a processing-skill XP gain identifies a recipe action (#69), transferring the summed input cost: tracked inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their fallback market value, and the total is carried onto the output's new lot(s) by `CostBasisLedger` so their basis sums exactly to it. |
+| `void` | `correlateReward(Map<Integer,Integer> deltas)` | Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0 when a reward-loot signal fired on the same tick (`DetectorHost#rewardContainerTick()`) — a reward/loot container change (`REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some loot" chat line — i.e. |
+| `void` | `correlateThieving(Map<Integer,Integer> deltas)` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at 0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall produce, chest hauls. |
+| `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
+
+### Field Detail
+
+#### doseSwapClaimedIds
+
+`private final Set<Integer> doseSwapClaimedIds`
+
+Ids claimed by this tick's dose-swap pass, which the combine detector must not re-claim.
+
+#### host
+
+`private final DetectorHost host`
+
+#### ledger
+
+`private final CostBasisLedger ledger`
+
+### Constructor Detail
+
+#### DeltaDetectors
+
+`DeltaDetectors(DetectorHost host, CostBasisLedger ledger)`
+
+### Method Detail
+
+#### correlateCombine
+
+`void correlateCombine(Map<Integer,Integer> deltas)`
+
+Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single
+tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`,
+so the ingredients' cost basis carries onto the product instead of both sides falling to
+Unknown at market value (#231). Handles the class of "mix"/combine recipes that grant no XP,
+such as combining a Sunlight moth with Raw pyre fox meat into a Sunlight moth mix.
+
+<p>Runs after `#correlateDecant(Map)` and reuses its
+`#pairProcessingRecipe(List, int, int, boolean)` basis transfer. The XP-gated `#correlateProcessing(Map)` already claims recipes that emit XP, and
+a destroyed output (`DetectorHost#isDestroyedProduct`) is claimed there before the XP gate, so both
+are excluded here. A dose swap (decant/consume-down) is also a no-XP single-output tick, so any
+id claimed by the dose-swap pass (`doseSwapClaimedIds`) is skipped, and a finished-potion
+tick — where the freed vessel is the only gain — is left to the empty-container byproduct path.
+The output must be tracked; an untracked product gives nothing to carry basis onto and would only
+risk mislabelling an unrelated inventory shuffle. Gated by the Source-Based Pricing toggle.
+
+#### correlateDecant
+
+`void correlateDecant(Map<Integer,Integer> deltas)`
+
+Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so
+cost basis follows the liquid across the item-id change rather than being realized as a sale.
+Groups the tick's non-coin deltas into dose families (`DoseFamily`) and hands each family
+to `#correlateDoseSwapFamily(List)`, which distinguishes two cases:
+<ul>
+  <li><b>Decant</b> (#220) — consumed doses equal produced doses: a pure swap, so the combined
+      input basis is distributed dose-weighted (`DecantBasis`) onto the produced ids under
+      `AcquisitionSource#DECANT`. Up, down, and mixed-basis inputs all merge.</li>
+  <li><b>Consume-down</b> (#218) — a dose is drunk (consumed doses exceed produced doses, but
+      some remain): the <em>full</em> input basis follows onto the lower-dose id under
+      `AcquisitionSource#CONSUMED`, since using a dose realizes no profit or loss.</li>
+</ul>
+Both queue the carried basis in `pendingDecantOutput` / `pendingConsumedOutput` so the
+matching gain opens the output lot carrying it; both close the consumed lots at their FIFO cost
+(no P/L). Untracked inputs contribute their fallback value; untracked outputs drop their share.
+Runs after `#correlateProcessing(Map)` — which a processing-XP tick handles instead — and before
+the source detectors, whose gains skip any id already queued in `pendingProcessingOutput`,
+`pendingDecantOutput`, or `pendingConsumedOutput`. Gated by the Source-Based Pricing toggle.
+
+#### correlateDoseSwapFamily
+
+`private void correlateDoseSwapFamily(List<int[]> members)`
+
+Applies the dose-family basis transfer to one family's members (`{id, delta, doses`}):
+a dose-conserving swap (consumed doses equal produced doses) is a <b>decant</b> under
+`AcquisitionSource#DECANT`; a swap that loses doses while leaving some (a dose drunk) is
+a <b>consume-down</b> under `AcquisitionSource#CONSUMED`. Anything else — no consumption,
+or every dose gone (a last dose drunk, left to the `CostBasisLedger#applyDelta` loss path) — is skipped.
+The consumed lots close at their FIFO cost and the summed basis is distributed onto the produced
+ids: dose-weighted for a decant, but in full for a consume-down since a used dose is not a loss.
+
+#### correlateGathering
+
+`void correlateGathering(Map<Integer,Integer> deltas)`
+
+Attributes this tick's unclaimed inventory gains to `AcquisitionSource#GATHER` at
+0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks
+them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores,
+fish, logs, harvested herbs. Runs after `#correlateProcessing(Map)` (so a paired recipe
+output, already queued in `pendingProcessingOutput`, is skipped and keeps its
+transferred basis) and before the quantity sync consumes the deltas. A gain with no
+gathering XP this tick stays unclaimed and takes the unknown-source path. Coins never
+participate. Gated by the Source-Based Pricing toggle.
+
+<p>Yields to `#correlateReward(Map)`: when a reward-loot signal
+(`DetectorHost#rewardContainerTick()`) fired this tick, the gains are reward loot, not gathered — some
+    reward interactions (e.g. the
+Tempoross reward pool) also grant gathering XP on the same tick, which would otherwise let a
+GATHER claim win the FIFO over the correct REWARD one (#215).
+
+#### correlateProcessing
+
+`void correlateProcessing(Map<Integer,Integer> deltas)`
+
+Pairs this tick's consumed inputs with the produced output when a processing-skill
+XP gain identifies a recipe action (#69), transferring the summed input cost: tracked
+inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their
+fallback market value, and the total is carried onto the output's new lot(s) by
+`CostBasisLedger` so their basis sums exactly to it. Multi-output ticks
+are unattributable and left to the fallback; tracked inputs with no tracked output
+close at 0. A worthless, non-tradeable output is a destroyed product and is handled
+without an XP signal — a burn or crush gives none — closing each tracked input as a
+realized loss at 0 (#144): a crushed gem tags the input `AcquisitionSource#CRUSHED`,
+any other destroyed product `AcquisitionSource#BURNED`. When the player tracks the
+destroyed byproduct itself, its gain is booked at 0-cost under that same source (#172).
+Coins never participate.
+
+<p>Runes removed on a Magic XP tick are the cast's fuel rather than one of its ingredients,
+so they are claimed as `AcquisitionSource#CAST` at 0 and never enter the input set (#235):
+a superheated bar carries the ore's basis alone, and a combat spell leaves no inputs to pair.
+A cast that yields no item at all is not a recipe either, so its remaining inputs are left
+unclaimed rather than booked as processing — an alched item is sold for coins, not processed,
+and belongs to the `AcquisitionSource#ALCHEMY` claim or the fallback path.
+
+#### correlateReward
+
+`void correlateReward(Map<Integer,Integer> deltas)`
+
+Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0
+when a reward-loot signal fired on the same tick (`DetectorHost#rewardContainerTick()`) — a reward/loot
+container change (`REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some
+loot" chat line — i.e. loot taken from a raids chest, clue casket, reward pool or similar (#215).
+Takes precedence over `#correlateGathering(Map)`, which yields when this signal is present so a
+coincident gathering-XP tick can't mislabel the loot. Runs before the quantity sync consumes the
+deltas; a paired recipe output already queued in `pendingProcessingOutput` is skipped and
+keeps its transferred basis. A gain with no reward signal this tick stays unclaimed and takes the
+unknown-source path. Coins never participate. Gated by the Source-Based Pricing toggle.
+
+#### correlateThieving
+
+`void correlateThieving(Map<Integer,Integer> deltas)`
+
+Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at
+0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall
+produce, chest hauls. An exact mirror of `#correlateGathering(Map)`: it runs after
+`#correlateReward(Map)` (so reward loot keeps its REWARD claim) and before the quantity sync
+consumes the deltas; a paired recipe output already queued in `pendingProcessingOutput`
+is skipped and keeps its transferred basis. A gain with no Thieving XP this tick stays
+unclaimed and takes the unknown-source path. Coins never participate. Gated by the
+Source-Based Pricing toggle.
+
+<p>Yields to `#correlateReward(Map)`: when a reward-loot signal
+(`DetectorHost#rewardContainerTick()`) fired this tick, the gains are reward loot, not stolen, so a
+    coincident Thieving-XP tick can't
+mislabel them (precedence: Processing &gt; Reward &gt; Gather/Thieving &gt; Unknown).
+
+#### pairProcessingRecipe
+
+`private void pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)`
+
+Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO
+open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching
+gain opens the produced lot carrying it. Untracked inputs contribute their fallback value.
+When the output is untracked there is nothing to carry the basis onto, so the inputs close at
+0 and no output is queued. Shared by the XP-gated `#correlateProcessing(Map)` path and the
+XP-less combine detector `#correlateCombine(Map)` (#231).
+
+---
+
 ## com.oveduumnakal.DestroyedOutputSources
 
 _class_
@@ -5461,6 +5674,127 @@ Transitions the window to show `tracked` after its preview was tracked from the 
 `void updateMarketInfoTimes()`
 
 Live-updates the Market Info last-bought / last-sold relative times.
+
+---
+
+## com.oveduumnakal.DetectorHost
+
+_interface_
+
+`interface DetectorHost`
+
+The client seam `DeltaDetectors` reads through, in the same shape as `LedgerHost`.
+
+<p>The detector suite is the subtlest logic in the plugin and had zero direct test coverage,
+because reaching it needed a live `Client` (#334). Everything the delta detectors actually
+need from the client is here — the tick counter, a few item predicates, and the tick each
+relevant signal last fired on — so the detectors themselves are pure and testable.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `int` | `currentTick()` |  |
+| `int` | `gatherXpTick()` |  |
+| `boolean` | `isAmmo(int itemId)` |  |
+| `boolean` | `isDestroyedProduct(int itemId)` |  |
+| `boolean` | `isSpellcastRune(int itemId)` |  |
+| `boolean` | `isTracked(int itemId)` |  |
+| `String` | `itemName(int itemId)` |  |
+| `int` | `magicXpTick()` |  |
+| `int` | `processingXpTick()` |  |
+| `int` | `rewardContainerTick()` |  |
+| `boolean` | `sourcePricing()` |  |
+| `int` | `thievingXpTick()` |  |
+| `TrackedItem` | `trackedItem(int itemId)` |  |
+| `long` | `untrackedInputValue(int itemId)` |  |
+
+### Method Detail
+
+#### currentTick
+
+`int currentTick()`
+
+- **Returns:** the current client tick, against which every detector's signal window is measured.
+
+#### gatherXpTick
+
+`int gatherXpTick()`
+
+- **Returns:** the tick a gathering skill last granted XP.
+
+#### isAmmo
+
+`boolean isAmmo(int itemId)`
+
+- **Returns:** whether `itemId` is ammunition, which a recipe never consumes as an input.
+
+#### isDestroyedProduct
+
+`boolean isDestroyedProduct(int itemId)`
+
+- **Returns:** whether `itemId` is a worthless destroyed processing product — untradeable, absent
+        from the GE mapping, and with no market value (burnt food, a crushed gem)
+
+#### isSpellcastRune
+
+`boolean isSpellcastRune(int itemId)`
+
+- **Returns:** whether `itemId` is a rune consumed by casting a spell rather than a processing input.
+
+#### isTracked
+
+`boolean isTracked(int itemId)`
+
+- **Returns:** whether `itemId` is in the tracked list.
+
+#### itemName
+
+`String itemName(int itemId)`
+
+- **Returns:** `itemId`'s display name, for dose-family parsing.
+
+#### magicXpTick
+
+`int magicXpTick()`
+
+- **Returns:** the tick Magic last granted XP, marking a cast rather than a recipe.
+
+#### processingXpTick
+
+`int processingXpTick()`
+
+- **Returns:** the tick a processing/crafting skill last granted XP.
+
+#### rewardContainerTick
+
+`int rewardContainerTick()`
+
+- **Returns:** the tick a reward/loot container or chat line last signalled loot.
+
+#### sourcePricing
+
+`boolean sourcePricing()`
+
+- **Returns:** whether Source-Based Pricing is on; every detector is a no-op when it is not.
+
+#### thievingXpTick
+
+`int thievingXpTick()`
+
+- **Returns:** the tick Thieving last granted XP.
+
+#### trackedItem
+
+`TrackedItem trackedItem(int itemId)`
+
+- **Returns:** the tracked item for `itemId`, or `null` when it is not tracked.
+
+#### untrackedInputValue
+
+`long untrackedInputValue(int itemId)`
+
+- **Returns:** an untracked processing input's per-unit value under the configured fallback pricing.
 
 ---
 
@@ -15589,7 +15923,7 @@ executor.
 | `private final MouseListener` | `contextMenuMouseListener` | Re-syncs `#contextKeyHeld` from the real modifier state carried on each mouse press, so the right-click gate can never stay latched after a missed key release &mdash; e.g. |
 | `private int` | `currentGeItem` | The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). |
 | `private final Map<Integer,DetailWindow>` | `detailWindows` | Open pop-out detail windows keyed by item id (#109). |
-| `private final Set<Integer>` | `doseSwapClaimedIds` | Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). |
+| `private DeltaDetectors` | `detectors` | The per-tick source detectors, extracted behind `DetectorHost` (#334). |
 | `private ScheduledExecutorService` | `executor` |  |
 | `private boolean` | `favoritesCollapsed` |  |
 | `private int` | `gatherXpTick` | The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). |
@@ -15700,19 +16034,12 @@ executor.
 | `private static String` | `colourGp(long value, String colour)` |  |
 | `private List<CompareView.Entry>` | `compareEntries()` | Snapshots the compare set into an ordered `CompareView.Entry` list, resolving each id to its live tracked item or its read-only preview. |
 | `private CompareHost` | `compareHost()` | Builds the `CompareHost` for the compare window, routing edits back onto the client thread. |
-| `private void` | `correlateCombine()` | Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`, so the ingredients' cost basis carries onto the product instead of both sides falling to Unknown at market value (#231). |
-| `private void` | `correlateDecant()` | Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so cost basis follows the liquid across the item-id change rather than being realized as a sale. |
-| `private void` | `correlateDoseSwapFamily(List<int[]> members)` | Applies the dose-family basis transfer to one family's members (`{id, delta, doses`}): a dose-conserving swap (consumed doses equal produced doses) is a decant under `AcquisitionSource#DECANT`; a swap that loses doses while leaving some (a dose drunk) is a consume-down under `AcquisitionSource#CONSUMED`. |
-| `private void` | `correlateGathering()` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#GATHER` at 0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores, fish, logs, harvested herbs. |
 | `private void` | `correlateGroundActivity()` | Correlates this tick's ground-item activity with the pending inventory deltas (#65): a spawn (or stack increase) on the player's tile matching a pending removal is our drop — its units queue for ground suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. |
 | `private void` | `correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)` | Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. |
 | `private boolean` | `correlateGroundTaken(TileItem item, int taken)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
-| `private void` | `correlateProcessing()` | Pairs this tick's consumed inputs with the produced output when a processing-skill XP gain identifies a recipe action (#69), transferring the summed input cost: tracked inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their fallback market value, and the total is carried onto the output's new lot(s) by `CostBasisLedger` so their basis sums exactly to it. |
-| `private void` | `correlateReward()` | Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0 when a reward-loot signal fired on the same tick (`#rewardContainerTick`) — a reward/loot container change (`#REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some loot" chat line — i.e. |
-| `private void` | `correlateThieving()` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at 0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall produce, chest hauls. |
 | `private void` | `createCategory(String name)` | Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes. |
 | `private int` | `currentGeOfferItem()` |  |
-| `public int` | `currentTick()` | Returns the current client game tick. |
+| `public int` | `currentTick()` | {@inheritDoc} |
 | `private void` | `deleteCategory(String name)` | Deletes a category, moving its items to Uncategorized, then persists and refreshes. |
 | `private void` | `deleteSavedComparison(String name)` | Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. |
 | `private void` | `detectVersionChange()` | Detects a new plugin version by comparing the changelog's current version to the last-seen version in config. |
@@ -15726,6 +16053,7 @@ executor.
 | `private Widget` | `findGeCloseButton()` | Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer container and searching its subtree for a visible widget with a "Close" action (#139). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
 | `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
+| `public int` | `gatherXpTick()` | {@inheritDoc} |
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
 | `Map<TileItem,Tile>` | `getTrackedGroundItems()` |  |
@@ -15740,10 +16068,10 @@ executor.
 | `private void` | `injectGeButton()` | Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container (#140). |
 | `private void` | `injectGeTrackButton()` | Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X) button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange" header font/weight) whose colour reflects the tracked state. |
 | `private String` | `injectPriceLines(String desc)` | Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines, always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is split off onto its own line, and any trailing convenience-fee line is kept. |
-| `private boolean` | `isAmmo(int itemId)` |  |
+| `public boolean` | `isAmmo(int itemId)` |  |
 | `public boolean` | `isConsumable(int itemId)` |  |
 | `public boolean` | `isDestroyedAmmo(int itemId)` |  |
-| `private boolean` | `isDestroyedProduct(int itemId)` |  |
+| `public boolean` | `isDestroyedProduct(int itemId)` |  |
 | `private boolean` | `isDosePotion(int itemId)` |  |
 | `public boolean` | `isEmptyContainer(int itemId)` | Returns whether the given item id is a known empty-container placeholder. |
 | `static boolean` | `isGameMessage(ChatMessageType type)` |  |
@@ -15751,11 +16079,12 @@ executor.
 | `private static boolean` | `isPouchTarget(String target)` |  |
 | `private boolean` | `isRealItem(int itemId)` |  |
 | `public boolean` | `isRecoverableAmmo(int itemId)` |  |
-| `private boolean` | `isSpellcastRune(int itemId)` |  |
-| `boolean` | `isTracked(int itemId)` |  |
+| `public boolean` | `isSpellcastRune(int itemId)` |  |
+| `public boolean` | `isTracked(int itemId)` |  |
 | `private static boolean` | `isTradeCurrency(int itemId)` |  |
 | `private boolean` | `isWhatsNew()` |  |
 | `private int` | `itemInGeContainer(int componentId)` |  |
+| `public String` | `itemName(int itemId)` | {@inheritDoc} |
 | `private List<TrackedItem>` | `itemsFor(int itemId)` |  |
 | `private List<WikiRealtimePriceClient.PricePoint>` | `knownSeries(int itemId, SeriesTimestep step)` |  |
 | `static long[]` | `latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)` | Scans a price series newest-first for the most recent priced average high and low, returned as `[high, low]` (each 0 when the series holds no priced sample) (#142). |
@@ -15765,6 +16094,7 @@ executor.
 | `private void` | `loadSavedComparison(String name)` | Replaces the current compare set with the saved comparison named `name` (#303): its canonical, de-duplicated ids up to `#COMPARE_CAP`, each given a read-only preview when untracked. |
 | `private void` | `loadSavedComparisons()` | Loads the persisted saved comparisons into memory at startup (#303). |
 | `private TrackedItem` | `lookupItem(int itemId)` |  |
+| `public int` | `magicXpTick()` | {@inheritDoc} |
 | `private void` | `markWhatsNewSeen()` | Persists that the user has seen the current release's "What's New", quieting the indicator. |
 | `private long` | `marketUnitValue(int itemId)` |  |
 | `private void` | `mergeImportedList(List<PortfolioShareCodec.Entry> entries, List<CategoryState> importedCategories)` | Applies a decoded tracked-list import on the client thread: categories first, then new items. |
@@ -15802,7 +16132,6 @@ executor.
 | `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
 | `private int` | `overlayItemCount()` |  |
-| `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
 | `private void` | `persistCategories()` | Serializes the category definitions and group collapsed state to per-profile config. |
 | `private void` | `persistPortfolioHistory()` | Persists the per-item portfolio history to per-profile config (#184). |
 | `private void` | `persistPortfolioHistorySync()` | Serializes the portfolio history synchronously (shutdown only), when the executor may not run queued tasks. |
@@ -15812,6 +16141,7 @@ executor.
 | `List<long[]>` | `portfolioHistoryPoints()` |  |
 | `private void` | `previewItem(int itemId)` | Opens a read-only detail preview for an untracked item without adding it to the tracked list or persisting anything. |
 | `private String` | `priceLines()` |  |
+| `public int` | `processingXpTick()` | {@inheritDoc} |
 | `private void` | `promptCategoryForTrackedItem(int itemId)` | After an item is explicitly tracked (#211), asks the panel to prompt for its category. |
 | `StockpileConfig` | `provideConfig(ConfigManager configManager)` |  |
 | `private void` | `pushSavedNames()` | Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open. |
@@ -15844,6 +16174,7 @@ executor.
 | `private void` | `resolveTradeabilityForAll()` | Applies wiki metadata (tradeability, buy limit, GE value, high/low alch) to every tracked item and the preview item now that the wiki mapping is available, then refreshes the panel. |
 | `private void` | `resolveTradeable(TrackedItem item)` | Narrows an item's tradeable flag using the wiki mapping: an item that the game composition reports as tradeable but which is absent from the Grand Exchange mapping (e.g. |
 | `private List<Integer>` | `resolveVariantIds(int itemId)` | Resolves the canonical ids of `itemId`'s variant family in natural order (dose `(1)`→ `(4)`, or raw→cooked→burnt), mapping the family's sibling names to ids through the cached wiki mapping (`#variantNameIndex()`), falling back to `ItemManager#search` when it is empty. |
+| `public int` | `rewardContainerTick()` | {@inheritDoc} |
 | `private long` | `runePrice(int itemId)` |  |
 | `private void` | `saveCurrentComparison(String name)` | Saves the current compare set under `name` (#303), overwriting any existing comparison of that name (case-insensitive), then persists and refreshes the window's Load menu. |
 | `private List<String>` | `savedComparisonNames()` |  |
@@ -15872,6 +16203,7 @@ executor.
 | `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: each item's quantity follows its containers, and - when `StockpileConfig#autoAddItems()` is on - positive deltas open new lots and negative deltas close lots FIFO. |
 | `private void` | `syncRunePouch()` | Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits. |
 | `private void` | `syncTrackedGroundItems()` | Re-derives `#trackedGroundItems` when the tracked set has changed, so an item already on the floor starts (or stops) being outlined the moment it is tracked or untracked. |
+| `public int` | `thievingXpTick()` | {@inheritDoc} |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
@@ -15884,7 +16216,7 @@ executor.
 | `private void` | `unregisterGeButtonSprite()` | Removes the Stockpile GE-button sprite override on shutdown (#140). |
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
 | `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
-| `private long` | `untrackedInputValue(int itemId)` |  |
+| `public long` | `untrackedInputValue(int itemId)` |  |
 | `private Map<String,Integer>` | `variantNameIndex()` | Builds a lowercased-name → item-id index from the cached wiki `#itemMappings` — the authoritative tradeable-item corpus (#302). |
 | `private void` | `viewInStockpile(int itemId)` | Opens `itemId`'s detailed view in the sidebar panel (a preview when untracked) and focuses the Stockpile panel &mdash; the "View in Stockpile" menu action (#285). |
 | `private DetailViewHost` | `windowHost(DetailWindow window)` | Builds the `DetailViewHost` for a pop-out window. |
@@ -16014,7 +16346,7 @@ Muted GE-title orange for the Track button's outline box (#139).
 Menu option and target substring for the Huntsman's loot sack, whose contents land in
 the inventory with no reward `ItemContainer` to observe. Live capture confirmed the
 loot arrives on the same tick as the "Open" click, so stamping `#rewardContainerTick`
-here lets `#correlateReward()` claim it within the existing window (#215). The Tempoross
+here lets `DeltaDetectors#correlateReward` claim it within the existing window (#215). The Tempoross
 reward pool and GOTR reward guardian remain deferred pending their own live capture.
 
 #### LOOT_SACK_TARGET
@@ -16123,7 +16455,7 @@ Chat-line prefix for the generic "loot to inventory" reward message ("You found 
 N x Item"). The Tempoross reward pool (Net/Big-search) drops loot straight into the inventory
 with no reward `ItemContainer` and its object-search click lands three ticks before the
 loot; live capture (#215) confirmed this SPAM line fires on the same tick as the inventory
-gains, so stamping `#rewardContainerTick` here lets `#correlateReward()` claim the
+gains, so stamping `#rewardContainerTick` here lets `DeltaDetectors#correlateReward` claim the
 whole multi-item drop within the existing window. Other activities that surface reward loot
 through the same message (e.g. the GOTR reward guardian) are covered by the same hook.
 
@@ -16282,11 +16614,11 @@ Open pop-out detail windows keyed by item id (#109). EDT-only: created, focused,
 disposed on the Swing thread. Its client-thread counterpart is `#windowItems`, which holds
 the bound instances so pricing/lookup can reach them without touching Swing state off the EDT.
 
-#### doseSwapClaimedIds
+#### detectors
 
-`private final Set<Integer> doseSwapClaimedIds`
+`private DeltaDetectors detectors`
 
-Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231).
+The per-tick source detectors, extracted behind `DetectorHost` (#334).
 
 #### executor
 
@@ -16967,78 +17299,6 @@ live tracked item or its read-only preview. Runs on the client thread.
 
 Builds the `CompareHost` for the compare window, routing edits back onto the client thread.
 
-#### correlateCombine
-
-`private void correlateCombine()`
-
-Pairs an XP-less combine — a tick that consumes one or more ingredients and produces a single
-tradeable output with no skill XP and no coin movement — as `AcquisitionSource#PROCESSING`,
-so the ingredients' cost basis carries onto the product instead of both sides falling to
-Unknown at market value (#231). Handles the class of "mix"/combine recipes that grant no XP,
-such as combining a Sunlight moth with Raw pyre fox meat into a Sunlight moth mix.
-
-<p>Runs after `#correlateDecant` and reuses its `#pairProcessingRecipe` basis
-transfer. The XP-gated `#correlateProcessing` already claims recipes that emit XP, and
-a destroyed output (`#isDestroyedProduct`) is claimed there before the XP gate, so both
-are excluded here. A dose swap (decant/consume-down) is also a no-XP single-output tick, so any
-id claimed by the dose-swap pass (`doseSwapClaimedIds`) is skipped, and a finished-potion
-tick — where the freed vessel is the only gain — is left to the empty-container byproduct path.
-The output must be tracked; an untracked product gives nothing to carry basis onto and would only
-risk mislabelling an unrelated inventory shuffle. Gated by the Source-Based Pricing toggle.
-
-#### correlateDecant
-
-`private void correlateDecant()`
-
-Pairs a dose family's consumed lots with the doses it produces on a single XP-less tick, so
-cost basis follows the liquid across the item-id change rather than being realized as a sale.
-Groups the tick's non-coin deltas into dose families (`DoseFamily`) and hands each family
-to `#correlateDoseSwapFamily`, which distinguishes two cases:
-<ul>
-  <li><b>Decant</b> (#220) — consumed doses equal produced doses: a pure swap, so the combined
-      input basis is distributed dose-weighted (`DecantBasis`) onto the produced ids under
-      `AcquisitionSource#DECANT`. Up, down, and mixed-basis inputs all merge.</li>
-  <li><b>Consume-down</b> (#218) — a dose is drunk (consumed doses exceed produced doses, but
-      some remain): the <em>full</em> input basis follows onto the lower-dose id under
-      `AcquisitionSource#CONSUMED`, since using a dose realizes no profit or loss.</li>
-</ul>
-Both queue the carried basis in `pendingDecantOutput` / `pendingConsumedOutput` so the
-matching gain opens the output lot carrying it; both close the consumed lots at their FIFO cost
-(no P/L). Untracked inputs contribute their fallback value; untracked outputs drop their share.
-Runs after `#correlateProcessing` — which a processing-XP tick handles instead — and before
-the source detectors, whose gains skip any id already queued in `pendingProcessingOutput`,
-`pendingDecantOutput`, or `pendingConsumedOutput`. Gated by the Source-Based Pricing toggle.
-
-#### correlateDoseSwapFamily
-
-`private void correlateDoseSwapFamily(List<int[]> members)`
-
-Applies the dose-family basis transfer to one family's members (`{id, delta, doses`}):
-a dose-conserving swap (consumed doses equal produced doses) is a <b>decant</b> under
-`AcquisitionSource#DECANT`; a swap that loses doses while leaving some (a dose drunk) is
-a <b>consume-down</b> under `AcquisitionSource#CONSUMED`. Anything else — no consumption,
-or every dose gone (a last dose drunk, left to the `CostBasisLedger#applyDelta` loss path) — is skipped.
-The consumed lots close at their FIFO cost and the summed basis is distributed onto the produced
-ids: dose-weighted for a decant, but in full for a consume-down since a used dose is not a loss.
-
-#### correlateGathering
-
-`private void correlateGathering()`
-
-Attributes this tick's unclaimed inventory gains to `AcquisitionSource#GATHER` at
-0 when a gathering-skill XP drop (Hunter, Mining, Fishing, Woodcutting, Farming) marks
-them as gathered from the world at no cost (#213) — Sunfire splinters, antlers, ores,
-fish, logs, harvested herbs. Runs after `#correlateProcessing` (so a paired recipe
-output, already queued in `pendingProcessingOutput`, is skipped and keeps its
-transferred basis) and before the quantity sync consumes the deltas. A gain with no
-gathering XP this tick stays unclaimed and takes the unknown-source path. Coins never
-participate. Gated by the Source-Based Pricing toggle.
-
-<p>Yields to `#correlateReward`: when a reward-loot signal (`#rewardContainerTick`)
-fired this tick, the gains are reward loot, not gathered — some reward interactions (e.g. the
-Tempoross reward pool) also grant gathering XP on the same tick, which would otherwise let a
-GATHER claim win the FIFO over the correct REWARD one (#215).
-
 #### correlateGroundActivity
 
 `private void correlateGroundActivity()`
@@ -17069,61 +17329,6 @@ addition is a re-pickup (the greedy un-suspend consumes it during the sync);
 with no matching addition its units close as lost at 0. An unfamiliar pile
 matching a pending addition is a loot pickup, claimed as `GROUND` at 0.
 
-#### correlateProcessing
-
-`private void correlateProcessing()`
-
-Pairs this tick's consumed inputs with the produced output when a processing-skill
-XP gain identifies a recipe action (#69), transferring the summed input cost: tracked
-inputs contribute (and close at) their FIFO open-lot cost, untracked inputs their
-fallback market value, and the total is carried onto the output's new lot(s) by
-`CostBasisLedger` so their basis sums exactly to it. Multi-output ticks
-are unattributable and left to the fallback; tracked inputs with no tracked output
-close at 0. A worthless, non-tradeable output is a destroyed product and is handled
-without an XP signal — a burn or crush gives none — closing each tracked input as a
-realized loss at 0 (#144): a crushed gem tags the input `AcquisitionSource#CRUSHED`,
-any other destroyed product `AcquisitionSource#BURNED`. When the player tracks the
-destroyed byproduct itself, its gain is booked at 0-cost under that same source (#172).
-Coins never participate.
-
-<p>Runes removed on a Magic XP tick are the cast's fuel rather than one of its ingredients,
-so they are claimed as `AcquisitionSource#CAST` at 0 and never enter the input set (#235):
-a superheated bar carries the ore's basis alone, and a combat spell leaves no inputs to pair.
-A cast that yields no item at all is not a recipe either, so its remaining inputs are left
-unclaimed rather than booked as processing — an alched item is sold for coins, not processed,
-and belongs to the `AcquisitionSource#ALCHEMY` claim or the fallback path.
-
-#### correlateReward
-
-`private void correlateReward()`
-
-Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0
-when a reward-loot signal fired on the same tick (`#rewardContainerTick`) — a reward/loot
-container change (`#REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some
-loot" chat line — i.e. loot taken from a raids chest, clue casket, reward pool or similar (#215).
-Takes precedence over `#correlateGathering`, which yields when this signal is present so a
-coincident gathering-XP tick can't mislabel the loot. Runs before the quantity sync consumes the
-deltas; a paired recipe output already queued in `pendingProcessingOutput` is skipped and
-keeps its transferred basis. A gain with no reward signal this tick stays unclaimed and takes the
-unknown-source path. Coins never participate. Gated by the Source-Based Pricing toggle.
-
-#### correlateThieving
-
-`private void correlateThieving()`
-
-Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at
-0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall
-produce, chest hauls. An exact mirror of `#correlateGathering`: it runs after
-`#correlateReward` (so reward loot keeps its REWARD claim) and before the quantity sync
-consumes the deltas; a paired recipe output already queued in `pendingProcessingOutput`
-is skipped and keeps its transferred basis. A gain with no Thieving XP this tick stays
-unclaimed and takes the unknown-source path. Coins never participate. Gated by the
-Source-Based Pricing toggle.
-
-<p>Yields to `#correlateReward`: when a reward-loot signal (`#rewardContainerTick`)
-fired this tick, the gains are reward loot, not stolen, so a coincident Thieving-XP tick can't
-mislabel them (precedence: Processing &gt; Reward &gt; Gather/Thieving &gt; Unknown).
-
 #### createCategory
 
 `private void createCategory(String name)`
@@ -17140,9 +17345,7 @@ Creates a new category (ignoring blanks and case-insensitive duplicates), then p
 
 `public int currentTick()`
 
-Returns the current client game tick.
-
-- **Returns:** the tick count
+{@inheritDoc}
 
 #### deleteCategory
 
@@ -17242,6 +17445,12 @@ establishes the baseline, since a login must produce no pouch delta.
 `private void focusCompareWindow()`
 
 Brings the compare window to the front if one is open. Runs on the EDT.
+
+#### gatherXpTick
+
+`public int gatherXpTick()`
+
+{@inheritDoc}
 
 #### getItemIdFromMenuEntry
 
@@ -17369,12 +17578,13 @@ alone (#142).
 
 #### isAmmo
 
-`private boolean isAmmo(int itemId)`
+`public boolean isAmmo(int itemId)`
 
 - **Returns:** whether `itemId` is ammo of either kind — destroyed-on-use or recoverable (#234). Ammo
         is fuel for a shot, never a recipe input, so it must never be booked as a processing loss;
-        `#correlateProcessing` uses this to keep darts loaded into a blowpipe (a charged variant
-        reads as a destroyed product) off the `AcquisitionSource#BURNED` path. Client thread only.
+        `DeltaDetectors#correlateProcessing` uses this to keep darts loaded into a blowpipe
+        (a charged variant reads as a destroyed product) off the `AcquisitionSource#BURNED`
+        path. Client thread only.
 
 #### isConsumable
 
@@ -17396,7 +17606,7 @@ alone (#142).
 
 #### isDestroyedProduct
 
-`private boolean isDestroyedProduct(int itemId)`
+`public boolean isDestroyedProduct(int itemId)`
 
 - **Returns:** whether `itemId` is a worthless destroyed processing product — a
 non-tradeable item (absent from the GE mapping) with no market value, such as burnt
@@ -17464,7 +17674,7 @@ the literal string "null"; those must not open a preview.
 
 #### isSpellcastRune
 
-`private boolean isSpellcastRune(int itemId)`
+`public boolean isSpellcastRune(int itemId)`
 
 - **Returns:** whether `itemId` is a rune being burned by a spellcast this tick (#235) — a rune
         by `ItemCategoryClassifier` category, removed within a tick of a Magic XP gain.
@@ -17475,7 +17685,7 @@ the literal string "null"; those must not open a preview.
 
 #### isTracked
 
-`boolean isTracked(int itemId)`
+`public boolean isTracked(int itemId)`
 
 - **Returns:** whether the given (canonical) item id is currently tracked.
 
@@ -17497,6 +17707,12 @@ the literal string "null"; those must not open a preview.
 `private int itemInGeContainer(int componentId)`
 
 - **Returns:** the first item id found in the given GE container's subtree, or -1 when hidden/absent.
+
+#### itemName
+
+`public String itemName(int itemId)`
+
+{@inheritDoc}
 
 #### itemsFor
 
@@ -17566,6 +17782,12 @@ Loads the persisted saved comparisons into memory at startup (#303). Client thre
 
 - **Returns:** the tracked item for `itemId`, or the transient preview item when it
         matches; otherwise `null`
+
+#### magicXpTick
+
+`public int magicXpTick()`
+
+{@inheritDoc}
 
 #### markWhatsNewSeen
 
@@ -17880,17 +18102,6 @@ pre-existing (manually ordered) ones, then keeps "Other" at the very end.
 
 - **Returns:** how many tracked items are currently flagged for the on-screen overlay.
 
-#### pairProcessingRecipe
-
-`private void pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)`
-
-Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO
-open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching
-gain opens the produced lot carrying it. Untracked inputs contribute their fallback value.
-When the output is untracked there is nothing to carry the basis onto, so the inputs close at
-0 and no output is queued. Shared by the XP-gated `#correlateProcessing` path and the
-XP-less combine detector `#correlateCombine` (#231).
-
 #### persistCategories
 
 `private void persistCategories()`
@@ -17957,6 +18168,12 @@ background. Runs on the client thread.
 
 - **Returns:** one market row — High and Low together — coloured per side and prefixed with the
         resolved source (`5m`/`1h`/`Latest`) (#142).
+
+#### processingXpTick
+
+`public int processingXpTick()`
+
+{@inheritDoc}
 
 #### promptCategoryForTrackedItem
 
@@ -18249,6 +18466,12 @@ mapping (`#variantNameIndex()`), falling back to `ItemManager#search` when it is
 Siblings with no Grand Exchange data are dropped (`#hasMarketData`) so the Compare set never
 gains a column that can never fill. Always includes the clicked item, even when it has no family.
 
+#### rewardContainerTick
+
+`public int rewardContainerTick()`
+
+{@inheritDoc}
+
 #### runePrice
 
 `private long runePrice(int itemId)`
@@ -18464,6 +18687,12 @@ despawns maintain the map incrementally; only a tracked-set change needs the swe
 key-set hash makes detecting that cost one pass over the tracked items rather than the floor.
 Runs once per game tick on the client thread.
 
+#### thievingXpTick
+
+`public int thievingXpTick()`
+
+{@inheritDoc}
+
 #### toggleCompactView
 
 `private void toggleCompactView()`
@@ -18552,7 +18781,7 @@ window to a fresh preview instead of the sidebar.
 
 #### untrackedInputValue
 
-`private long untrackedInputValue(int itemId)`
+`public long untrackedInputValue(int itemId)`
 
 - **Returns:** an untracked processing input's per-unit value under the configured fallback pricing.
 
