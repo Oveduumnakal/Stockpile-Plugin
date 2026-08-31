@@ -5,6 +5,10 @@
 package com.oveduumnakal;
 
 import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -39,10 +43,31 @@ public enum SortMode
 	}
 
 	/**
+	 * Sorts {@code items} in place for display, or leaves the list untouched for {@link #MANUAL}.
+	 *
+	 * <p>The expensive keys are materialized once per item before the sort rather than recomputed
+	 * inside the comparator. {@code Comparator.comparingLong} re-invokes its extractor for
+	 * <em>both operands of every comparison</em> and does not memoize, so {@link #PROFIT} — whose
+	 * key streams the item's whole acquisitions list twice — cost roughly {@code 2n log n} full
+	 * passes over every lot, on the EDT, on every panel rebuild (#322). Materializing first makes
+	 * that {@code n}.
+	 *
+	 * @param reversed whether to flip this mode's natural direction
+	 */
+	void sort(List<TrackedItem> items, boolean reversed)
+	{
+		if (this == MANUAL)
+			return;
+
+		items.sort(comparator(items, reversed));
+	}
+
+	/**
+	 * @param items the exact list about to be sorted, used to materialize the per-item keys
 	 * @param reversed whether to flip this mode's natural direction
 	 * @return the display comparator, or {@code null} for {@link #MANUAL}
 	 */
-	Comparator<TrackedItem> comparator(boolean reversed)
+	Comparator<TrackedItem> comparator(List<TrackedItem> items, boolean reversed)
 	{
 		boolean descending = descending(reversed);
 		switch (this)
@@ -54,14 +79,34 @@ public enum SortMode
 				return directed(Comparator.comparingLong(TrackedItem::getAvgValue),
 						item -> item.getAvgValue() > 0, descending);
 			case PROFIT:
-				return directed(Comparator.comparingLong(SortMode::profitKey),
+			{
+				Map<TrackedItem, Long> keys = materialize(items, SortMode::profitKey);
+				return directed(Comparator.comparingLong(item -> keys.get(item)),
 						TrackedItem::isCostBasisInitialized, descending);
+			}
 			case CHANGE_24H:
-				return directed(Comparator.comparingDouble(SortMode::changeKey),
+			{
+				Map<TrackedItem, Double> keys = materialize(items, SortMode::changeKey);
+				return directed(Comparator.comparingDouble(item -> keys.get(item)),
 						SortMode::hasChange, descending);
+			}
 			default:
 				return null;
 		}
+	}
+
+	/**
+	 * @return each item's sort key, computed exactly once. Keyed by identity rather than item id so
+	 *         two instances of the same id (preview, pop-out, Compare) cannot collide.
+	 */
+	private static <T> Map<TrackedItem, T> materialize(List<TrackedItem> items,
+			Function<TrackedItem, T> key)
+	{
+		Map<TrackedItem, T> keys = new IdentityHashMap<>(items.size());
+		for (TrackedItem item : items)
+			keys.put(item, key.apply(item));
+
+		return keys;
 	}
 
 	/** @return whether this mode's effective direction is descending once {@code reversed} is applied. */
@@ -78,7 +123,7 @@ public enum SortMode
 			Predicate<TrackedItem> hasKey, boolean descending)
 	{
 		Comparator<TrackedItem> ordered = descending ? key.reversed() : key;
-		return Comparator.comparing((TrackedItem item) -> !hasKey.test(item)).thenComparing(ordered);
+		return Comparator.comparingInt((TrackedItem item) -> hasKey.test(item) ? 0 : 1).thenComparing(ordered);
 	}
 
 	/**
