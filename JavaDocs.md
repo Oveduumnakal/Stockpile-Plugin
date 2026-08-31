@@ -12369,6 +12369,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final int` | `CL_INDENT_STEP` | Pixels of left indent added per nesting level in the changelog body. |
 | `private static final String` | `CL_SECTION_STYLE` |  |
 | `private static final String` | `CL_TEXT_STYLE` |  |
+| `private static final int[]` | `COIN_SPRITE_STEPS` | The stack sizes at which the coin sprite changes; every value in between shares a sprite. |
 | `private static final Color` | `COLOR_AVG` |  |
 | `private static final Color` | `COLOR_HIGH` |  |
 | `private static final Color` | `COLOR_HIGH_STALE` |  |
@@ -12591,6 +12592,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `clearAcquisitions(int itemId)` | {@inheritDoc} Delegates to the panel's clear-acquisitions callback when present. |
 | `public void` | `clearSessionBaseline()` | Drops the session baseline without re-priming (used on profile change): the next rebuild captures the new profile's holdings as the baseline. |
 | `private void` | `closePopouts()` | Disposes all open pop-out windows owned by the panel (portfolio, What's New). |
+| `static int` | `coinSpriteQuantity(long value)` |  |
 | `private void` | `commitDrag()` | Commits the in-progress drag: places the dragged item at its new slot within its own group and rewrites the full tracked order accordingly (kept within-group, since groups render in global order). |
 | `private static Icon` | `compactMenuIcon(Color color)` | Draws two stacked bars (per-item compact) tinted `color`. |
 | `static Icon` | `compareIcon(Color color)` | Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted `color`. |
@@ -12697,7 +12699,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `trackFirstSearchResult()` | Tracks the first search hit (Enter in the search field), then clears the field and popup (#279). |
 | `public TrackedItem` | `trackedItem(int itemId)` | {@inheritDoc} Reads from the panel's current tracked-item map. |
 | `public void` | `untrackToPreview(int itemId)` | {@inheritDoc} Delegates to the panel's untrack-to-preview callback. |
-| `private void` | `updateCoinsIcon(long value)` | Updates the totals coin icon to the stack sprite for the given gp value, loading it asynchronously and caching per quantity. |
+| `private void` | `updateCoinsIcon(long value)` | Updates the totals coin icon to the stack sprite for the given gp value, loading it asynchronously and caching per sprite. |
 | `private void` | `updateCompactToggle()` | Highlights the header compact toggle when compact view is active. |
 | `private void` | `updateCompactTotals(int itemCount, long totalAvg, long profit, boolean hasPrices, boolean showProfit, ValueFormat fmt)` | Populates the compact totals: item count plus a `total avg value (profit)` line, where the total avg uses the configured value format and the profit is always short format. |
 | `private void` | `updateDrag(MouseEvent e)` | Recomputes the drop target and autoscroll state for the current drag pointer, then repaints. |
@@ -12752,6 +12754,12 @@ Pixels of left indent added per nesting level in the changelog body.
 #### CL_TEXT_STYLE
 
 `private static final String CL_TEXT_STYLE`
+
+#### COIN_SPRITE_STEPS
+
+`private static final int[] COIN_SPRITE_STEPS`
+
+The stack sizes at which the coin sprite changes; every value in between shares a sprite.
 
 #### COLOR_AVG
 
@@ -13891,6 +13899,12 @@ rebuild captures the new profile's holdings as the baseline.
 
 Disposes all open pop-out windows owned by the panel (portfolio, What's New).
 
+#### coinSpriteQuantity
+
+`static int coinSpriteQuantity(long value)`
+
+- **Returns:** the largest `#COIN_SPRITE_STEPS` entry at or below `value`, so equal sprites share a key.
+
 #### commitDrag
 
 `private void commitDrag()`
@@ -14605,8 +14619,13 @@ Tracks the first search hit (Enter in the search field), then clears the field a
 `private void updateCoinsIcon(long value)`
 
 Updates the totals coin icon to the stack sprite for the given gp value, loading it
-asynchronously and caching per quantity. A stale async load is discarded if the value
-has moved on by the time the image arrives.
+asynchronously and caching per sprite. A stale async load is discarded if the value has moved
+on by the time the image arrives.
+
+<p>The cache used to be keyed by the raw total, which moves on essentially every price refresh -
+a new `ImageIcon` roughly once a minute, forever (#323). The coin sprite only changes at
+the `#COIN_SPRITE_STEPS` thresholds, which is all `ItemManager` distinguishes here,
+so bucketing to those caps the cache at ten entries.
 
 #### updateCompactToggle
 
@@ -18207,6 +18226,7 @@ Hidden entirely when the overlay is disabled or no items are selected.
 | `private static final int` | `GAP` |  |
 | `private static final Color` | `HIGH_COLOR` |  |
 | `private static final int` | `ICON` |  |
+| `private static final int` | `ICON_CACHE_MAX` | Ceiling on the icon cache, so a long session cannot grow it without bound. |
 | `private static final Color` | `LABEL_COLOR` |  |
 | `private static final Color` | `LOW_COLOR` |  |
 | `private static final Color` | `MUTED_COLOR` |  |
@@ -18217,7 +18237,8 @@ Hidden entirely when the overlay is disabled or no items are selected.
 | `private static final int` | `SEG_GAP` |  |
 | `private static final Color` | `VOLUME_COLOR` |  |
 | `private final StockpileConfig` | `config` |  |
-| `private final Map<Long,BufferedImage>` | `iconCache` | Cached 18px scaled icons keyed by item id + rendered stack size, populated asynchronously on first use. |
+| `private final Map<Integer,BufferedImage>` | `iconCache` | Cached 18px scaled icons keyed by item id alone, populated asynchronously on first use. |
+| `private final Set<Integer>` | `iconRequests` | Item ids with an image request already in flight, so a miss issues one load rather than one per frame. |
 | `private final ItemManager` | `itemManager` |  |
 | `private final StockpilePlugin` | `plugin` |  |
 | `private final int` | `slot` | Which overlay slot (0-based) this box renders — the item at that index in the overlay set. |
@@ -18270,6 +18291,12 @@ Dark brown border matching RuneLite's tan overlay background (rather than a star
 
 `private static final int ICON`
 
+#### ICON_CACHE_MAX
+
+`private static final int ICON_CACHE_MAX`
+
+Ceiling on the icon cache, so a long session cannot grow it without bound.
+
 #### LABEL_COLOR
 
 `private static final Color LABEL_COLOR`
@@ -18314,9 +18341,20 @@ Drawn in place of a figure for a window whose history has not loaded yet (#333).
 
 #### iconCache
 
-`private final Map<Long,BufferedImage> iconCache`
+`private final Map<Integer,BufferedImage> iconCache`
 
-Cached 18px scaled icons keyed by item id + rendered stack size, populated asynchronously on first use.
+Cached 18px scaled icons keyed by item id alone, populated asynchronously on first use.
+
+<p>The key used to fold in `TrackedItem#iconStackSize()`, which is the quantity for a
+stackable item - so coins or runes minted a fresh 18x18 ARGB entry for every distinct amount
+ever held, none of them ever evicted (#323). The count is drawn as text beside the name
+anyway, so the sprite does not need to carry it.
+
+#### iconRequests
+
+`private final Set<Integer> iconRequests`
+
+Item ids with an image request already in flight, so a miss issues one load rather than one per frame.
 
 #### itemManager
 
@@ -18368,7 +18406,13 @@ Draws a line of coloured segments left-to-right, returning the total width drawn
 
 `private BufferedImage iconFor(TrackedItem item)`
 
-- **Returns:** an 18px cached quantity-aware icon for the item, requesting an async load on the first miss.
+- **Returns:** an 18px cached icon for the item, requesting an async load on the first miss.
+
+<p>This runs once per frame from `render()`. While the key was quantity-aware, every
+frame at an unseen quantity issued another `ItemManager` request, registered another
+`onLoaded` callback, and returned `null` - so the icon visibly dropped out each
+time the amount changed, and both this cache and RuneLite's shared image cache grew (#323).
+A request in flight is now recorded, so a miss costs one load rather than one per frame.
 
 #### maxLineWidth
 
