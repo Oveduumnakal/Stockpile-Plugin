@@ -44,6 +44,8 @@
 - [com.oveduumnakal.EstimatesPosition](#comoveduumnakalestimatesposition)
 - [com.oveduumnakal.EstimatesSpacing](#comoveduumnakalestimatesspacing)
 - [com.oveduumnakal.FallbackPricing](#comoveduumnakalfallbackpricing)
+- [com.oveduumnakal.GeIntegration](#comoveduumnakalgeintegration)
+- [com.oveduumnakal.GeIntegrationHost](#comoveduumnakalgeintegrationhost)
 - [com.oveduumnakal.GeIntegrationMode](#comoveduumnakalgeintegrationmode)
 - [com.oveduumnakal.GeOfferTracker](#comoveduumnakalgeoffertracker)
 - [com.oveduumnakal.GeOfferTracker.Event](#comoveduumnakalgeoffertrackerevent)
@@ -6262,6 +6264,494 @@ one item: `#HIGH` → `high`, `#LOW` → `low`, `#ZERO` → `0`,
 Returns the display label shown in the UI.
 
 - **Returns:** the display label
+
+---
+
+## com.oveduumnakal.GeIntegration
+
+_class_
+
+`class GeIntegration`
+
+The Grand Exchange offer-screen integration (#334): the injected "View in Stockpile" button
+(#140), the Track/Untrack button in the title bar (#139), and the rewritten market price line in
+the offer's info block (#142), plus the widget scans that locate where each goes.
+
+<p>Extracted from `StockpilePlugin`, where it was ~400 self-contained lines of widget work
+mixed in with everything else. It owns the injected widgets' whole lifecycle, which is what made
+#324 possible to reason about: the widgets are created once per interface load and reused across
+item changes rather than hidden and re-injected, since a hidden widget stays a child of its
+container. The handful of plugin actions it needs come through `GeIntegrationHost`.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private static final Pattern` | `GE_ACTIVE_PRICE_LINE` | The native "Actively traded price" segment of the GE info block, rewritten every tick (#288). |
+| `private static final int` | `GE_DESC_HEIGHT` | Height the info block is grown to once the market line replaces the native one (#142). |
+| `private static final int` | `GE_ICON_SIZE` | Rendered size of the injected Stockpile button, in pixels. |
+| `private static final int` | `GE_TITLE_ORANGE` | The GE window title bar's orange, matched so the Track button reads as part of the interface. |
+| `private static final int` | `GE_TRACK_BORDER` | Muted GE-title orange for the Track button's outline box (#139). |
+| `private static final int` | `STOCKPILE_GE_SPRITE_ID` | Sprite id the bundled Stockpile icon is registered under for the injected button (#140). |
+| `private final Client` | `client` |  |
+| `private final StockpileConfig` | `config` |  |
+| `private int` | `currentGeItem` | The item on the open offer screen, or -1 when none is shown. |
+| `private Widget` | `geButton` | The injected "View in Stockpile" graphic, or null when none is on the interface. |
+| `private long` | `geLineHigh` | The cached market line's high price. |
+| `private int` | `geLineItem` | The item the cached market line belongs to, or -1 when nothing is cached. |
+| `private long` | `geLineLow` | The cached market line's low price. |
+| `private String` | `geLineSource` | The cached market line's source label (5m / 1h / Latest), or null when unresolved. |
+| `private Widget` | `geTrackButton` | The injected Track/Untrack button's border box, or null when none is on the interface. |
+| `private Widget` | `geTrackLabel` | The injected Track/Untrack button's text, or null when none is on the interface. |
+| `private final GeIntegrationHost` | `host` |  |
+| `private final ItemManager` | `itemManager` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `GeIntegration(Client client, ItemManager itemManager, StockpileConfig config, GeIntegrationHost host)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
+| `void` | `applyGeTrackLabel()` | Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state. |
+| `private static String` | `colourGp(long value, String colour)` |  |
+| `int` | `currentGeOfferItem()` |  |
+| `Widget` | `findGeCloseButton()` | Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer container and searching its subtree for a visible widget with a "Close" action (#139). |
+| `void` | `hideGeButton()` | Hides and forgets the injected GE button, if one is currently on the offer interface. |
+| `void` | `hideGeTrackButton()` | Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). |
+| `void` | `injectGeButton()` | Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container (#140). |
+| `void` | `injectGeTrackButton()` | Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X) button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange" header font/weight) whose colour reflects the tracked state. |
+| `String` | `injectPriceLines(String desc)` | Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines, always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is split off onto its own line, and any trailing convenience-fee line is kept. |
+| `boolean` | `isRealItem(int itemId)` |  |
+| `int` | `itemInGeContainer(int componentId)` |  |
+| `static long[]` | `latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)` | Scans a price series newest-first for the most recent priced average high and low, returned as `[high, low]` (each 0 when the series holds no priced sample) (#142). |
+| `void` | `onGameTick()` | Per-tick GE work: resolves the item on the open offer screen and, per `StockpileConfig#geIntegration()`, auto-opens it in Stockpile or keeps the injected button and Track/Untrack button in place, refreshing the market price line. |
+| `void` | `onInterfaceClosed()` | Clears all GE state when the offer interface closes. |
+| `void` | `onInterfaceLoaded()` | Forgets the injected widgets when the offer interface is (re)built; they die with it. |
+| `void` | `openGeItemInStockpile(int itemId)` | Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. |
+| `String` | `priceLines()` |  |
+| `void` | `registerGeButtonSprite(BufferedImage icon)` | Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the injected GE button (#140). |
+| `void` | `requestGeLinePrices(int itemId)` | Resolves the open GE offer item's market prices in the background and caches them for the info-block line, overwriting it in place once they arrive (#142). |
+| `Widget` | `scanForCloseAction(Widget widget)` | Recursively searches a widget subtree for the first visible widget carrying a "Close" action. |
+| `int` | `scanForItem(Widget widget)` | Recursively searches a widget subtree for the first child holding a real item id. |
+| `void` | `setGeWidgetsVisible(boolean visible)` | Shows or hides the injected GE widgets without destroying them, for when the interface is on a screen with no item (the offer list). |
+| `void` | `shutDown()` | Drops the injected widgets and the sprite override at plugin shutdown. |
+| `void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
+| `void` | `unregisterGeButtonSprite()` | Removes the Stockpile GE-button sprite override on shutdown (#140). |
+
+### Field Detail
+
+#### GE_ACTIVE_PRICE_LINE
+
+`private static final Pattern GE_ACTIVE_PRICE_LINE`
+
+The native "Actively traded price" segment of the GE info block, rewritten every tick (#288).
+
+#### GE_DESC_HEIGHT
+
+`private static final int GE_DESC_HEIGHT`
+
+Height the info block is grown to once the market line replaces the native one (#142).
+
+#### GE_ICON_SIZE
+
+`private static final int GE_ICON_SIZE`
+
+Rendered size of the injected Stockpile button, in pixels.
+
+#### GE_TITLE_ORANGE
+
+`private static final int GE_TITLE_ORANGE`
+
+The GE window title bar's orange, matched so the Track button reads as part of the interface.
+
+#### GE_TRACK_BORDER
+
+`private static final int GE_TRACK_BORDER`
+
+Muted GE-title orange for the Track button's outline box (#139).
+
+#### STOCKPILE_GE_SPRITE_ID
+
+`private static final int STOCKPILE_GE_SPRITE_ID`
+
+Sprite id the bundled Stockpile icon is registered under for the injected button (#140).
+
+#### client
+
+`private final Client client`
+
+#### config
+
+`private final StockpileConfig config`
+
+#### currentGeItem
+
+`private int currentGeItem`
+
+The item on the open offer screen, or -1 when none is shown.
+
+#### geButton
+
+`private Widget geButton`
+
+The injected "View in Stockpile" graphic, or null when none is on the interface.
+
+#### geLineHigh
+
+`private long geLineHigh`
+
+The cached market line's high price.
+
+#### geLineItem
+
+`private int geLineItem`
+
+The item the cached market line belongs to, or -1 when nothing is cached.
+
+#### geLineLow
+
+`private long geLineLow`
+
+The cached market line's low price.
+
+#### geLineSource
+
+`private String geLineSource`
+
+The cached market line's source label (5m / 1h / Latest), or null when unresolved.
+
+#### geTrackButton
+
+`private Widget geTrackButton`
+
+The injected Track/Untrack button's border box, or null when none is on the interface.
+
+#### geTrackLabel
+
+`private Widget geTrackLabel`
+
+The injected Track/Untrack button's text, or null when none is on the interface.
+
+#### host
+
+`private final GeIntegrationHost host`
+
+#### itemManager
+
+`private final ItemManager itemManager`
+
+### Constructor Detail
+
+#### GeIntegration
+
+`GeIntegration(Client client, ItemManager itemManager, StockpileConfig config, GeIntegrationHost host)`
+
+### Method Detail
+
+#### applyGeHighLowLine
+
+`void applyGeHighLowLine()`
+
+Swaps the "Actively traded price" text inside the open GE offer's info block (the single
+`SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low
+and Avg together — in place, so the line count never changes and nothing else moves (#142).
+Re-applied each tick so the game's own redraw does not win; idempotent because once the native
+text is gone the rewrite is skipped. No-op until the shown item's data has been fetched and priced.
+
+#### applyGeTrackLabel
+
+`void applyGeTrackLabel()`
+
+Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state.
+
+#### colourGp
+
+`private static String colourGp(long value, String colour)`
+
+- **Returns:** a full grouped `"1,234 gp"` in the given colour, or a muted dash when unpriced (#142).
+
+#### currentGeOfferItem
+
+`int currentGeOfferItem()`
+
+- **Returns:** the item shown on the visible GE offer setup/details screen, or -1 when none is open.
+
+#### findGeCloseButton
+
+`Widget findGeCloseButton()`
+
+Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer
+container and searching its subtree for a visible widget with a "Close" action (#139). Confined
+to the GE window's toplevel so it doesn't match some other interface's close button.
+
+#### hideGeButton
+
+`void hideGeButton()`
+
+Hides and forgets the injected GE button, if one is currently on the offer interface.
+
+<p>Only called when the feature is switched off or the interface goes away, not on an item
+change - a hidden widget stays a child of its container, so calling this per item change is
+what accumulated orphans (#324).
+
+#### hideGeTrackButton
+
+`void hideGeTrackButton()`
+
+Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139).
+
+#### injectGeButton
+
+`void injectGeButton()`
+
+Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container
+(#140). The icon-only graphic sits where the old text link did; the "View in Stockpile" text now
+lives on the hover action/tooltip. Clicking opens the offer's item in Stockpile's detail view;
+hover brightens the icon to full opacity.
+
+#### injectGeTrackButton
+
+`void injectGeTrackButton()`
+
+Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X)
+button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange"
+header font/weight) whose colour reflects the tracked state. The close button is located at
+runtime so the button sits in the same section and row as the X, not in the offer content.
+The text box is inset 3px inside the border so the label clears the outline.
+
+#### injectPriceLines
+
+`String injectPriceLines(String desc)`
+
+Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines,
+always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is
+split off onto its own line, and any trailing convenience-fee line is kept. Returns the text
+unchanged when there is no native segment to replace, leaving an already-rewritten block
+alone (#142).
+
+- **Parameter** `desc` — the current info-block text (may be null)
+- **Returns:** the rewritten text, or the original when nothing was replaced
+
+#### isRealItem
+
+`boolean isRealItem(int itemId)`
+
+- **Returns:** whether `itemId` resolves to a real, defined item. Empty widget
+slots are backed by placeholder items (e.g. id 6512) whose composition name is
+the literal string "null"; those must not open a preview.
+
+#### itemInGeContainer
+
+`int itemInGeContainer(int componentId)`
+
+- **Returns:** the first item id found in the given GE container's subtree, or -1 when hidden/absent.
+
+#### latestSeriesHighLow
+
+`static long[] latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)`
+
+Scans a price series newest-first for the most recent priced average high and low,
+returned as `[high, low]` (each 0 when the series holds no priced sample) (#142).
+
+- **Parameter** `series` — the price points, oldest first (may be null or empty)
+- **Returns:** a two-element array of the latest non-zero high and low
+
+#### onGameTick
+
+`void onGameTick()`
+
+Per-tick GE work: resolves the item on the open offer screen and, per
+`StockpileConfig#geIntegration()`, auto-opens it in Stockpile or keeps the injected
+button and Track/Untrack button in place, refreshing the market price line.
+
+<p>The injected widgets are reused across item changes rather than torn down and rebuilt.
+They used to be hidden and re-injected on every change, and hiding a widget leaves it a child
+of the container - so browsing N items left up to 3N orphaned children on a live interface,
+each still walked by the client's widget tree (#324). Neither widget depends on the item: the
+Stockpile button's sprite is fixed and its handler reads the current item at click time, and
+the Track/Untrack button only needs its label refreshed, which `#applyGeTrackLabel()`
+does in place. Not re-injecting also drops `#injectGeTrackButton()`'s full recursive scan
+of the GE toplevel from every item change to once per interface load.
+
+#### onInterfaceClosed
+
+`void onInterfaceClosed()`
+
+Clears all GE state when the offer interface closes.
+
+#### onInterfaceLoaded
+
+`void onInterfaceLoaded()`
+
+Forgets the injected widgets when the offer interface is (re)built; they die with it.
+
+#### openGeItemInStockpile
+
+`void openGeItemInStockpile(int itemId)`
+
+Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured.
+
+#### priceLines
+
+`String priceLines()`
+
+- **Returns:** one market row — High and Low together — coloured per side and prefixed with the
+        resolved source (`5m`/`1h`/`Latest`) (#142).
+
+#### registerGeButtonSprite
+
+`void registerGeButtonSprite(BufferedImage icon)`
+
+Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the
+injected GE button (#140). Scaled to `#GE_ICON_SIZE` for a crisp render at button size.
+A no-op when sprite overrides are unavailable (e.g. before the client is ready).
+
+#### requestGeLinePrices
+
+`void requestGeLinePrices(int itemId)`
+
+Resolves the open GE offer item's market prices in the background and caches them for the
+info-block line, overwriting it in place once they arrive (#142). Falls back down a chain:
+the latest priced 5m sample, then the latest priced 1h sample, then the item's latest instant
+high/low; whichever lands first sets the row-label prefix (5m / 1h / Latest).
+
+#### scanForCloseAction
+
+`Widget scanForCloseAction(Widget widget)`
+
+Recursively searches a widget subtree for the first visible widget carrying a "Close" action.
+
+#### scanForItem
+
+`int scanForItem(Widget widget)`
+
+Recursively searches a widget subtree for the first child holding a real item id.
+
+#### setGeWidgetsVisible
+
+`void setGeWidgetsVisible(boolean visible)`
+
+Shows or hides the injected GE widgets without destroying them, for when the interface is on a
+screen with no item (the offer list). Reusing them this way is what keeps a browsing session
+from stacking orphaned children on the container (#324).
+
+#### shutDown
+
+`void shutDown()`
+
+Drops the injected widgets and the sprite override at plugin shutdown.
+
+#### toggleGeTracking
+
+`void toggleGeTracking()`
+
+Toggles tracking of the open GE offer's item (#139). The add/remove is deferred to the client
+thread, so the label refresh is enqueued after it — otherwise it would read the pre-toggle state
+and only correct itself on the next mouse-leave.
+
+#### unregisterGeButtonSprite
+
+`void unregisterGeButtonSprite()`
+
+Removes the Stockpile GE-button sprite override on shutdown (#140).
+
+---
+
+## com.oveduumnakal.GeIntegrationHost
+
+_interface_
+
+`interface GeIntegrationHost`
+
+The plugin seam `GeIntegration` calls back through (#334).
+
+<p>The Grand Exchange widget work is self-contained apart from a handful of plugin actions — open
+or preview an item, track or untrack it, read an item's latest prices, and fetch a wiki series in
+the background. Naming them here keeps the widget code free of the plugin's own state.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `List<WikiRealtimePriceClient.PricePoint>` | `fetchSeries(int canonicalId, String timestep)` | Fetches one wiki timeseries; called on the background executor, never the client thread. |
+| `void` | `focusPanel()` | Brings the Stockpile side panel to the front. |
+| `boolean` | `isTracked(int canonicalId)` |  |
+| `long[]` | `latestPrices(int canonicalId)` |  |
+| `void` | `openTrackedDetail(int canonicalId)` | Opens the tracked item's detail view in the side panel. |
+| `void` | `previewItem(int canonicalId)` | Opens an untracked item as the panel's view-only preview. |
+| `void` | `runInBackground(Runnable task)` | Runs `task` on the background executor. |
+| `void` | `runOnClientThread(Runnable task)` | Runs `task` on the client thread. |
+| `void` | `trackItem(int canonicalId)` | Adds `canonicalId` to the tracked list in the default mode. |
+| `void` | `untrackItem(int canonicalId)` | Removes `canonicalId` from the tracked list. |
+
+### Method Detail
+
+#### fetchSeries
+
+`List<WikiRealtimePriceClient.PricePoint> fetchSeries(int canonicalId, String timestep)`
+
+Fetches one wiki timeseries; called on the background executor, never the client thread.
+
+#### focusPanel
+
+`void focusPanel()`
+
+Brings the Stockpile side panel to the front.
+
+#### isTracked
+
+`boolean isTracked(int canonicalId)`
+
+- **Returns:** whether `canonicalId` is in the tracked list.
+
+#### latestPrices
+
+`long[] latestPrices(int canonicalId)`
+
+- **Parameter** `canonicalId` — the item to look up
+- **Returns:** the item's latest instant `[high, low]` prices, or `null` when no live
+        instance of it is held
+
+#### openTrackedDetail
+
+`void openTrackedDetail(int canonicalId)`
+
+Opens the tracked item's detail view in the side panel.
+
+#### previewItem
+
+`void previewItem(int canonicalId)`
+
+Opens an untracked item as the panel's view-only preview.
+
+#### runInBackground
+
+`void runInBackground(Runnable task)`
+
+Runs `task` on the background executor.
+
+#### runOnClientThread
+
+`void runOnClientThread(Runnable task)`
+
+Runs `task` on the client thread.
+
+#### trackItem
+
+`void trackItem(int canonicalId)`
+
+Adds `canonicalId` to the tracked list in the default mode.
+
+#### untrackItem
+
+`void untrackItem(int canonicalId)`
+
+Removes `canonicalId` from the tracked list.
 
 ---
 
@@ -15868,12 +16358,7 @@ executor.
 | `private static final String` | `EMPTY_CONTAINERS_MESSAGE` |  |
 | `private static final int` | `FIRE_RUNE_ID` |  |
 | `private static final Set<Skill>` | `GATHERING_SKILLS` | Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213). |
-| `private static final Pattern` | `GE_ACTIVE_PRICE_LINE` | The native "Actively traded price" segment of the GE info block, rewritten every tick (#288). |
-| `private static final int` | `GE_DESC_HEIGHT` | Height the GE info-block text widget is grown to so its fourth row is not self-clipped (#142). |
-| `private static final int` | `GE_ICON_SIZE` | Rendered size, in pixels, of the Stockpile icon on the GE button (#140). |
 | `private static final int` | `GE_LOGIN_SYNC_TICKS` | Ticks after login during which `GrandExchangeOfferChanged` events are treated as the login offer sync (pre-existing offers) rather than user actions. |
-| `private static final int` | `GE_TITLE_ORANGE` | The GE offer title/heading orange used for the Track button text, same for both states (#139). |
-| `private static final int` | `GE_TRACK_BORDER` | Muted GE-title orange for the Track button's outline box (#139). |
 | `private static final float` | `GLOW_MAX_ALPHA` |  |
 | `private static final float` | `GLOW_MIN_ALPHA` |  |
 | `private static final long` | `GLOW_PERIOD_FAST_MS` |  |
@@ -15902,7 +16387,6 @@ executor.
 | `private static final int[]` | `RUNE_POUCH_TYPE_VARBITS` |  |
 | `private static final ImmutableSet<Integer>` | `RUNE_POUCH_VARBITS` |  |
 | `private static final Set<String>` | `SECTION_SLOT_KEYS` |  |
-| `private static final int` | `STOCKPILE_GE_SPRITE_ID` | Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140). |
 | `private static final ImmutableSet<Integer>` | `TRACKED_CONTAINERS` |  |
 | `private static final int` | `TRADE_OTHER_CONTAINER` | The partner-side trade container: the offer container id with the "other player" bit set. |
 | `private static final Duration` | `WHATS_NEW_WINDOW` | How long after first launching a new release the "What's New" indicator stays highlighted. |
@@ -15921,20 +16405,13 @@ executor.
 | `private volatile boolean` | `contextKeyHeld` | True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). |
 | `private final KeyListener` | `contextMenuKeyListener` | Tracks the Context Menu Key so `#onMenuOpened` can offer the section; (un)registered in start/shutdown. |
 | `private final MouseListener` | `contextMenuMouseListener` | Re-syncs `#contextKeyHeld` from the real modifier state carried on each mouse press, so the right-click gate can never stay latched after a missed key release &mdash; e.g. |
-| `private int` | `currentGeItem` | The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration). |
 | `private final Map<Integer,DetailWindow>` | `detailWindows` | Open pop-out detail windows keyed by item id (#109). |
 | `private DeltaDetectors` | `detectors` | The per-tick source detectors, extracted behind `DetectorHost` (#334). |
 | `private ScheduledExecutorService` | `executor` |  |
 | `private boolean` | `favoritesCollapsed` |  |
 | `private int` | `gatherXpTick` | The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). |
-| `private Widget` | `geButton` | The native-style button injected onto the GE offer screen in Button mode, or null. |
-| `private long` | `geLineHigh` | High and low market prices for `#geLineItem` from the resolved source; 0 when unavailable (#142). |
-| `private int` | `geLineItem` | The raw GE item id the cached 5m high/low belong to, or -1 when unfetched or stale (#142). |
-| `private long` | `geLineLow` |  |
-| `private String` | `geLineSource` | Which source `#geLineHigh`/`#geLineLow` came from, as a row-label prefix (5m/1h/Latest) (#142). |
+| `private GeIntegration` | `geIntegration` | The Grand Exchange offer-screen integration, extracted behind `GeIntegrationHost` (#334). |
 | `private int` | `geLoginTick` |  |
-| `private Widget` | `geTrackButton` | The Track/Untrack button's beige chrome (a BUTTON_BROWN graphic) beside GE History, or null (#139). |
-| `private Widget` | `geTrackLabel` | The dark text label riding on `#geTrackButton`; carries the Track/Untrack text (#139). |
 | `private final Map<TileItem,Tile>` | `groundItems` |  |
 | `private StockpileGroundOverlay` | `groundOverlay` |  |
 | `private Gson` | `gson` |  |
@@ -16003,9 +16480,7 @@ executor.
 | `private List<TrackedItem>` | `allLiveItems()` |  |
 | `private void` | `applyAutoCategorize(boolean includeCategorized)` | Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. |
 | `private void` | `applyCompareIds(List<Integer> itemIds)` | Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, capped at `#COMPARE_CAP`, each untracked id given a read-only preview; then refreshes prices and the window. |
-| `private void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
 | `private void` | `applyGePrices(Map<Integer,WikiRealtimePriceClient.ItemPrices> all)` | Applies freshly fetched prices to every tracked item: records per-side deltas against the previous values, updates the LIVE window stats, seeds a cost basis on first successful price if one wasn't set, then re-evaluates notifications and refreshes the panel (including the open detail view). |
-| `private void` | `applyGeTrackLabel()` | Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state. |
 | `private String` | `applyImportedList(String token)` | Decodes and merges a share code on the client thread. |
 | `private void` | `applyItemMetadata(TrackedItem tracked)` | Copies cached GE metadata (buy limit, value, alch values) onto an item, if available. |
 | `private void` | `applyLivePrices(TrackedItem item, WikiRealtimePriceClient.ItemPrices prices)` | Applies a freshly fetched price set to an item: records per-side deltas, updates current prices, and refreshes its LIVE window stats. |
@@ -16031,14 +16506,12 @@ executor.
 | `private void` | `closeCompareWindow()` | Disposes the compare window (its close listener clears the set). |
 | `private void` | `closeDetailWindowFor(int itemId)` | Closes any open pop-out window for `itemId` (e.g. |
 | `private void` | `closeGivenItems(Map<Integer,Integer> side, long gp)` | Closes given items as sells at the apportioned per-unit price, realizing them against the trade suspension taken when they were offered. |
-| `private static String` | `colourGp(long value, String colour)` |  |
 | `private List<CompareView.Entry>` | `compareEntries()` | Snapshots the compare set into an ordered `CompareView.Entry` list, resolving each id to its live tracked item or its read-only preview. |
 | `private CompareHost` | `compareHost()` | Builds the `CompareHost` for the compare window, routing edits back onto the client thread. |
 | `private void` | `correlateGroundActivity()` | Correlates this tick's ground-item activity with the pending inventory deltas (#65): a spawn (or stack increase) on the player's tile matching a pending removal is our drop — its units queue for ground suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. |
 | `private void` | `correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)` | Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. |
 | `private boolean` | `correlateGroundTaken(TileItem item, int taken)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
 | `private void` | `createCategory(String name)` | Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes. |
-| `private int` | `currentGeOfferItem()` |  |
 | `public int` | `currentTick()` | {@inheritDoc} |
 | `private void` | `deleteCategory(String name)` | Deletes a category, moving its items to Uncategorized, then persists and refreshes. |
 | `private void` | `deleteSavedComparison(String name)` | Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. |
@@ -16050,24 +16523,19 @@ executor.
 | `private String` | `examineFor(int itemId)` |  |
 | `public FallbackPricing` | `fallbackPricing()` | Returns the configured fallback-pricing policy for unknown-source changes. |
 | `private void` | `fetchItemMappings()` | Fetches GE item metadata in the background, keeping the previous map on failure. |
-| `private Widget` | `findGeCloseButton()` | Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer container and searching its subtree for a visible widget with a "Close" action (#139). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
 | `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
 | `public int` | `gatherXpTick()` | {@inheritDoc} |
+| `private GeIntegrationHost` | `geHost()` |  |
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
 | `Map<TileItem,Tile>` | `getTrackedGroundItems()` |  |
 | `private boolean` | `hasMarketData(int itemId)` |  |
-| `private void` | `hideGeButton()` | Hides and forgets the injected GE button, if one is currently on the offer interface. |
-| `private void` | `hideGeTrackButton()` | Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). |
 | `private void` | `hydratePriceCache()` | Hydrates tracked items from the persisted price cache so the panel shows last-known values (dimmed by the existing staleness treatment once their trade times age past the threshold) instead of placeholders. |
 | `private void` | `importComparison(List<Integer> itemIds)` | Replaces the current compare set with the items from an imported shared code (#303): its canonical, de-duplicated ids up to `#COMPARE_CAP`. |
 | `void` | `importTrackedList(String token, Consumer<String> onResult)` | Merges a shared tracked-list code into the current profile: adds items that aren't already tracked (with their mode, category, and favorite flag) plus any missing categories they reference. |
 | `private boolean` | `inAutoCategorizeScope(TrackedItem item, boolean includeCategorized)` |  |
 | `private int` | `indexOfComparison(String name)` |  |
-| `private void` | `injectGeButton()` | Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container (#140). |
-| `private void` | `injectGeTrackButton()` | Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X) button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange" header font/weight) whose colour reflects the tracked state. |
-| `private String` | `injectPriceLines(String desc)` | Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines, always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is split off onto its own line, and any trailing convenience-fee line is kept. |
 | `public boolean` | `isAmmo(int itemId)` |  |
 | `public boolean` | `isConsumable(int itemId)` |  |
 | `public boolean` | `isDestroyedAmmo(int itemId)` |  |
@@ -16077,17 +16545,14 @@ executor.
 | `static boolean` | `isGameMessage(ChatMessageType type)` |  |
 | `static boolean` | `isPouchDepositMessage(String message)` |  |
 | `private static boolean` | `isPouchTarget(String target)` |  |
-| `private boolean` | `isRealItem(int itemId)` |  |
 | `public boolean` | `isRecoverableAmmo(int itemId)` |  |
 | `public boolean` | `isSpellcastRune(int itemId)` |  |
 | `public boolean` | `isTracked(int itemId)` |  |
 | `private static boolean` | `isTradeCurrency(int itemId)` |  |
 | `private boolean` | `isWhatsNew()` |  |
-| `private int` | `itemInGeContainer(int componentId)` |  |
 | `public String` | `itemName(int itemId)` | {@inheritDoc} |
 | `private List<TrackedItem>` | `itemsFor(int itemId)` |  |
 | `private List<WikiRealtimePriceClient.PricePoint>` | `knownSeries(int itemId, SeriesTimestep step)` |  |
-| `static long[]` | `latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)` | Scans a price series newest-first for the most recent priced average high and low, returned as `[high, low]` (each 0 when the series holds no priced sample) (#142). |
 | `private void` | `loadCategories()` | Restores the category definitions and group collapsed state from per-profile JSON. |
 | `private void` | `loadPersistedItems()` | Restores tracked items from the per-profile JSON written by `#persistTrackedItems()`. |
 | `private void` | `loadPortfolioHistory()` | Restores the per-item portfolio history from per-profile config, ignoring a corrupt value. |
@@ -16110,7 +16575,7 @@ executor.
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
 | `private void` | `onDetailWindowClosed(DetailWindow window)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
 | `public void` | `onGameStateChanged(GameStateChanged event)` | Resets transient and per-login state on game-state transitions: clears ground items on each load, and on login wipes the count caches and reloads the persisted tracked items. |
-| `public void` | `onGameTick(GameTick event)` | Grand Exchange integration: each tick, detects the item on the open offer setup/details screen and, per `StockpileConfig#geIntegration()`, either auto-opens it in Stockpile or injects a "View in Stockpile" button. |
+| `public void` | `onGameTick(GameTick event)` | Per-game-tick work: expires suspensions, closes vanished grave losses, re-derives the tracked ground subset, and hands the Grand Exchange offer screen to `GeIntegration`. |
 | `public void` | `onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)` | Consumes GE offer progress to price trades and track the buy limit. |
 | `public void` | `onItemContainerChanged(ItemContainerChanged event)` | Tracks per-container item counts as inventory/bank/etc. |
 | `public void` | `onItemDespawned(ItemDespawned event)` | Forgets a ground item once it despawns, buffering it for #65's pickup/lost-drop correlation. |
@@ -16127,7 +16592,6 @@ executor.
 | `private void` | `openCompareWindow()` | Opens the compare window from the main-view toolbar button (or focuses the open one), showing the empty "add items to compare" prompt when the set is empty rather than staying closed. |
 | `private void` | `openDashboardWindow()` | Opens the item-less Stockpile dashboard window (#109), or focuses the existing one. |
 | `private void` | `openDetailWindow(TrackedItem item, boolean preview)` | Creates and registers a pop-out window for `item`, or focuses an existing one. |
-| `private void` | `openGeItemInStockpile(int itemId)` | Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured. |
 | `public GrandExchangeOffer[]` | `openGeOffers()` | Returns the player's current Grand Exchange offers. |
 | `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
@@ -16140,7 +16604,6 @@ executor.
 | `private void` | `popOutDetail(int itemId)` | Pops `itemId` out into its own standalone detail window (#109), or focuses the existing one. |
 | `List<long[]>` | `portfolioHistoryPoints()` |  |
 | `private void` | `previewItem(int itemId)` | Opens a read-only detail preview for an untracked item without adding it to the tracked list or persisting anything. |
-| `private String` | `priceLines()` |  |
 | `public int` | `processingXpTick()` | {@inheritDoc} |
 | `private void` | `promptCategoryForTrackedItem(int itemId)` | After an item is explicitly tracked (#211), asks the panel to prompt for its category. |
 | `StockpileConfig` | `provideConfig(ConfigManager configManager)` |  |
@@ -16158,7 +16621,6 @@ executor.
 | `private void` | `refreshGePricesGuarded()` | Runs one scheduled price refresh, swallowing anything it throws. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
 | `private void` | `refreshPanel(boolean pricesUpdated)` | Pushes the current tracked items and totals to the panel on the Swing thread. |
-| `private void` | `registerGeButtonSprite(BufferedImage icon)` | Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the injected GE button (#140). |
 | `private void` | `registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)` | Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved: the coins paid or received, divided across the quantity, price the item's `AcquisitionSource#SHOP` claim. |
 | `private void` | `registerTradeClaims()` | Books a completed trade's item movements as `AcquisitionSource#PLAYER_TRADE` (#66): items received buy in at the gp we gave apportioned across them by market value, and items given close at the gp we received apportioned the same way. |
 | `private void` | `releaseSeriesFetch(int itemId, SeriesTimestep step)` | Un-marks a claimed fetch that came back empty, so the next refresh retries rather than waiting out the TTL. |
@@ -16168,7 +16630,6 @@ executor.
 | `private void` | `reorderCategory(String name, int targetIndex)` | Moves a category to a new position in the ordered list, then persists and refreshes. |
 | `private void` | `reorderTrackedItem(int itemId, int targetIndex)` | Moves a tracked item to a new position in the list, persisting the new order so it survives restarts. |
 | `private void` | `requestDetailData(int itemId)` | Fetches all four history series (5m/1h/6h/24h) plus metadata for the detail view in the background, then updates stats, alch rune prices, and the detail panel on the appropriate threads. |
-| `private void` | `requestGeLinePrices(int itemId)` | Resolves the open GE offer item's market prices in the background and caches them for the info-block line, overwriting it in place once they arrive (#142). |
 | `private void` | `requestSeries(int itemId, boolean refreshAfter)` | Fetches just the 5m series for an item in the background and recomputes its window stats. |
 | `private long` | `resolveAlchValue(TrackedItem tracked, int canonicalId, boolean high)` | Resolves an item's alch value with a client-cache fallback (#238): prefers the cached wiki value on the tracked item, and when that has not loaded yet reads the item composition — `net.runelite.api.ItemComposition#getHaPrice()` for high alch, and the store value's 40% for low alch — so the `AcquisitionSource#ALCHEMY` claim is always registered regardless of whether the wiki mapping or the item's price series has been fetched this session. |
 | `private void` | `resolveTradeabilityForAll()` | Applies wiki metadata (tradeability, buy limit, GE value, high/low alch) to every tracked item and the preview item now that the wiki mapping is available, then refreshes the panel. |
@@ -16178,14 +16639,11 @@ executor.
 | `private long` | `runePrice(int itemId)` |  |
 | `private void` | `saveCurrentComparison(String name)` | Saves the current compare set under `name` (#303), overwriting any existing comparison of that name (case-insensitive), then persists and refreshes the window's Load menu. |
 | `private List<String>` | `savedComparisonNames()` |  |
-| `private Widget` | `scanForCloseAction(Widget widget)` | Recursively searches a widget subtree for the first visible widget carrying a "Close" action. |
-| `private int` | `scanForItem(Widget widget)` | Recursively searches a widget subtree for the first child holding a real item id. |
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
 | `private Integer` | `searchItemIdByExactName(String lowerName)` | Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable item whose name equals `lowerName` (case-insensitive). |
 | `private static long` | `seriesKey(int itemId, SeriesTimestep step)` |  |
 | `private static List<WikiRealtimePriceClient.PricePoint>` | `seriesOf(TrackedItem item, SeriesTimestep step)` |  |
 | `private void` | `setFavorite(int itemId, boolean favorite)` | Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes. |
-| `private void` | `setGeWidgetsVisible(boolean visible)` | Shows or hides the injected GE widgets without destroying them, for when the interface is on a screen with no item (the offer list). |
 | `private void` | `setGlobalOrder(List<Integer> orderedIds)` | Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. |
 | `private void` | `setGroupCollapsed(String groupKey, boolean collapsed)` | Sets a list group's collapsed state (a category name, or a special-group key), then persists and refreshes. |
 | `private void` | `setItemCategory(int itemId, String category)` | Assigns an item to a category (null/blank clears it to Uncategorized), then persists and refreshes. |
@@ -16205,7 +16663,6 @@ executor.
 | `private void` | `syncTrackedGroundItems()` | Re-derives `#trackedGroundItems` when the tracked set has changed, so an item already on the floor starts (or stops) being outlined the moment it is tracked or untracked. |
 | `public int` | `thievingXpTick()` | {@inheritDoc} |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
-| `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleTracked(int canonicalId, boolean tracked)` | Tracks or untracks `canonicalId` from a right-click menu action. |
 | `private void` | `trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)` | Tracks `itemId` from a pop-out window's header (#138), then transitions that window to tracked. |
@@ -16213,7 +16670,6 @@ executor.
 | `public Collection<TrackedItem>` | `trackedItems()` | Returns all currently tracked items. |
 | `private static long` | `tradeGp(Map<Integer,Integer> side)` |  |
 | `private List<TradeApportioner.Leg>` | `tradeLegs(Map<Integer,Integer> side)` | Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. |
-| `private void` | `unregisterGeButtonSprite()` | Removes the Stockpile GE-button sprite override on shutdown (#140). |
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
 | `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
 | `public long` | `untrackedInputValue(int itemId)` |  |
@@ -16280,24 +16736,6 @@ terminal-consumption tick, bounded to the number of vessels emptied.
 
 Skills whose XP drops mark an inventory gain as gathered from the world at 0 cost (#213).
 
-#### GE_ACTIVE_PRICE_LINE
-
-`private static final Pattern GE_ACTIVE_PRICE_LINE`
-
-The native "Actively traded price" segment of the GE info block, rewritten every tick (#288).
-
-#### GE_DESC_HEIGHT
-
-`private static final int GE_DESC_HEIGHT`
-
-Height the GE info-block text widget is grown to so its fourth row is not self-clipped (#142).
-
-#### GE_ICON_SIZE
-
-`private static final int GE_ICON_SIZE`
-
-Rendered size, in pixels, of the Stockpile icon on the GE button (#140).
-
 #### GE_LOGIN_SYNC_TICKS
 
 `private static final int GE_LOGIN_SYNC_TICKS`
@@ -16306,18 +16744,6 @@ Ticks after login during which `GrandExchangeOfferChanged` events are treated as
 login offer sync (pre-existing offers) rather than user actions. The client delivers the GE
 offers with the login packet within a tick or two, while the player cannot open the GE and
 abort an offer anywhere near this fast — so the window reliably separates the two.
-
-#### GE_TITLE_ORANGE
-
-`private static final int GE_TITLE_ORANGE`
-
-The GE offer title/heading orange used for the Track button text, same for both states (#139).
-
-#### GE_TRACK_BORDER
-
-`private static final int GE_TRACK_BORDER`
-
-Muted GE-title orange for the Track button's outline box (#139).
 
 #### GLOW_MAX_ALPHA
 
@@ -16490,12 +16916,6 @@ so suppressing the delta here avoids the phantom login acquisition (#237).
 
 `private static final Set<String> SECTION_SLOT_KEYS`
 
-#### STOCKPILE_GE_SPRITE_ID
-
-`private static final int STOCKPILE_GE_SPRITE_ID`
-
-Custom sprite-override id for the Stockpile icon shown on the GE "View in Stockpile" button (#140).
-
 #### TRACKED_CONTAINERS
 
 `private static final ImmutableSet<Integer> TRACKED_CONTAINERS`
@@ -16600,12 +17020,6 @@ focus and `focusLost()` never fires (#292). Only meaningful for a modifier-based
 default, Shift); a non-modifier keybind is not reflected in mouse modifiers, so its state is left to the
 `#contextMenuKeyListener`. The event is always returned unchanged.
 
-#### currentGeItem
-
-`private int currentGeItem`
-
-The item shown on the currently-open GE offer screen, or -1 when no offer screen is up (GE integration).
-
 #### detailWindows
 
 `private final Map<Integer,DetailWindow> detailWindows`
@@ -16634,49 +17048,15 @@ The per-tick source detectors, extracted behind `DetectorHost` (#334).
 
 The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213).
 
-#### geButton
+#### geIntegration
 
-`private Widget geButton`
+`private GeIntegration geIntegration`
 
-The native-style button injected onto the GE offer screen in Button mode, or null.
-
-#### geLineHigh
-
-`private long geLineHigh`
-
-High and low market prices for `#geLineItem` from the resolved source; 0 when unavailable (#142).
-
-#### geLineItem
-
-`private int geLineItem`
-
-The raw GE item id the cached 5m high/low belong to, or -1 when unfetched or stale (#142).
-
-#### geLineLow
-
-`private long geLineLow`
-
-#### geLineSource
-
-`private String geLineSource`
-
-Which source `#geLineHigh`/`#geLineLow` came from, as a row-label prefix (5m/1h/Latest) (#142).
+The Grand Exchange offer-screen integration, extracted behind `GeIntegrationHost` (#334).
 
 #### geLoginTick
 
 `private int geLoginTick`
-
-#### geTrackButton
-
-`private Widget geTrackButton`
-
-The Track/Untrack button's beige chrome (a BUTTON_BROWN graphic) beside GE History, or null (#139).
-
-#### geTrackLabel
-
-`private Widget geTrackLabel`
-
-The dark text label riding on `#geTrackButton`; carries the Track/Untrack text (#139).
 
 #### groundItems
 
@@ -17051,16 +17431,6 @@ Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, ca
 
 - **Parameter** `itemIds` — the item ids to load (a `null` list clears the set)
 
-#### applyGeHighLowLine
-
-`private void applyGeHighLowLine()`
-
-Swaps the "Actively traded price" text inside the open GE offer's info block (the single
-`SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low
-and Avg together — in place, so the line count never changes and nothing else moves (#142).
-Re-applied each tick so the game's own redraw does not win; idempotent because once the native
-text is gone the rewrite is skipped. No-op until the shown item's data has been fetched and priced.
-
 #### applyGePrices
 
 `private void applyGePrices(Map<Integer,WikiRealtimePriceClient.ItemPrices> all)`
@@ -17076,12 +17446,6 @@ once per collection, each copy carrying a hand-maintained `containsKey` guard th
 clause per collection. They now iterate `#allLiveItems()` once. The history pass still
 de-duplicates by item id, so a tracked item held by a pop-out or Compare is fetched once, and
 an untracked item that is not on screen is still not fetched at all (#337).
-
-#### applyGeTrackLabel
-
-`private void applyGeTrackLabel()`
-
-Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state.
 
 #### applyImportedList
 
@@ -17278,12 +17642,6 @@ suspension taken when they were offered. Any leg whose suspension has not landed
 offer+accept where "Accepted trade." outran the offer's inventory decrease — is parked and retried
 after the container sync, exactly as the GE sell path does, so the sale is never dropped (#175).
 
-#### colourGp
-
-`private static String colourGp(long value, String colour)`
-
-- **Returns:** a full grouped `"1,234 gp"` in the given colour, or a muted dash when unpriced (#142).
-
 #### compareEntries
 
 `private List<CompareView.Entry> compareEntries()`
@@ -17334,12 +17692,6 @@ matching a pending addition is a loot pickup, claimed as `GROUND` at 0.
 `private void createCategory(String name)`
 
 Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes.
-
-#### currentGeOfferItem
-
-`private int currentGeOfferItem()`
-
-- **Returns:** the item shown on the visible GE offer setup/details screen, or -1 when none is open.
 
 #### currentTick
 
@@ -17422,14 +17774,6 @@ Returns the configured fallback-pricing policy for unknown-source changes.
 
 Fetches GE item metadata in the background, keeping the previous map on failure.
 
-#### findGeCloseButton
-
-`private Widget findGeCloseButton()`
-
-Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer
-container and searching its subtree for a visible widget with a "Close" action (#139). Confined
-to the GE window's toplevel so it doesn't match some other interface's close button.
-
 #### flushRunePouchDelta
 
 `private void flushRunePouchDelta()`
@@ -17451,6 +17795,12 @@ Brings the compare window to the front if one is open. Runs on the EDT.
 `public int gatherXpTick()`
 
 {@inheritDoc}
+
+#### geHost
+
+`private GeIntegrationHost geHost()`
+
+- **Returns:** the plugin-side callbacks `GeIntegration` needs, bound to this plugin.
 
 #### getItemIdFromMenuEntry
 
@@ -17483,22 +17833,6 @@ Brings the compare window to the front if one is open. Runs on the EDT.
         that has loaded, else the client's own tradeable flag. Variants without it (the burnt
         hunter meats, which exist in game but never reach the GE) would add a permanently empty
         Compare column, so `#resolveVariantIds` drops them (#309).
-
-#### hideGeButton
-
-`private void hideGeButton()`
-
-Hides and forgets the injected GE button, if one is currently on the offer interface.
-
-<p>Only called when the feature is switched off or the interface goes away, not on an item
-change - a hidden widget stays a child of its container, so calling this per item change is
-what accumulated orphans (#324).
-
-#### hideGeTrackButton
-
-`private void hideGeTrackButton()`
-
-Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139).
 
 #### hydratePriceCache
 
@@ -17543,38 +17877,6 @@ on the EDT.
 `private int indexOfComparison(String name)`
 
 - **Returns:** the index of the saved comparison named `name` (case-insensitive), or -1 if none.
-
-#### injectGeButton
-
-`private void injectGeButton()`
-
-Injects the Stockpile icon as a "View in Stockpile" button onto the visible GE offer container
-(#140). The icon-only graphic sits where the old text link did; the "View in Stockpile" text now
-lives on the hover action/tooltip. Clicking opens the offer's item in Stockpile's detail view;
-hover brightens the icon to full opacity.
-
-#### injectGeTrackButton
-
-`private void injectGeTrackButton()`
-
-Injects a Track/Untrack button in the GE window's title bar, immediately left of the close (X)
-button (#139): a muted-orange outline box framing bold Track/Untrack text (the "Grand Exchange"
-header font/weight) whose colour reflects the tracked state. The close button is located at
-runtime so the button sits in the same section and row as the X, not in the offer content.
-The text box is inset 3px inside the border so the label clears the outline.
-
-#### injectPriceLines
-
-`private String injectPriceLines(String desc)`
-
-Swaps the "Actively traded price: N" segment of the GE info-block for the two market lines,
-always on their own rows: a leading "Buy limit: N /" that RuneLite inlines on buy offers is
-split off onto its own line, and any trailing convenience-fee line is kept. Returns the text
-unchanged when there is no native segment to replace, leaving an already-rewritten block
-alone (#142).
-
-- **Parameter** `desc` — the current info-block text (may be null)
-- **Returns:** the rewritten text, or the original when nothing was replaced
 
 #### isAmmo
 
@@ -17654,14 +17956,6 @@ Returns whether the given item id is a known empty-container placeholder.
 
 - **Returns:** whether a "Fill" menu target names a fur/meat hunting pouch (any size) (#214).
 
-#### isRealItem
-
-`private boolean isRealItem(int itemId)`
-
-- **Returns:** whether `itemId` resolves to a real, defined item. Empty widget
-slots are backed by placeholder items (e.g. id 6512) whose composition name is
-the literal string "null"; those must not open a preview.
-
 #### isRecoverableAmmo
 
 `public boolean isRecoverableAmmo(int itemId)`
@@ -17702,12 +17996,6 @@ the literal string "null"; those must not open a preview.
 
 - **Returns:** whether the indicator should read "What's New" — within a week of first launch and not dismissed.
 
-#### itemInGeContainer
-
-`private int itemInGeContainer(int componentId)`
-
-- **Returns:** the first item id found in the given GE container's subtree, or -1 when hidden/absent.
-
 #### itemName
 
 `public String itemName(int itemId)`
@@ -17730,16 +18018,6 @@ the literal string "null"; those must not open a preview.
 `private List<WikiRealtimePriceClient.PricePoint> knownSeries(int itemId, SeriesTimestep step)`
 
 - **Returns:** a non-empty series for `step` already held by some live instance of the item, else null.
-
-#### latestSeriesHighLow
-
-`static long[] latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)`
-
-Scans a price series newest-first for the most recent priced average high and low,
-returned as `[high, low]` (each 0 when the series holds no priced sample) (#142).
-
-- **Parameter** `series` — the price points, oldest first (may be null or empty)
-- **Returns:** a two-element array of the latest non-zero high and low
 
 #### loadCategories
 
@@ -17928,19 +18206,8 @@ where swallowing real offer events would lose a genuine fill.
 
 `public void onGameTick(GameTick event)`
 
-Grand Exchange integration: each tick, detects the item on the open offer setup/details
-screen and, per `StockpileConfig#geIntegration()`, either auto-opens it in Stockpile
-or injects a "View in Stockpile" button. Only acts when the shown item changes.
-
-<p>The injected widgets are <em>reused</em> across item changes rather than torn down and
-rebuilt. They used to be hidden and re-injected on every change, and hiding a widget leaves it
-a child of the container - so browsing N items left up to 3N orphaned children on a live
-interface, each still walked by the client's widget tree (#324). Neither widget depends on the
-item: the Stockpile button's sprite is fixed and its handler reads `currentGeItem` at
-click time, and the Track/Untrack button only needs its label refreshed, which
-`#applyGeTrackLabel()` does in place. Not re-injecting also drops
-`injectGeTrackButton`'s full recursive scan of the GE toplevel from every item change to
-once per interface load.
+Per-game-tick work: expires suspensions, closes vanished grave losses, re-derives the tracked
+ground subset, and hands the Grand Exchange offer screen to `GeIntegration`.
 
 #### onGrandExchangeOfferChanged
 
@@ -18064,12 +18331,6 @@ re-keys the registry to that item's id via `#switchWindowItem`. Runs on the EDT.
 
 Creates and registers a pop-out window for `item`, or focuses an existing one. Runs on the EDT.
 
-#### openGeItemInStockpile
-
-`private void openGeItemInStockpile(int itemId)`
-
-Opens the item in Stockpile's view-only preview, switching to/focusing the panel when configured.
-
 #### openGeOffers
 
 `public GrandExchangeOffer[] openGeOffers()`
@@ -18161,13 +18422,6 @@ Opens a read-only detail preview for an untracked item without adding it to
 the tracked list or persisting anything. Builds a transient `TrackedItem`,
 shows it in the detail view, then fetches its prices and history in the
 background. Runs on the client thread.
-
-#### priceLines
-
-`private String priceLines()`
-
-- **Returns:** one market row — High and Low together — coloured per side and prefixed with the
-        resolved source (`5m`/`1h`/`Latest`) (#142).
 
 #### processingXpTick
 
@@ -18314,14 +18568,6 @@ which scans the pending queue per removed child — live-locks the EDT (#120).
 - **Parameter** `pricesUpdated` — whether this refresh follows a price change, enabling
                      the per-row change indicators
 
-#### registerGeButtonSprite
-
-`private void registerGeButtonSprite(BufferedImage icon)`
-
-Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the
-injected GE button (#140). Scaled to `#GE_ICON_SIZE` for a crisp render at button size.
-A no-op when sprite overrides are unavailable (e.g. before the client is ready).
-
 #### registerShopClaims
 
 `private void registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)`
@@ -18408,15 +18654,6 @@ data. A step that is fresh is filled from whichever live instance already holds 
 previewed or compared copy of an item still gets the full picture without a network round trip.
 The apply and refresh below run either way, so a caller that opens a view still sees it populate.
 
-#### requestGeLinePrices
-
-`private void requestGeLinePrices(int itemId)`
-
-Resolves the open GE offer item's market prices in the background and caches them for the
-info-block line, overwriting it in place once they arrive (#142). Falls back down a chain:
-the latest priced 5m sample, then the latest priced 1h sample, then the item's latest instant
-high/low; whichever lands first sets the row-label prefix (5m / 1h / Latest).
-
 #### requestSeries
 
 `private void requestSeries(int itemId, boolean refreshAfter)`
@@ -18493,18 +18730,6 @@ name (case-insensitive), then persists and refreshes the window's Load menu. Cli
 
 - **Returns:** the saved-comparison names in saved order (#303). Client thread.
 
-#### scanForCloseAction
-
-`private Widget scanForCloseAction(Widget widget)`
-
-Recursively searches a widget subtree for the first visible widget carrying a "Close" action.
-
-#### scanForItem
-
-`private int scanForItem(Widget widget)`
-
-Recursively searches a widget subtree for the first child holding a real item id.
-
 #### scheduleRefresh
 
 `private void scheduleRefresh()`
@@ -18537,14 +18762,6 @@ item whose name equals `lowerName` (case-insensitive).
 `private void setFavorite(int itemId, boolean favorite)`
 
 Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes.
-
-#### setGeWidgetsVisible
-
-`private void setGeWidgetsVisible(boolean visible)`
-
-Shows or hides the injected GE widgets without destroying them, for when the interface is on a
-screen with no item (the offer list). Reusing them this way is what keeps a browsing session
-from stacking orphaned children on the container (#324).
 
 #### setGlobalOrder
 
@@ -18699,14 +18916,6 @@ Runs once per game tick on the client thread.
 
 Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel.
 
-#### toggleGeTracking
-
-`private void toggleGeTracking()`
-
-Toggles tracking of the open GE offer's item (#139). The add/remove is deferred to the client
-thread, so the label refresh is enqueued after it — otherwise it would read the pre-toggle state
-and only correct itself on the next mouse-leave.
-
 #### toggleSortReversed
 
 `private void toggleSortReversed()`
@@ -18753,12 +18962,6 @@ Returns all currently tracked items.
 `private List<TradeApportioner.Leg> tradeLegs(Map<Integer,Integer> side)`
 
 Builds one trade side's non-currency apportionment legs, each weighted by its unit market value.
-
-#### unregisterGeButtonSprite
-
-`private void unregisterGeButtonSprite()`
-
-Removes the Stockpile GE-button sprite override on shutdown (#140).
 
 #### untrackToPreview
 
