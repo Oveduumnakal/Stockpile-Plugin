@@ -4,7 +4,6 @@
  */
 package com.oveduumnakal;
 
-import java.text.NumberFormat;
 import java.util.Locale;
 
 /**
@@ -13,16 +12,18 @@ import java.util.Locale;
  *
  * <p>The compact form abbreviates with uppercase suffixes and drops trailing
  * zeros: {@code 234K}, {@code 23.4K}, {@code 1.5M}, {@code 2.1B}. Negatives keep
- * a leading {@code -}; values under 1,000 are shown as grouped digits. This is a
- * stateless utility and cannot be instantiated.
+ * a leading {@code -}; values under 1,000 are shown as grouped digits.
+ *
+ * <p>This is a stateless utility and cannot be instantiated. It holds no formatter: the panel
+ * paints on the EDT while overlays render on the client thread, and a shared {@link
+ * java.text.NumberFormat} is not thread-safe (#326), so grouping goes through
+ * {@code String.format}, which is.
  */
 public final class GpFormat
 {
 	private GpFormat()
 	{
 	}
-
-	private static final NumberFormat GROUPED = NumberFormat.getIntegerInstance(Locale.US);
 
 	/** Compact form to at most 3 significant figures: {@code 234K}, {@code 2.34K}, {@code 1.5M}. */
 	public static String shortValue(long value)
@@ -43,7 +44,7 @@ public final class GpFormat
 	/** Full comma-grouped digits with no suffix: {@code "1,234,567"}. */
 	public static String grouped(long value)
 	{
-		return GROUPED.format(value);
+		return String.format(Locale.US, "%,d", value);
 	}
 
 	/** {@link #shortValue} with a trailing {@code " gp"}. */
@@ -55,7 +56,7 @@ public final class GpFormat
 	/** Full comma-grouped digits with a trailing {@code " gp"}: {@code "1,234,567 gp"}. */
 	public static String fullGp(long value)
 	{
-		return GROUPED.format(value) + " gp";
+		return grouped(value) + " gp";
 	}
 
 	/**
@@ -102,7 +103,7 @@ public final class GpFormat
 		else if (abs >= 1_000L)
 			return sign + mantissa(abs / 1_000.0, singleDecimal) + "K";
 
-		return sign + GROUPED.format(abs);
+		return sign + grouped(abs);
 	}
 
 	/**
