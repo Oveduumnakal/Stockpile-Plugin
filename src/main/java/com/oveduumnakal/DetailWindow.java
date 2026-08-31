@@ -41,11 +41,11 @@ final class DetailWindow
 	 * Builds and shows the window for {@code item}. The host is supplied by {@code hostFactory} so it
 	 * can capture this window &mdash; its Back/close disposes the window and its tracked-item lookup
 	 * returns this window's own bound instance rather than reading the plugin's live map off the EDT.
-	 * {@code onClose} fires with the item id when the window is disposed, letting the plugin drop it
+	 * {@code onClose} fires with this window when it is disposed, letting the plugin drop it
 	 * from the registry.
 	 */
 	DetailWindow(Function<DetailWindow, DetailViewHost> hostFactory, TrackedItem item, boolean preview,
-			Consumer<Integer> onClose)
+			Consumer<DetailWindow> onClose)
 	{
 		this.itemId = item.getItemId();
 		this.boundItem = item;
@@ -66,7 +66,7 @@ final class DetailWindow
 	 * for an item (Stockpile icon and name) and whose body prompts the user to search for an item. Picking an
 	 * item from the search bar rebinds this window to that item's detail. The registry keys it under id 0.
 	 */
-	DetailWindow(Function<DetailWindow, DetailViewHost> hostFactory, Consumer<Integer> onClose)
+	DetailWindow(Function<DetailWindow, DetailViewHost> hostFactory, Consumer<DetailWindow> onClose)
 	{
 		this.itemId = 0;
 		this.boundItem = null;
@@ -79,7 +79,7 @@ final class DetailWindow
 	}
 
 	/** Wraps the view in a scroll pane and a disposable {@link JFrame} titled {@code title}. */
-	private JFrame buildFrame(String title, Consumer<Integer> onClose)
+	private JFrame buildFrame(String title, Consumer<DetailWindow> onClose)
 	{
 		JScrollPane scroll = new JScrollPane(view,
 				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -101,7 +101,7 @@ final class DetailWindow
 			public void windowClosed(WindowEvent e)
 			{
 				view.onLeaveDetail();
-				onClose.accept(itemId);
+				onClose.accept(DetailWindow.this);
 			}
 		});
 

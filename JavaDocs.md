@@ -5245,15 +5245,15 @@ window on shutdown. All methods run on the Swing EDT.
 
 | Constructor | Description |
 |---|---|
-| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<Integer> onClose)` | Builds and shows the item-less "dashboard home" window (#109): a full dashboard whose header stands in for an item (Stockpile icon and name) and whose body prompts the user to search for an item. |
-| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<Integer> onClose)` | Builds and shows the window for `item`. |
+| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<DetailWindow> onClose)` | Builds and shows the item-less "dashboard home" window (#109): a full dashboard whose header stands in for an item (Stockpile icon and name) and whose body prompts the user to search for an item. |
+| `DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<DetailWindow> onClose)` | Builds and shows the window for `item`. |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `TrackedItem` | `boundItem()` |  |
-| `private JFrame` | `buildFrame(String title, Consumer<Integer> onClose)` | Wraps the view in a scroll pane and a disposable `JFrame` titled `title`. |
+| `private JFrame` | `buildFrame(String title, Consumer<DetailWindow> onClose)` | Wraps the view in a scroll pane and a disposable `JFrame` titled `title`. |
 | `void` | `dispose()` | Disposes the window (its close listener drops it from the plugin registry). |
 | `void` | `focus()` | Brings the window to the front, restoring it if minimised, so re-popping focuses it. |
 | `boolean` | `isPreview()` |  |
@@ -5298,7 +5298,7 @@ window on shutdown. All methods run on the Swing EDT.
 
 #### DetailWindow
 
-`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<Integer> onClose)`
+`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, Consumer<DetailWindow> onClose)`
 
 Builds and shows the item-less "dashboard home" window (#109): a full dashboard whose header stands in
 for an item (Stockpile icon and name) and whose body prompts the user to search for an item. Picking an
@@ -5306,12 +5306,12 @@ item from the search bar rebinds this window to that item's detail. The registry
 
 #### DetailWindow
 
-`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<Integer> onClose)`
+`DetailWindow(Function<DetailWindow,DetailViewHost> hostFactory, TrackedItem item, boolean preview, Consumer<DetailWindow> onClose)`
 
 Builds and shows the window for `item`. The host is supplied by `hostFactory` so it
 can capture this window &mdash; its Back/close disposes the window and its tracked-item lookup
 returns this window's own bound instance rather than reading the plugin's live map off the EDT.
-`onClose` fires with the item id when the window is disposed, letting the plugin drop it
+`onClose` fires with this window when it is disposed, letting the plugin drop it
 from the registry.
 
 ### Method Detail
@@ -5324,7 +5324,7 @@ from the registry.
 
 #### buildFrame
 
-`private JFrame buildFrame(String title, Consumer<Integer> onClose)`
+`private JFrame buildFrame(String title, Consumer<DetailWindow> onClose)`
 
 Wraps the view in a scroll pane and a disposable `JFrame` titled `title`.
 
@@ -15509,7 +15509,7 @@ executor.
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync, evaluates notifications, and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
 | `private void` | `onCompareWindowClosed()` | Drops the singleton reference and clears the set when the compare window is closed. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
-| `private void` | `onDetailWindowClosed(int itemId)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
+| `private void` | `onDetailWindowClosed(DetailWindow window)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
 | `public void` | `onGameStateChanged(GameStateChanged event)` | Resets transient and per-login state on game-state transitions: clears ground items on each load, and on login wipes the count caches and reloads the persisted tracked items. |
 | `public void` | `onGameTick(GameTick event)` | Grand Exchange integration: each tick, detects the item on the open offer setup/details screen and, per `StockpileConfig#geIntegration()`, either auto-opens it in Stockpile or injects a "View in Stockpile" button. |
 | `public void` | `onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)` | Consumes GE offer progress to price trades and track the buy limit. |
@@ -17329,9 +17329,14 @@ just repaints the panel. Ignores other plugins' groups.
 
 #### onDetailWindowClosed
 
-`private void onDetailWindowClosed(int itemId)`
+`private void onDetailWindowClosed(DetailWindow window)`
 
 Drops a closed pop-out window from both the EDT registry and its client-thread instance map.
+
+<p>Removed by <em>value</em>, not by the window's current item id. The close listener reads
+`itemId` at close time, so a window closed mid-switch used to report the id it no longer
+held; the registry entry under the new id then survived as a disposed window and every later
+`popOutDetail` for that item silently focused a dead frame (#332).
 
 #### onGameStateChanged
 
@@ -18004,6 +18009,14 @@ EDT window registry and its client-thread instance map from the old id to the ne
 new item (the live tracked item, or a freshly built read-only preview when untracked), transitions
 the window in place, and kicks off a data fetch. When another window already shows the target item,
 that window is focused instead and this one is left unchanged.
+
+<p>The registry re-key happens on the same EDT hop as `DetailWindow#rebind`, not before the
+two thread hops it takes to get there. It used to run first, while `window.itemId()` still
+returned the old id, so closing the window inside that gap made the close listener report the old
+id - which was no longer a key - and the disposed window survived in the registry under the new
+one. Every later `popOutDetail` for that item then focused a dead frame with no way back
+short of restarting the plugin (#332). The hop also re-checks the window is still registered, so
+a close that lands first is not undone by the pending re-key.
 
 #### syncQuantitiesForItem
 
