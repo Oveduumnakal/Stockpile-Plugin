@@ -3501,7 +3501,6 @@ populated detail card and a loading placeholder.
 | `private static final int[]` | `DASHBOARD_RIGHT` | Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`. |
 | `private static final int` | `DEFAULT_NOTIFICATION_ROWS` |  |
 | `private static final Color` | `DESCRIPTION_COLOR` |  |
-| `private static final NumberFormat` | `NUMBER_FORMAT` |  |
 | `private static final Color` | `OVERVIEW_ROW_DIVIDER` |  |
 | `private static final TimeWindow[]` | `OVERVIEW_WINDOWS` |  |
 | `private static final int` | `PRESSURE_BALANCED_HIGH` |  |
@@ -3780,10 +3779,6 @@ Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`.
 #### DESCRIPTION_COLOR
 
 `private static final Color DESCRIPTION_COLOR`
-
-#### NUMBER_FORMAT
-
-`private static final NumberFormat NUMBER_FORMAT`
 
 #### OVERVIEW_ROW_DIVIDER
 
@@ -6269,14 +6264,11 @@ notifications.
 
 <p>The compact form abbreviates with uppercase suffixes and drops trailing
 zeros: `234K`, `23.4K`, `1.5M`, `2.1B`. Negatives keep
-a leading `-`; values under 1,000 are shown as grouped digits. This is a
-stateless utility and cannot be instantiated.
+a leading `-`; values under 1,000 are shown as grouped digits.
 
-### Field Summary
-
-| Modifier and Type | Field | Description |
-|---|---|---|
-| `private static final NumberFormat` | `GROUPED` |  |
+<p>This is a stateless utility and cannot be instantiated. It holds no formatter: the panel
+paints on the EDT while overlays render on the client thread, and a shared `java.text.NumberFormat` is not thread-safe (#326), so grouping goes through
+`String.format`, which is.
 
 ### Constructor Summary
 
@@ -6298,12 +6290,6 @@ stateless utility and cannot be instantiated.
 | `private static String` | `sign(long value)` |  |
 | `public static String` | `signedGrouped(long value)` | `#grouped` with an explicit leading `+` on positive values (`+1,234`, `-350`, `0`), using the same zero-unsigned convention as `#signedShort`. |
 | `public static String` | `signedShort(long value)` | `#shortValue` with an explicit leading `+` on positive values (`+1.2M`, `-350K`, `0`). |
-
-### Field Detail
-
-#### GROUPED
-
-`private static final NumberFormat GROUPED`
 
 ### Constructor Detail
 
@@ -9080,7 +9066,6 @@ All drawing happens on the Swing EDT via `#paintComponent`.
 | `private static final Color` | `GRID_COLOR` |  |
 | `private static final int` | `LEFT_PAD` |  |
 | `private static final Color` | `MA_COLOR` |  |
-| `private static final NumberFormat` | `NUMBER_FORMAT` |  |
 | `private static final Color` | `SEPARATOR_COLOR` |  |
 | `private static final int` | `TAB_BAR_HEIGHT` |  |
 | `private static final TimeWindow[]` | `TIMEFRAMES` |  |
@@ -9202,10 +9187,6 @@ Default point size of the expanded (pop-out) monospace font.
 #### MA_COLOR
 
 `private static final Color MA_COLOR`
-
-#### NUMBER_FORMAT
-
-`private static final NumberFormat NUMBER_FORMAT`
 
 #### SEPARATOR_COLOR
 
@@ -12337,7 +12318,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static final long` | `LOADING_GLOW_PERIOD_MS` |  |
 | `private static final Pattern` | `MD_LINK` | A markdown link `[label](url)` used for the changelog's issue references. |
 | `private static final String` | `NEW_CATEGORY_LABEL` |  |
-| `private static final NumberFormat` | `NUMBER_FORMAT` |  |
 | `private static final int` | `PRICES_LEFT_PAD` |  |
 | `private static final int` | `PRICES_RIGHT_PAD` |  |
 | `private static final Border` | `PROFIT_SECTION_BORDER_COMPACT` |  |
@@ -12800,10 +12780,6 @@ A markdown link `[label](url)` used for the changelog's issue references.
 #### NEW_CATEGORY_LABEL
 
 `private static final String NEW_CATEGORY_LABEL`
-
-#### NUMBER_FORMAT
-
-`private static final NumberFormat NUMBER_FORMAT`
 
 #### PRICES_LEFT_PAD
 

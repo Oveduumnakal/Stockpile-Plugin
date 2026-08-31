@@ -58,7 +58,6 @@ import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -68,7 +67,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -155,8 +153,6 @@ import net.runelite.http.api.item.ItemPrice;
 @Slf4j
 public class StockpilePanel extends PluginPanel implements DetailViewHost
 {
-	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
-
 	private static final Color COLOR_HIGH = StockpileColors.HIGH;
 	private static final Color COLOR_LOW  = StockpileColors.LOW;
 	private static final Color COLOR_AVG  = StockpileColors.AVG;
@@ -1209,7 +1205,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		if (!showProfit)
 		{
 			compactTotalsValueLabel.setText(avgText);
-			compactTotalsValueLabel.setToolTipText(NUMBER_FORMAT.format(totalAvg) + " gp");
+			compactTotalsValueLabel.setToolTipText(GpFormat.grouped(totalAvg) + " gp");
 			return;
 		}
 
@@ -1221,7 +1217,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				+ "</span>  <span style='color:" + grey + "'>(</span><span style='color:" + profitHex
 				+ "'>" + GpFormat.signedShort(profit) + "</span>"
 				+ "<span style='color:" + grey + "'>)</span></html>");
-		compactTotalsValueLabel.setToolTipText("<html>" + NUMBER_FORMAT.format(totalAvg) + " gp<br>Profit: "
+		compactTotalsValueLabel.setToolTipText("<html>" + GpFormat.grouped(totalAvg) + " gp<br>Profit: "
 				+ signedGp(profit) + "</html>");
 	}
 
@@ -2630,7 +2626,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				{
 					long total = sectionTotal(s);
 					totalLabel.setText(GpFormat.shortValue(total));
-					totalLabel.setToolTipText(NUMBER_FORMAT.format(total) + " gp");
+					totalLabel.setToolTipText(GpFormat.grouped(total) + " gp");
 				}
 
 				if (s.collapsed)
@@ -2994,7 +2990,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		JLabel totalLabel = new JLabel(GpFormat.shortValue(groupTotal));
 		totalLabel.setForeground(StockpileColors.MUTED);
 		totalLabel.setFont(FontManager.getRunescapeSmallFont());
-		totalLabel.setToolTipText(NUMBER_FORMAT.format(groupTotal) + " gp");
+		totalLabel.setToolTipText(GpFormat.grouped(groupTotal) + " gp");
 		groupTotalLabels.put(groupKey, totalLabel);
 
 		header.add(left, BorderLayout.WEST);
@@ -3986,7 +3982,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		applyRowIcon(rv.iconLabel, item);
 		EllipsisText.set(rv.nameLabel, item.getName());
 		rv.qtyLabel.setText("Qty: " + GpFormat.shortValue(item.getQuantity()));
-		rv.qtyLabel.setToolTipText(NUMBER_FORMAT.format(item.getQuantity()));
+		rv.qtyLabel.setToolTipText(GpFormat.grouped(item.getQuantity()));
 		refreshFavoriteStar(rv.favStar, item.isFavorite());
 
 		rv.contentSlot.removeAll();
@@ -4139,7 +4135,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				String volText = window == TimeWindow.LIVE ? "-" : GpFormat.shortValue(vol);
 				cell.setText(volText);
 				if (window != TimeWindow.LIVE)
-					cell.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
+					cell.setToolTipText("Volume: " + GpFormat.grouped(vol));
 
 				HoverTintListener volListener = new HoverTintListener(cell, volText, TINT_VOLUME);
 				cell.addMouseListener(volListener);
@@ -4532,13 +4528,13 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		JLabel totalLabel = new JLabel(GpFormat.shortValue(totalValue));
 		totalLabel.setFont(FontManager.getRunescapeSmallFont());
 		totalLabel.setForeground(COLOR_AVG);
-		totalLabel.setToolTipText(NUMBER_FORMAT.format(totalValue) + " gp");
+		totalLabel.setToolTipText(GpFormat.grouped(totalValue) + " gp");
 		row.add(totalLabel);
 
 		JLabel singleLabel = new JLabel("(" + GpFormat.shortValue(singleValue) + ")");
 		singleLabel.setFont(FontManager.getRunescapeSmallFont());
 		singleLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		singleLabel.setToolTipText(NUMBER_FORMAT.format(singleValue) + " gp");
+		singleLabel.setToolTipText(GpFormat.grouped(singleValue) + " gp");
 		row.add(singleLabel);
 
 		return row;
@@ -4905,7 +4901,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		label.setText(shortText);
 		String tooltipPrefix = tooltipLabel == null ? "" : tooltipLabel + ": ";
-		label.setToolTipText(tooltipPrefix + NUMBER_FORMAT.format(value) + " gp");
+		label.setToolTipText(tooltipPrefix + GpFormat.grouped(value) + " gp");
 		removeHoverTint(label);
 		HoverTintListener listener = new HoverTintListener(label, shortText, tint);
 		label.addMouseListener(listener);
@@ -4926,7 +4922,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private void applyLiveStaleness(JLabel cell, long value, String sideLabel, String timeLabel,
 			long tradeTime, Color freshColor, Color staleColor)
 	{
-		cell.setToolTipText("<html>" + sideLabel + ": " + NUMBER_FORMAT.format(value) + " gp<br>"
+		cell.setToolTipText("<html>" + sideLabel + ": " + GpFormat.grouped(value) + " gp<br>"
 				+ timeLabel + ": " + formatAge(tradeTime) + "</html>");
 
 		if (isStale(tradeTime))
@@ -4973,7 +4969,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private void applyTotalTooltip(JLabel label, long value, ValueFormat fmt)
 	{
 		if (fmt == ValueFormat.ABBREVIATED)
-			label.setToolTipText(NUMBER_FORMAT.format(value) + " gp");
+			label.setToolTipText(GpFormat.grouped(value) + " gp");
 		else
 			label.setToolTipText(null);
 	}

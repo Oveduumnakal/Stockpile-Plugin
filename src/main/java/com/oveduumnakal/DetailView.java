@@ -38,7 +38,6 @@ import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -117,7 +116,6 @@ public class DetailView extends JPanel implements Scrollable
 		DASHBOARD
 	}
 
-	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 	private static final Color COLOR_VOLUME = new Color(200, 200, 200);
 	private static final Color DESCRIPTION_COLOR = new Color(160, 160, 160);
 	private static final Color SEARCH_PLACEHOLDER_COLOR = new Color(140, 140, 140);
@@ -459,12 +457,12 @@ public class DetailView extends JPanel implements Scrollable
 
 		if (item.getLimitResetEpoch() <= 0)
 		{
-			miBuyLimit.setText(NUMBER_FORMAT.format(limit));
+			miBuyLimit.setText(GpFormat.grouped(limit));
 			miBuyLimit.setToolTipText(null);
 			return;
 		}
 
-		miBuyLimit.setText(NUMBER_FORMAT.format(item.getLimitBought()) + " / " + NUMBER_FORMAT.format(limit));
+		miBuyLimit.setText(GpFormat.grouped(item.getLimitBought()) + " / " + GpFormat.grouped(limit));
 		long secondsLeft = item.getLimitResetEpoch() - System.currentTimeMillis() / 1000L;
 		miBuyLimit.setToolTipText(secondsLeft > 0
 				? "Resets in " + formatDuration(secondsLeft)
@@ -669,7 +667,7 @@ public class DetailView extends JPanel implements Scrollable
 				{
 					long v = ((Number) val).longValue();
 					if (Math.abs(v) >= (col == 3 ? 1000 : 10000))
-						return acqTooltipLabel(col) + ": " + NUMBER_FORMAT.format(v);
+						return acqTooltipLabel(col) + ": " + GpFormat.grouped(v);
 				}
 
 				return null;
@@ -3019,7 +3017,7 @@ public class DetailView extends JPanel implements Scrollable
 
 		int detailQty = item.getQuantity();
 		detailQtyLabel.setText("Qty: " + GpFormat.shortValue(detailQty));
-		detailQtyLabel.setToolTipText(NUMBER_FORMAT.format(detailQty));
+		detailQtyLabel.setToolTipText(GpFormat.grouped(detailQty));
 		detailQtyLabel.setVisible(!viewOnly);
 
 		final String examine = host.examine(item.getItemId());
@@ -3036,7 +3034,7 @@ public class DetailView extends JPanel implements Scrollable
 		icvLow.setText("Low: " + (hasPrices ? StockpilePanel.formatTotalGp(item.getLowPrice(), full) : "—"));
 		icvAvg.setText("Average: " + (hasPrices ? StockpilePanel.formatTotalGp(item.getAvgPrice(), full) : "—"));
 		long vol24 = windowVolume(item, TimeWindow.H24);
-		icvVolume.setText("Volume (24h): " + (vol24 > 0 ? NUMBER_FORMAT.format(vol24) : "—"));
+		icvVolume.setText("Volume (24h): " + (vol24 > 0 ? GpFormat.grouped(vol24) : "—"));
 
 		int colQty = item.getRecordQuantitySum();
 		ccvSection.setVisible(showMarket && colQty > 0);
@@ -3048,7 +3046,7 @@ public class DetailView extends JPanel implements Scrollable
 			ccvHigh.setText("High: " + (hasPrices ? StockpilePanel.formatTotalGp(cHigh, full) : "—"));
 			ccvLow.setText("Low: " + (hasPrices ? StockpilePanel.formatTotalGp(cLow, full) : "—"));
 			ccvAvg.setText("Average: " + (hasPrices ? StockpilePanel.formatTotalGp(cAvg, full) : "—"));
-			ccvQuantity.setText("Quantity: " + NUMBER_FORMAT.format(colQty));
+			ccvQuantity.setText("Quantity: " + GpFormat.grouped(colQty));
 			long estProfit = cAvg - item.getCostBasis();
 			String sign = estProfit > 0 ? "+" : "";
 			ccvProfit.setText("Est. Profit: "
@@ -3106,7 +3104,7 @@ public class DetailView extends JPanel implements Scrollable
 			alchEstProfit.setForeground(estProfit == 0 ? ColorScheme.LIGHT_GRAY_COLOR
 					: (estProfit > 0 ? StockpileColors.HIGH : StockpileColors.LOW));
 			alchEstProfit.setToolTipText("<html>High alch profit (" + StockpilePanel.signedGp(haP)
-					+ ") × " + NUMBER_FORMAT.format(colQty) + " in collection log"
+					+ ") × " + GpFormat.grouped(colQty) + " in collection log"
 					+ "<br>= " + StockpilePanel.signedGp(estProfit) + "</html>");
 		}
 
@@ -3171,9 +3169,9 @@ public class DetailView extends JPanel implements Scrollable
 		else if (full)
 		{
 			StockpilePanel.removeHoverTint(label);
-			label.setText(NUMBER_FORMAT.format(value));
+			label.setText(GpFormat.grouped(value));
 			String tooltipPrefix = tooltipLabel == null ? "" : tooltipLabel + ": ";
-			label.setToolTipText(tooltipPrefix + NUMBER_FORMAT.format(value) + " gp");
+			label.setToolTipText(tooltipPrefix + GpFormat.grouped(value) + " gp");
 		}
 		else
 		{
@@ -3203,11 +3201,11 @@ public class DetailView extends JPanel implements Scrollable
 	private void installVolumeValue(JLabel label, long vol, boolean full)
 	{
 		label.setForeground(COLOR_VOLUME);
-		label.setToolTipText("Volume: " + NUMBER_FORMAT.format(vol));
+		label.setToolTipText("Volume: " + GpFormat.grouped(vol));
 		if (full)
 		{
 			StockpilePanel.removeHoverTint(label);
-			label.setText(NUMBER_FORMAT.format(vol));
+			label.setText(GpFormat.grouped(vol));
 			return;
 		}
 
@@ -3295,10 +3293,10 @@ public class DetailView extends JPanel implements Scrollable
 		long fireCost = (long) fireQty * host.fireRunePrice();
 		long profit = alchValue - itemAvg - natureCost - fireCost;
 		return "<html>" + label + " alch profit:<br>"
-				+ NUMBER_FORMAT.format(alchValue) + " (alch value)<br>"
-				+ "− " + NUMBER_FORMAT.format(itemAvg) + " (item avg price)<br>"
-				+ "− " + NUMBER_FORMAT.format(host.natureRunePrice()) + " (nature rune)<br>"
-				+ "− " + fireQty + " × " + NUMBER_FORMAT.format(host.fireRunePrice()) + " (fire rune)<br>"
+				+ GpFormat.grouped(alchValue) + " (alch value)<br>"
+				+ "− " + GpFormat.grouped(itemAvg) + " (item avg price)<br>"
+				+ "− " + GpFormat.grouped(host.natureRunePrice()) + " (nature rune)<br>"
+				+ "− " + fireQty + " × " + GpFormat.grouped(host.fireRunePrice()) + " (fire rune)<br>"
 				+ "= " + StockpilePanel.signedGp(profit) + "</html>";
 	}
 
@@ -3350,7 +3348,7 @@ public class DetailView extends JPanel implements Scrollable
 				: "Medium".equals(label) ? StockpileColors.AVG : StockpileColors.HIGH;
 		miLiquidity.setText(label);
 		miLiquidity.setForeground(color);
-		miLiquidity.setToolTipText("24h volume: " + NUMBER_FORMAT.format(vol24));
+		miLiquidity.setToolTipText("24h volume: " + GpFormat.grouped(vol24));
 	}
 
 	/** Sets the market-info "30-day range position" rating for where the live price sits within its month range. */
