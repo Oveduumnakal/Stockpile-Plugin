@@ -4,13 +4,23 @@
  */
 package com.oveduumnakal;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 
 /**
  * Tests for {@link GpFormat}: compact K/M/B abbreviation, single-decimal
- * narrowing, and full grouped formatting, including sign handling.
+ * narrowing, full grouped formatting including sign handling, and that grouping
+ * survives concurrent use (#326 - the panel formats on the EDT while overlays
+ * format on the client thread).
  */
 public class GpFormatTest
 {
@@ -79,5 +89,49 @@ public class GpFormatTest
 		assertEquals("+1,234", GpFormat.signedGrouped(1_234));
 		assertEquals("-1,234", GpFormat.signedGrouped(-1_234));
 		assertEquals("0", GpFormat.signedGrouped(0));
+	}
+
+	/**
+	 * The overlay render loop and the panel rebuild call these from different threads. A shared
+	 * {@code NumberFormat} would garble digits between calls or throw out of {@code DigitList};
+	 * every thread must see exactly what a single-threaded call produces.
+	 */
+	@Test
+	public void groupingIsSafeUnderConcurrentUse() throws Exception
+	{
+		final long value = 1_234_567_890L;
+		final String expected = GpFormat.grouped(value);
+		ExecutorService pool = Executors.newFixedThreadPool(8);
+		try
+		{
+			List<Callable<String>> work = new ArrayList<>();
+			for (int i = 0; i < 8; i++)
+			{
+				work.add(() ->
+				{
+					StringBuilder mismatch = new StringBuilder();
+					for (int n = 0; n < 20_000; n++)
+					{
+						String actual = GpFormat.grouped(value);
+						if (!expected.equals(actual))
+							mismatch.append(actual).append(' ');
+
+						GpFormat.fullGp(value);
+						GpFormat.signedGrouped(value);
+						GpFormat.shortValue(n);
+					}
+
+					return mismatch.toString();
+				});
+			}
+
+			for (Future<String> result : pool.invokeAll(work))
+				assertEquals("", result.get());
+		}
+		finally
+		{
+			pool.shutdown();
+			pool.awaitTermination(30, TimeUnit.SECONDS);
+		}
 	}
 }

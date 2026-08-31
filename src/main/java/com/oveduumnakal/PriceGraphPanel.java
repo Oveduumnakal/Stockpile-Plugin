@@ -20,7 +20,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
-import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,8 +80,6 @@ public class PriceGraphPanel extends JPanel
 			this.label = label;
 		}
 	}
-
-	private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
 
 	private static final Color COLOR_HIGH = StockpileColors.HIGH;
 	private static final Color COLOR_LOW = StockpileColors.LOW;
@@ -614,16 +611,16 @@ public class PriceGraphPanel extends JPanel
 
 			double[] ma = ema(vols, Math.max(2, visible.size() / 10));
 			lines = new String[]{
-					"V: " + NUMBER_FORMAT.format(closest.getHighPriceVolume() + closest.getLowPriceVolume()),
-					"MA: " + NUMBER_FORMAT.format(Math.round(ma[idx])),
+					"V: " + GpFormat.grouped(closest.getHighPriceVolume() + closest.getLowPriceVolume()),
+					"MA: " + GpFormat.grouped(Math.round(ma[idx])),
 			};
 		}
 		else
 		{
 			lines = new String[]{
-					"H: " + NUMBER_FORMAT.format(closest.getAvgHighPrice()),
-					"L: " + NUMBER_FORMAT.format(closest.getAvgLowPrice()),
-					"A: " + NUMBER_FORMAT.format(midpoint(closest)),
+					"H: " + GpFormat.grouped(closest.getAvgHighPrice()),
+					"L: " + GpFormat.grouped(closest.getAvgLowPrice()),
+					"A: " + GpFormat.grouped(midpoint(closest)),
 			};
 		}
 
