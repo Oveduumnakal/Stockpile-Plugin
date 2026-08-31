@@ -23,7 +23,9 @@ import net.runelite.client.config.ConfigManager;
  * plugin keeps only the orchestration (building snapshots from live {@link TrackedItem}s and applying
  * loaded ones on the client thread) while the JSON shape, config keys, and corrupt-value handling
  * live in one testable place. Loaders default to empty/{@code null} on a missing or unparseable value
- * exactly as the originals did, so history/state simply rebuilds rather than throwing.
+ * exactly as the originals did, so history/state simply rebuilds rather than throwing. Reads and
+ * writes go through {@link ProfileConfigStore} so those fallbacks are testable without a live
+ * {@link ConfigManager}.
  */
 @Slf4j
 class StockpilePersistence
@@ -106,26 +108,50 @@ class StockpilePersistence
 		List<Integer> itemIds;
 	}
 
-	private final ConfigManager configManager;
+	private final ProfileConfigStore config;
 	private final Gson gson;
 
 	StockpilePersistence(ConfigManager configManager, Gson gson)
 	{
-		this.configManager = configManager;
+		this(backedBy(configManager), gson);
+	}
+
+	StockpilePersistence(ProfileConfigStore config, Gson gson)
+	{
+		this.config = config;
 		this.gson = gson;
+	}
+
+	/** Adapts a live {@link ConfigManager} to the {@link ProfileConfigStore} seam. */
+	private static ProfileConfigStore backedBy(ConfigManager configManager)
+	{
+		return new ProfileConfigStore()
+		{
+			@Override
+			public String get(String group, String key)
+			{
+				return configManager.getRSProfileConfiguration(group, key);
+			}
+
+			@Override
+			public void set(String group, String key, String value)
+			{
+				configManager.setRSProfileConfiguration(group, key, value);
+			}
+		};
 	}
 
 	/** Serializes the tracked-item snapshots to per-profile config. */
 	void saveItems(List<PersistedItem> items)
 	{
-		configManager.setRSProfileConfiguration(
+		config.set(
 				StockpileConfig.GROUP, StockpileConfig.KEY_TRACKED_ITEMS, gson.toJson(items, PERSIST_TYPE));
 	}
 
 	/** @return the persisted tracked-item snapshots, or an empty list when missing, non-array, or corrupt. */
 	List<PersistedItem> loadItems()
 	{
-		String saved = configManager.getRSProfileConfiguration(
+		String saved = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_TRACKED_ITEMS);
 		if (saved == null || saved.trim().isEmpty())
 			return new ArrayList<>();
@@ -149,14 +175,14 @@ class StockpilePersistence
 	/** Serializes the category definitions and group collapsed state to per-profile config. */
 	void saveCategories(CategoryData data)
 	{
-		configManager.setRSProfileConfiguration(
+		config.set(
 				StockpileConfig.GROUP, StockpileConfig.KEY_CATEGORIES, gson.toJson(data, CATEGORIES_TYPE));
 	}
 
 	/** @return the persisted category data, or {@code null} when missing or corrupt. */
 	CategoryData loadCategories()
 	{
-		String saved = configManager.getRSProfileConfiguration(
+		String saved = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_CATEGORIES);
 		if (saved == null || saved.trim().isEmpty())
 			return null;
@@ -175,14 +201,14 @@ class StockpilePersistence
 	/** Serializes the named saved comparisons to per-profile config (#303). */
 	void saveComparisons(List<SavedComparison> comparisons)
 	{
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_SAVED_COMPARISONS,
+		config.set(StockpileConfig.GROUP, StockpileConfig.KEY_SAVED_COMPARISONS,
 				gson.toJson(comparisons, SAVED_COMPARISONS_TYPE));
 	}
 
 	/** @return the persisted saved comparisons, or an empty list when missing, non-array, or corrupt (#303). */
 	List<SavedComparison> loadComparisons()
 	{
-		String saved = configManager.getRSProfileConfiguration(
+		String saved = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_SAVED_COMPARISONS);
 		if (saved == null || saved.trim().isEmpty())
 			return new ArrayList<>();
@@ -206,14 +232,14 @@ class StockpilePersistence
 	/** Serializes the per-item price cache to per-profile config. */
 	void savePriceCache(Map<Integer, CachedPrice> cache)
 	{
-		configManager.setRSProfileConfiguration(
+		config.set(
 				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE, gson.toJson(cache, PRICE_CACHE_TYPE));
 	}
 
 	/** @return the persisted price cache, or an empty map when missing or corrupt. */
 	Map<Integer, CachedPrice> loadPriceCache()
 	{
-		String saved = configManager.getRSProfileConfiguration(
+		String saved = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_PRICE_CACHE);
 		if (saved == null || saved.trim().isEmpty())
 			return new HashMap<>();
@@ -233,7 +259,7 @@ class StockpilePersistence
 	/** Serializes the per-item portfolio history to per-profile config. */
 	void savePortfolioHistory(Map<Integer, List<long[]>> seriesByItem)
 	{
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_PORTFOLIO_HISTORY,
+		config.set(StockpileConfig.GROUP, StockpileConfig.KEY_PORTFOLIO_HISTORY,
 				gson.toJson(seriesByItem, PORTFOLIO_HISTORY_TYPE));
 	}
 
@@ -243,7 +269,7 @@ class StockpilePersistence
 	 */
 	Map<Integer, List<long[]>> loadPortfolioHistory()
 	{
-		String saved = configManager.getRSProfileConfiguration(StockpileConfig.GROUP,
+		String saved = config.get(StockpileConfig.GROUP,
 				StockpileConfig.KEY_PORTFOLIO_HISTORY);
 		if (saved == null || !saved.trim().startsWith("{"))
 			return null;
@@ -262,16 +288,16 @@ class StockpilePersistence
 	/** Persists the GE buy ledger and buy-limit windows to the RS profile config. */
 	void saveGeState(Map<Integer, List<long[]>> ledger, Map<Integer, long[]> limits)
 	{
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER,
+		config.set(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER,
 				gson.toJson(ledger, GE_LEDGER_TYPE));
-		configManager.setRSProfileConfiguration(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS,
+		config.set(StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS,
 				gson.toJson(limits, GE_LIMITS_TYPE));
 	}
 
 	/** @return the persisted GE buy ledger (item id → FIFO buy chunks), or an empty map when missing or corrupt. */
 	Map<Integer, List<long[]>> loadGeLedger()
 	{
-		String ledgerJson = configManager.getRSProfileConfiguration(
+		String ledgerJson = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LEDGER);
 		if (ledgerJson == null || ledgerJson.trim().isEmpty())
 			return new HashMap<>();
@@ -291,7 +317,7 @@ class StockpilePersistence
 	/** @return the persisted GE buy-limit windows, or an empty map when missing or corrupt. */
 	Map<Integer, long[]> loadGeBuyLimits()
 	{
-		String limitsJson = configManager.getRSProfileConfiguration(
+		String limitsJson = config.get(
 				StockpileConfig.GROUP, StockpileConfig.KEY_GE_BUY_LIMITS);
 		if (limitsJson == null || limitsJson.trim().isEmpty())
 			return new HashMap<>();
