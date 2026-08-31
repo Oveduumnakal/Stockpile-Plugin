@@ -14,8 +14,9 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link GeOfferTracker}: placement vs. incremental fills vs. cancellation,
  * a cancellation carrying a simultaneous final fill, under-offer buy pricing, the
- * login-replay baseline guard, slot reset on empty, and the guard against a slot reused for a
- * different item without an intervening empty state.
+ * login-replay baseline guard, slot reset on empty, the guard against a slot reused for a
+ * different item without an intervening empty state, and emitting a cancellation's remainder only
+ * once however many times the cancelled state is re-sent.
  */
 public class GeOfferTrackerTest
 {
@@ -174,5 +175,56 @@ public class GeOfferTrackerTest
 		assertEquals(GeOfferTracker.Type.CANCELLED, cancel.type);
 		assertEquals(GeOfferTracker.Kind.SELL, cancel.kind);
 		assertEquals(10, cancel.quantity);
+	}
+
+	/**
+	 * A cancelled-but-uncollected offer stays in {@code CANCELLED_SELL} in the slot, and a world hop
+	 * makes the server re-send it. Each emission merged another full remainder into
+	 * {@code pendingSellUnsuspend}, and the inflated entry persists - a later genuine purchase is then
+	 * absorbed as an un-suspend instead of opening a lot (#331).
+	 */
+	@Test
+	public void aRepeatedCancellationEmitsItsRemainderOnlyOnce()
+	{
+		sell(0, 100, 0, 0);
+		sell(0, 100, 40, 40 * 80L);
+
+		GeOfferTracker.Event cancel = only(tracker.onOffer(0, 560, false, true, false, 100, 40, 40 * 80L));
+		assertEquals(GeOfferTracker.Type.CANCELLED, cancel.type);
+		assertEquals(60, cancel.quantity);
+
+		assertTrue(tracker.onOffer(0, 560, false, true, false, 100, 40, 40 * 80L).isEmpty());
+		assertTrue(tracker.onOffer(0, 560, false, true, false, 100, 40, 40 * 80L).isEmpty());
+	}
+
+	/** Collecting the offer clears the slot, so the next offer's cancellation reports normally again. */
+	@Test
+	public void aFreshOfferInTheSlotCanCancelAgain()
+	{
+		sell(0, 100, 0, 0);
+		only(tracker.onOffer(0, 560, false, true, false, 100, 0, 0));
+		assertTrue(tracker.onOffer(0, 560, false, true, true, 0, 0, 0).isEmpty());
+
+		only(sell(0, 50, 0, 0));
+
+		GeOfferTracker.Event cancel = only(tracker.onOffer(0, 560, false, true, false, 50, 0, 0));
+		assertEquals(GeOfferTracker.Type.CANCELLED, cancel.type);
+		assertEquals(50, cancel.quantity);
+	}
+
+	/** A cancellation carrying a final fill still emits both, and still only once. */
+	@Test
+	public void aCancellationWithAFinalFillEmitsBothExactlyOnce()
+	{
+		sell(0, 100, 0, 0);
+
+		List<GeOfferTracker.Event> events = tracker.onOffer(0, 560, false, true, false, 100, 30, 30 * 80L);
+		assertEquals(2, events.size());
+		assertEquals(GeOfferTracker.Type.FILL, events.get(0).type);
+		assertEquals(30, events.get(0).quantity);
+		assertEquals(GeOfferTracker.Type.CANCELLED, events.get(1).type);
+		assertEquals(70, events.get(1).quantity);
+
+		assertTrue(tracker.onOffer(0, 560, false, true, false, 100, 30, 30 * 80L).isEmpty());
 	}
 }

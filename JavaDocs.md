@@ -6006,7 +6006,10 @@ Records an offer event and returns the discrete changes it means, oldest first;
 empty when it carries no actionable change (baseline seed, empty slot, or a
 no-progress update). A cancellation whose event also advanced the fill counters
 emits that final `FILL` before the `CANCELLED` remainder, so the
-filled units realize at their true price instead of being discarded.
+filled units realize at their true price instead of being discarded. The remainder
+is emitted only on the transition into the cancelled state: a cancelled-but-uncollected
+offer stays in that state in the slot, and a world hop re-sends its event, which would
+otherwise queue the un-suspend a second time (#331).
 
 - **Parameter** `buying` — whether the state is a buy side (`BUYING`/`BOUGHT`/`CANCELLED_BUY`)
 - **Parameter** `cancelled` — whether the state is a cancellation (`CANCELLED_BUY`/`CANCELLED_SELL`)
@@ -6112,17 +6115,24 @@ _class_
 Cumulative progress last seen for one GE slot, used to compute each event's increment.
 `itemId` identifies which offer that progress belongs to, so a slot reused for a
 different item without an intervening empty state restarts from a fresh baseline instead
-of subtracting the previous offer's counters.
+of subtracting the previous offer's counters. `cancelEmitted` records that this offer's
+cancellation remainder has already been reported, so a re-sent cancelled state does not queue
+it a second time.
 
 ### Field Summary
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `boolean` | `cancelEmitted` |  |
 | `int` | `itemId` |  |
 | `int` | `lastQuantitySold` |  |
 | `long` | `lastSpent` |  |
 
 ### Field Detail
+
+#### cancelEmitted
+
+`boolean cancelEmitted`
 
 #### itemId
 
@@ -17272,6 +17282,13 @@ Drops a closed pop-out window from both the EDT registry and its client-thread i
 Resets transient and per-login state on game-state transitions: clears
 ground items on each load, and on login wipes the count caches and reloads
 the persisted tracked items.
+
+<p>A world hop goes `LOGGED_IN → HOPPING → LOADING → LOGGED_IN` without touching
+`LOGIN_SCREEN`, so `sessionInitialized` stays true and the login branch never
+runs. `HOPPING` therefore re-arms `geLoginTick` on its own, so the offers the
+server re-sends after the hop go through the same prime path a login's do (#331).
+`LOADING` deliberately does not: it also fires on every teleport and region change,
+where swallowing real offer events would lose a genuine fill.
 
 #### onGameTick
 
