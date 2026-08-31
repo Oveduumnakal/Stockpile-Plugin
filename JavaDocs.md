@@ -15491,6 +15491,7 @@ executor.
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)` | Tracks an item with a preset quantity and acquisition history (e.g. |
 | `private void` | `addVariantsToCompare(int itemId)` | Adds every resolved variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set in natural order, up to `#COMPARE_CAP`, then opens/focuses the window. |
+| `private List<TrackedItem>` | `allLiveItems()` |  |
 | `private void` | `applyAutoCategorize(boolean includeCategorized)` | Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. |
 | `private void` | `applyCompareIds(List<Integer> itemIds)` | Replaces the compare set with `itemIds` (#303): canonicalised, de-duplicated, capped at `#COMPARE_CAP`, each untracked id given a read-only preview; then refreshes prices and the window. |
 | `private void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
@@ -16502,6 +16503,19 @@ the compare set in natural order, up to `#COMPARE_CAP`, then opens/focuses the w
 beyond the cap or already present are skipped; when nothing new fits, the window is just focused.
 Client thread.
 
+#### allLiveItems
+
+`private List<TrackedItem> allLiveItems()`
+
+- **Returns:** every in-memory `TrackedItem`, across the tracked list, the sidebar preview, the
+        pop-out windows and the Compare set, each instance once.
+
+<p>De-duplicated by <em>identity</em>, not by item id: a pop-out or Compare entry for a tracked
+        item holds the very same instance, while an untracked id can legitimately be held twice
+        (preview an item, then add it to Compare) and both copies need the update - that split
+        was the root cause of #309. The four collections used to be walked separately with
+        hand-written `containsKey` guards that grew a clause per collection (#337).
+
 #### applyAutoCategorize
 
 `private void applyAutoCategorize(boolean includeCategorized)`
@@ -16536,6 +16550,12 @@ deltas against the previous values, updates the LIVE window stats, seeds a
 cost basis on first successful price if one wasn't set, then re-evaluates
 notifications and refreshes the panel (including the open detail view).
 A failed (empty) fetch only triggers a plain refresh.
+
+<p>Both halves - applying prices and requesting history - used to be written out four times,
+once per collection, each copy carrying a hand-maintained `containsKey` guard that grew a
+clause per collection. They now iterate `#allLiveItems()` once. The history pass still
+de-duplicates by item id, so a tracked item held by a pop-out or Compare is fetched once, and
+an untracked item that is not on screen is still not fetched at all (#337).
 
 #### applyGeTrackLabel
 
