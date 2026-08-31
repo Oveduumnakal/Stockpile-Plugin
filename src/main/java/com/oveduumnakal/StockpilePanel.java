@@ -2241,7 +2241,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		if (sortMode != SortMode.MANUAL)
 		{
 			items = new ArrayList<>(rawItems);
-			items.sort(sortMode.comparator(config.sortReversed()));
+			sortMode.sort(items, config.sortReversed());
 		}
 		else
 		{

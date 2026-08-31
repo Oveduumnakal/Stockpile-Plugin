@@ -10497,11 +10497,13 @@ the plugin fails to start with an `IllegalAccessError`.
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `private static double` | `changeKey(TrackedItem item)` |  |
-| `Comparator<TrackedItem>` | `comparator(boolean reversed)` |  |
+| `Comparator<TrackedItem>` | `comparator(List<TrackedItem> items, boolean reversed)` |  |
 | `boolean` | `descending(boolean reversed)` |  |
 | `private static Comparator<TrackedItem>` | `directed(Comparator<TrackedItem> key, Predicate<TrackedItem> hasKey, boolean descending)` | Applies the sort direction to an ascending `key` comparator while always sorting items that lack the key (`hasKey` false) last, whichever direction is active. |
 | `private static boolean` | `hasChange(TrackedItem item)` |  |
+| `private static <T> Map<TrackedItem,T>` | `materialize(List<TrackedItem> items, Function<TrackedItem,T> key)` |  |
 | `private static long` | `profitKey(TrackedItem item)` |  |
+| `void` | `sort(List<TrackedItem> items, boolean reversed)` | Sorts `items` in place for display, or leaves the list untouched for `#MANUAL`. |
 | `public String` | `toString()` | Returns the display label shown in the UI. |
 
 ### Enum Constant Detail
@@ -10558,8 +10560,9 @@ The `"Value"` option.
 
 #### comparator
 
-`Comparator<TrackedItem> comparator(boolean reversed)`
+`Comparator<TrackedItem> comparator(List<TrackedItem> items, boolean reversed)`
 
+- **Parameter** `items` — the exact list about to be sorted, used to materialize the per-item keys
 - **Parameter** `reversed` — whether to flip this mode's natural direction
 - **Returns:** the display comparator, or `null` for `#MANUAL`
 
@@ -10582,6 +10585,13 @@ that lack the key (`hasKey` false) last, whichever direction is active.
 
 - **Returns:** whether the item has both a current price and a 24h baseline to compute a change from.
 
+#### materialize
+
+`private static <T> Map<TrackedItem,T> materialize(List<TrackedItem> items, Function<TrackedItem,T> key)`
+
+- **Returns:** each item's sort key, computed exactly once. Keyed by identity rather than item id so
+        two instances of the same id (preview, pop-out, Compare) cannot collide.
+
 #### profitKey
 
 `private static long profitKey(TrackedItem item)`
@@ -10592,6 +10602,21 @@ that lack the key (`hasKey` false) last, whichever direction is active.
         initialized. The old `getAvgValue() - getCostBasis()` omitted realized profit and
         mixed container quantity with all-open-lot cost, so the sort disagreed with every
         displayed figure and swung negative for the duration of an in-flight sell (#173).
+
+#### sort
+
+`void sort(List<TrackedItem> items, boolean reversed)`
+
+Sorts `items` in place for display, or leaves the list untouched for `#MANUAL`.
+
+<p>The expensive keys are materialized once per item before the sort rather than recomputed
+inside the comparator. `Comparator.comparingLong` re-invokes its extractor for
+<em>both operands of every comparison</em> and does not memoize, so `#PROFIT` — whose
+key streams the item's whole acquisitions list twice — cost roughly `2n log n` full
+passes over every lot, on the EDT, on every panel rebuild (#322). Materializing first makes
+that `n`.
+
+- **Parameter** `reversed` — whether to flip this mode's natural direction
 
 #### toString
 
