@@ -88,6 +88,7 @@
 - [com.oveduumnakal.PulseEntry](#comoveduumnakalpulseentry)
 - [com.oveduumnakal.QuickActionDelivery](#comoveduumnakalquickactiondelivery)
 - [com.oveduumnakal.SectionSlot](#comoveduumnakalsectionslot)
+- [com.oveduumnakal.SeriesTimestep](#comoveduumnakalseriestimestep)
 - [com.oveduumnakal.SessionStats](#comoveduumnakalsessionstats)
 - [com.oveduumnakal.SessionStats.Delta](#comoveduumnakalsessionstatsdelta)
 - [com.oveduumnakal.SortMode](#comoveduumnakalsortmode)
@@ -10342,6 +10343,88 @@ Returns the display label shown in the UI.
 
 ---
 
+## com.oveduumnakal.SeriesTimestep
+
+_enum_
+
+`enum SeriesTimestep`
+
+The wiki timeseries sampling steps the plugin fetches, each with how long one fetch stays useful.
+
+<p>The freshness window matches the step's own granularity: refetching the `24h` series
+every minute cannot produce new data, since it only gains a point once a day. Every completed
+price refresh used to reissue all four for every tracked item regardless (#320).
+
+### Enum Constant Summary
+
+| Enum Constant | Description |
+|---|---|
+| `DAY` | Daily samples, feeding the 3-month, 6-month and 1-year windows. |
+| `FIVE_MIN` | Five-minute samples, roughly the last day. |
+| `HOUR` | Hourly samples, feeding the 1-week window. |
+| `SIX_HOUR` | Six-hourly samples, feeding the 1-month window. |
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final Duration` | `freshness` | How long a fetch of this step stays fresh before it is worth reissuing. |
+| `private final String` | `label` | The `timestep` query value the wiki API expects. |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `SeriesTimestep(String label, Duration freshness)` |  |
+
+### Enum Constant Detail
+
+#### DAY
+
+`DAY`
+
+Daily samples, feeding the 3-month, 6-month and 1-year windows.
+
+#### FIVE_MIN
+
+`FIVE_MIN`
+
+Five-minute samples, roughly the last day.
+
+#### HOUR
+
+`HOUR`
+
+Hourly samples, feeding the 1-week window.
+
+#### SIX_HOUR
+
+`SIX_HOUR`
+
+Six-hourly samples, feeding the 1-month window.
+
+### Field Detail
+
+#### freshness
+
+`private final Duration freshness`
+
+How long a fetch of this step stays fresh before it is worth reissuing.
+
+#### label
+
+`private final String label`
+
+The `timestep` query value the wiki API expects.
+
+### Constructor Detail
+
+#### SeriesTimestep
+
+`SeriesTimestep(String label, Duration freshness)`
+
+---
+
 ## com.oveduumnakal.SessionStats
 
 _class_
@@ -15466,6 +15549,7 @@ executor.
 | `private final List<StockpilePersistence.SavedComparison>` | `savedComparisons` | The persisted named comparisons (#303), in saved order. |
 | `private final List<StockpileScreenOverlay>` | `screenOverlays` | One independently-draggable overlay box per slot; they start grouped in the same snap corner. |
 | `private final Set<Integer>` | `seenContainersSinceLogin` |  |
+| `private final Map<Long,Instant>` | `seriesFetchedAt` | When each `(item, timestep)` series was last fetched, so a fresh one is not refetched (#320). |
 | `private boolean` | `sessionInitialized` | Whether the current logged-in session has been initialised. |
 | `private boolean` | `shopOpen` | Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). |
 | `private final Map<Integer,Integer>` | `theirTradeOffer` |  |
@@ -15512,6 +15596,7 @@ executor.
 | `private void` | `captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
 | `private String` | `categoryValue(TrackedItem item, NotificationMetric metric)` | Resolves the current categorical rating of a metric for an item (volatility, liquidity, or 30-day range position) via `MarketClassifier`. |
 | `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
+| `private boolean` | `claimSeriesFetch(int itemId, SeriesTimestep step)` | Claims one `(item, timestep)` fetch, marking it as issued now. |
 | `private void` | `clearAcquisitions(int itemId)` | Clears an item's acquisition lots (resetting its cost basis) and persists/refreshes. |
 | `private void` | `clearAllTrackedItems()` | Removes every tracked item, then persists and refreshes. |
 | `private void` | `clearCompareSet()` | Clears the whole compare set and closes the window. |
@@ -15580,6 +15665,7 @@ executor.
 | `private boolean` | `isWhatsNew()` |  |
 | `private int` | `itemInGeContainer(int componentId)` |  |
 | `private List<TrackedItem>` | `itemsFor(int itemId)` |  |
+| `private List<WikiRealtimePriceClient.PricePoint>` | `knownSeries(int itemId, SeriesTimestep step)` |  |
 | `static long[]` | `latestSeriesHighLow(List<WikiRealtimePriceClient.PricePoint> series)` | Scans a price series newest-first for the most recent priced average high and low, returned as `[high, low]` (each 0 when the series holds no priced sample) (#142). |
 | `private void` | `loadCategories()` | Restores the category definitions and group collapsed state from per-profile JSON. |
 | `private void` | `loadPersistedItems()` | Restores tracked items from the per-profile JSON written by `#persistTrackedItems()`. |
@@ -15653,6 +15739,7 @@ executor.
 | `private void` | `registerGeButtonSprite(BufferedImage icon)` | Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the injected GE button (#140). |
 | `private void` | `registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)` | Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved: the coins paid or received, divided across the quantity, price the item's `AcquisitionSource#SHOP` claim. |
 | `private void` | `registerTradeClaims()` | Books a completed trade's item movements as `AcquisitionSource#PLAYER_TRADE` (#66): items received buy in at the gp we gave apportioned across them by market value, and items given close at the gp we received apportioned the same way. |
+| `private void` | `releaseSeriesFetch(int itemId, SeriesTimestep step)` | Un-marks a claimed fetch that came back empty, so the next refresh retries rather than waiting out the TTL. |
 | `private void` | `removeFromCompareId(int itemId)` | Removes `itemId` from the compare set, closing the window when the set empties. |
 | `private void` | `removeTrackedItem(int itemId)` | Stops tracking an item, then persists and refreshes. |
 | `private void` | `renameCategory(String oldName, String newName)` | Renames a category and re-points its items, ignoring blanks and clashes, then persists and refreshes. |
@@ -15672,6 +15759,8 @@ executor.
 | `private int` | `scanForItem(Widget widget)` | Recursively searches a widget subtree for the first child holding a real item id. |
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
 | `private Integer` | `searchItemIdByExactName(String lowerName)` | Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable item whose name equals `lowerName` (case-insensitive). |
+| `private static long` | `seriesKey(int itemId, SeriesTimestep step)` |  |
+| `private static List<WikiRealtimePriceClient.PricePoint>` | `seriesOf(TrackedItem item, SeriesTimestep step)` |  |
 | `private void` | `setFavorite(int itemId, boolean favorite)` | Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes. |
 | `private void` | `setGeWidgetsVisible(boolean visible)` | Shows or hides the injected GE widgets without destroying them, for when the interface is on a screen with no item (the offer list). |
 | `private void` | `setGlobalOrder(List<Integer> orderedIds)` | Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. |
@@ -15679,6 +15768,7 @@ executor.
 | `private void` | `setItemCategory(int itemId, String category)` | Assigns an item to a category (null/blank clears it to Uncategorized), then persists and refreshes. |
 | `private void` | `setItemCompact(int itemId, boolean on)` | Toggles an item's per-item compact-row override (#210), then persists and refreshes. |
 | `private void` | `setOnOverlay(int itemId, boolean on)` | Adds/removes an item from the on-screen overlay set, enforcing the `#OVERLAY_MAX` cap (an add beyond the cap is ignored), then persists and refreshes. |
+| `private static void` | `setSeriesOf(TrackedItem item, SeriesTimestep step, List<WikiRealtimePriceClient.PricePoint> points)` | Stores `points` as the item's series for `step`. |
 | `private void` | `setSortMode(SortMode mode)` | Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `showOrUpdateCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids, boolean focus)` | Opens the compare window (or updates the open one) with `entries`, disposing it when the set is empty. |
 | `protected void` | `shutDown() throws Exception` | Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state. |
@@ -16360,6 +16450,12 @@ One independently-draggable overlay box per slot; they start grouped in the same
 
 `private final Set<Integer> seenContainersSinceLogin`
 
+#### seriesFetchedAt
+
+`private final Map<Long,Instant> seriesFetchedAt`
+
+When each `(item, timestep)` series was last fetched, so a fresh one is not refetched (#320).
+
 #### sessionInitialized
 
 `private boolean sessionInitialized`
@@ -16689,6 +16785,17 @@ Resolves the current categorical rating of a metric for an item
 `private void claimReceivedItems(Map<Integer,Integer> side, long gp)`
 
 Claims received items as buys at the apportioned per-unit price, matched by their inventory additions.
+
+#### claimSeriesFetch
+
+`private boolean claimSeriesFetch(int itemId, SeriesTimestep step)`
+
+Claims one `(item, timestep)` fetch, marking it as issued now.
+
+- **Returns:** whether the caller should fetch: true when the step has gone stale for its own
+        granularity, or when no live instance of the item is holding that series (a freshly
+        previewed or compared copy of an item whose data was fetched onto another instance
+        is filled from that instance instead, so this only fires when nothing has it at all)
 
 #### clearAcquisitions
 
@@ -17301,6 +17408,12 @@ the literal string "null"; those must not open a preview.
         `#lookupItem` this returns ALL of them — the same id is routinely held by two at once
         (preview an untracked item, then add it to Compare), and a fetch that reaches only the first
         leaves the other view empty forever (#309).
+
+#### knownSeries
+
+`private List<WikiRealtimePriceClient.PricePoint> knownSeries(int itemId, SeriesTimestep step)`
+
+- **Returns:** a non-empty series for `step` already held by some live instance of the item, else null.
 
 #### latestSeriesHighLow
 
@@ -17924,6 +18037,12 @@ are registered as claims for the imminent additions to match. Given items alread
 inventory when they were offered (suspended, not closed), so there is no delta to match —
 they are closed here directly against their trade suspension.
 
+#### releaseSeriesFetch
+
+`private void releaseSeriesFetch(int itemId, SeriesTimestep step)`
+
+Un-marks a claimed fetch that came back empty, so the next refresh retries rather than waiting out the TTL.
+
 #### removeFromCompareId
 
 `private void removeFromCompareId(int itemId)`
@@ -17970,6 +18089,12 @@ detail panel on the appropriate threads.
 one found: an untracked item can be held as the panel's preview and as a Compare preview at the same
 time, and writing to only one leaves the other rendering a permanently empty trend, volume, and
 ratings block (#309).
+
+<p>Only the steps that have gone stale for their own granularity are actually fetched (#320) - a
+`24h` series gains a point once a day, so reissuing it every minute cannot produce new
+data. A step that is fresh is filled from whichever live instance already holds it, so a newly
+previewed or compared copy of an item still gets the full picture without a network round trip.
+The apply and refresh below run either way, so a caller that opens a view still sees it populate.
 
 #### requestGeLinePrices
 
@@ -18077,6 +18202,18 @@ item whose name equals `lowerName` (case-insensitive).
 
 - **Returns:** the matching item id, or `null` when none matches
 
+#### seriesKey
+
+`private static long seriesKey(int itemId, SeriesTimestep step)`
+
+- **Returns:** the `#seriesFetchedAt` key for one item's one timestep.
+
+#### seriesOf
+
+`private static List<WikiRealtimePriceClient.PricePoint> seriesOf(TrackedItem item, SeriesTimestep step)`
+
+- **Returns:** the item's stored series for `step`.
+
 #### setFavorite
 
 `private void setFavorite(int itemId, boolean favorite)`
@@ -18123,6 +18260,12 @@ Toggles an item's per-item compact-row override (#210), then persists and refres
 
 Adds/removes an item from the on-screen overlay set, enforcing the `#OVERLAY_MAX`
 cap (an add beyond the cap is ignored), then persists and refreshes.
+
+#### setSeriesOf
+
+`private static void setSeriesOf(TrackedItem item, SeriesTimestep step, List<WikiRealtimePriceClient.PricePoint> points)`
+
+Stores `points` as the item's series for `step`.
 
 #### setSortMode
 
@@ -19829,7 +19972,7 @@ individual bad entries are skipped.
 | `private static final HttpUrl` | `LATEST_URL` |  |
 | `private static final HttpUrl` | `MAPPING_URL` |  |
 | `private static final String` | `TIMESERIES_URL` |  |
-| `private static final String` | `USER_AGENT` |  |
+| `private static final String` | `USER_AGENT` | Identifies the plugin to the wiki API, with a contact URL as its usage guidance asks (#320) so an operator can reach the author rather than only being able to block the traffic. |
 | `private final Gson` | `gson` |  |
 | `private final OkHttpClient` | `httpClient` |  |
 
@@ -19866,6 +20009,9 @@ individual bad entries are skipped.
 #### USER_AGENT
 
 `private static final String USER_AGENT`
+
+Identifies the plugin to the wiki API, with a contact URL as its usage guidance asks (#320) so
+an operator can reach the author rather than only being able to block the traffic.
 
 #### gson
 
