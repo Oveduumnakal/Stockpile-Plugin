@@ -271,13 +271,25 @@ class SourceAttributionCore
 	/**
 	 * Rebuilds the durable (GE buy) claims from a persisted ledger; the reloaded chunks are GE
 	 * trades. Call after {@link #clearDurable} so a login replaces rather than duplicates them.
+	 *
+	 * <p>A chunk that is {@code null} or shorter than {@code [quantity, unitPrice]} is skipped
+	 * rather than indexed into: the value is valid JSON of the wrong shape, so it parses cleanly
+	 * and would otherwise throw here, inside the login block (#329).
 	 */
 	void importDurable(Map<Integer, List<long[]>> ledger)
 	{
 		for (Map.Entry<Integer, List<long[]>> e : ledger.entrySet())
 		{
+			if (e.getKey() == null || e.getValue() == null)
+				continue;
+
 			for (long[] chunk : e.getValue())
+			{
+				if (chunk == null || chunk.length < 2)
+					continue;
+
 				durableClaims.addLast(new Claim(AcquisitionSource.GE_TRADE, e.getKey(), (int) chunk[0], chunk[1], 0));
+			}
 		}
 	}
 }

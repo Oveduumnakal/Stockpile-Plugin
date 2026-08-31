@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -119,7 +120,7 @@ public class CostBasisLedgerTest
 	}
 
 	/** A persistence stub that neither reads nor writes config, so the ledger is testable client-free. */
-	private static final class NoopPersistence extends StockpilePersistence
+	private static class NoopPersistence extends StockpilePersistence
 	{
 		NoopPersistence()
 		{
@@ -141,6 +142,21 @@ public class CostBasisLedgerTest
 		Map<Integer, long[]> loadGeBuyLimits()
 		{
 			return new HashMap<>();
+		}
+	}
+
+	/** A persistence stub that hands back deliberately malformed buy-limit windows (#329). */
+	private static final class CorruptLimitsPersistence extends NoopPersistence
+	{
+		@Override
+		Map<Integer, long[]> loadGeBuyLimits()
+		{
+			Map<Integer, long[]> limits = new HashMap<>();
+			limits.put(1381, new long[]{});
+			limits.put(1383, new long[]{7});
+			limits.put(1385, null);
+			limits.put(ITEM, new long[]{Instant.now().getEpochSecond(), 300});
+			return limits;
 		}
 	}
 
@@ -443,5 +459,28 @@ public class CostBasisLedgerTest
 		assertEquals(AcquisitionSource.UNKNOWN, lot.sourceOrUnknown());
 		assertNull(lot.getSoldAt());
 		assertFalse(t.getAcquisitions().isEmpty());
+	}
+
+	/**
+	 * A buy-limit window that is null or shorter than {@code [start, quantity]} is valid JSON of the
+	 * wrong shape, so it parses cleanly and used to throw when indexed - inside the login block, which
+	 * aborted the rest of it. Load must skip those and still take the well-formed ones (#329).
+	 */
+	@Test
+	public void loadSkipsMalformedBuyLimitWindows()
+	{
+		CostBasisLedger corrupt = new CostBasisLedger(host, new CorruptLimitsPersistence());
+		corrupt.load();
+
+		TrackedItem tracked = item(0, 100);
+		corrupt.applyBuyLimitFields(tracked);
+		assertEquals(300, tracked.getLimitBought());
+
+		for (int id : new int[]{1381, 1383, 1385})
+		{
+			TrackedItem other = new TrackedItem(id, "Other");
+			corrupt.applyBuyLimitFields(other);
+			assertEquals(0, other.getLimitBought());
+		}
 	}
 }

@@ -4,6 +4,8 @@
  */
 package com.oveduumnakal;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +20,8 @@ import static org.junit.Assert.assertTrue;
  * Tests for {@link SourceAttributionCore}: claim matching (full and partial),
  * per-item isolation, oldest-first consumption, tick expiry, the
  * {@link AcquisitionSource#UNKNOWN} fallback, and the durable GE buy claims
- * (#180) — their own matching path, TTL immunity, and ledger serialization.
+ * (#180) — their own matching path, TTL immunity, ledger serialization, and skipping a persisted
+ * chunk whose shape is wrong (#329).
  */
 public class SourceAttributionCoreTest
 {
@@ -254,5 +257,26 @@ public class SourceAttributionCoreTest
 	public void reconcileEmptyLedgerReturnsFalse()
 	{
 		assertFalse(core.reconcileDurable(new HashMap<>()));
+	}
+
+	/**
+	 * A persisted chunk shorter than {@code [quantity, unitPrice]}, or a null one, is valid JSON that
+	 * Gson accepts, so it reaches importDurable intact and used to throw at login. It must be skipped
+	 * while the well-formed chunks around it still load.
+	 */
+	@Test
+	public void importDurableSkipsMalformedChunks()
+	{
+		List<long[]> chunks = new ArrayList<>(Arrays.asList(
+				new long[]{}, new long[]{5}, null, new long[]{4, 90}, new long[]{2, 80, 999}));
+		Map<Integer, List<long[]>> ledger = new HashMap<>();
+		ledger.put(560, chunks);
+		ledger.put(383, null);
+
+		core.importDurable(ledger);
+
+		assertEquals(90, core.attributeDurable(560, 4).get(0)[1]);
+		assertEquals(80, core.attributeDurable(560, 2).get(0)[1]);
+		assertTrue(core.attributeDurable(383, 1).isEmpty());
 	}
 }

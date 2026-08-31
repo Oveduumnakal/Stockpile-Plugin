@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import lombok.extern.slf4j.Slf4j;
 
@@ -165,7 +165,7 @@ class StockpilePersistence
 			List<PersistedItem> list = gson.fromJson(trimmed, PERSIST_TYPE);
 			return list == null ? new ArrayList<>() : list;
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("Failed to parse persisted item JSON; ignoring", e);
 			return new ArrayList<>();
@@ -191,7 +191,7 @@ class StockpilePersistence
 		{
 			return gson.fromJson(saved.trim(), CATEGORIES_TYPE);
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("Failed to parse persisted category JSON; ignoring", e);
 			return null;
@@ -222,7 +222,7 @@ class StockpilePersistence
 			List<SavedComparison> list = gson.fromJson(trimmed, SAVED_COMPARISONS_TYPE);
 			return list == null ? new ArrayList<>() : list;
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("Failed to parse persisted comparison JSON; ignoring", e);
 			return new ArrayList<>();
@@ -249,7 +249,7 @@ class StockpilePersistence
 			Map<Integer, CachedPrice> cache = gson.fromJson(saved, PRICE_CACHE_TYPE);
 			return cache == null ? new HashMap<>() : cache;
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("Failed to parse persisted price cache; ignoring", e);
 			return new HashMap<>();
@@ -278,7 +278,7 @@ class StockpilePersistence
 		{
 			return gson.fromJson(saved.trim(), PORTFOLIO_HISTORY_TYPE);
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("Failed to parse persisted portfolio history; ignoring", e);
 			return null;
@@ -307,7 +307,7 @@ class StockpilePersistence
 			Map<Integer, List<long[]>> ledger = gson.fromJson(ledgerJson, GE_LEDGER_TYPE);
 			return ledger == null ? new HashMap<>() : ledger;
 		}
-		catch (JsonSyntaxException ex)
+		catch (JsonParseException ex)
 		{
 			log.warn("Failed to parse GE buy ledger; ignoring", ex);
 			return new HashMap<>();
@@ -327,7 +327,7 @@ class StockpilePersistence
 			Map<Integer, long[]> limits = gson.fromJson(limitsJson, GE_LIMITS_TYPE);
 			return limits == null ? new HashMap<>() : limits;
 		}
-		catch (JsonSyntaxException ex)
+		catch (JsonParseException ex)
 		{
 			log.warn("Failed to parse GE buy limits; ignoring", ex);
 			return new HashMap<>();

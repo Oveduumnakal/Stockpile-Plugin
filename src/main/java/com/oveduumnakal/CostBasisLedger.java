@@ -972,6 +972,10 @@ class CostBasisLedger
 	/**
 	 * Restores the GE buy ledger (as durable claims) and buy-limit windows from the RS profile
 	 * config, defaulting to empty.
+	 *
+	 * <p>A limit window that is {@code null} or shorter than {@code [startMillis, quantity]} is
+	 * skipped rather than stored: it is valid JSON of the wrong shape, so it parses cleanly and
+	 * would otherwise throw when indexed, aborting the rest of the login block (#329).
 	 */
 	void load()
 	{
@@ -979,7 +983,11 @@ class CostBasisLedger
 		geBuyLimits.clear();
 
 		sourceAttribution.importDurable(persistence.loadGeLedger());
-		geBuyLimits.putAll(persistence.loadGeBuyLimits());
+		persistence.loadGeBuyLimits().forEach((itemId, window) ->
+		{
+			if (itemId != null && window != null && window.length >= 2)
+				geBuyLimits.put(itemId, window);
+		});
 	}
 
 	/** Persists the GE state at most once per {@link #GE_STATE_SAVE_INTERVAL}. */
