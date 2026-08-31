@@ -42,9 +42,6 @@ class CostBasisLedger
 	/** The rolling GE buy-limit window length. */
 	private static final Duration BUY_LIMIT_WINDOW = Duration.ofHours(4);
 
-	/** How often at most the GE ledger/window are rewritten to config during activity. */
-	private static final Duration GE_STATE_SAVE_INTERVAL = Duration.ofMinutes(1);
-
 	private final LedgerHost host;
 
 	private final StockpilePersistence persistence;
@@ -95,8 +92,6 @@ class CostBasisLedger
 
 	/** Per-output transferred basis of a drunk dose awaiting the lower-dose potion (#218). */
 	private final Map<Integer, Long> pendingConsumedOutput = new HashMap<>();
-
-	private Instant lastGeStateSave;
 
 	/** The tick a fur/meat pouch was "Fill"ed on; -1 when none (#214). */
 	private int pouchFillTick = -1;
@@ -174,10 +169,9 @@ class CostBasisLedger
 			{
 				recordBuyLimit(e.itemId, e.quantity);
 				if (host.sourcePricing())
-				{
 					sourceAttribution.claimDurable(AcquisitionSource.GE_TRADE, e.itemId, e.quantity, e.unitPrice);
-					scheduleGeStateSave();
-				}
+
+				persist();
 			}
 
 			return;
@@ -205,7 +199,7 @@ class CostBasisLedger
 	private void realizeSell(int itemId, int qty, long unitPrice)
 	{
 		realize(SuspensionSource.SELL, itemId, qty, unitPrice);
-		scheduleGeStateSave();
+		persist();
 	}
 
 	/**
@@ -278,7 +272,7 @@ class CostBasisLedger
 			host.persistTrackedItems();
 			host.refreshPanel();
 			if (geChanged)
-				scheduleGeStateSave();
+				persist();
 		}
 	}
 
@@ -804,7 +798,7 @@ class CostBasisLedger
 			remaining -= (int) chunk[0];
 		}
 
-		scheduleGeStateSave();
+		persist();
 		return remaining;
 	}
 
@@ -823,7 +817,7 @@ class CostBasisLedger
 		else
 			pendingSellSuspend.remove(tracked.getItemId());
 
-		scheduleGeStateSave();
+		persist();
 		return qty - take;
 	}
 
@@ -885,7 +879,7 @@ class CostBasisLedger
 		}
 
 		if (sourceAttribution.reconcileDurable(outstanding))
-			scheduleGeStateSave();
+			persist();
 	}
 
 	/**
@@ -962,10 +956,23 @@ class CostBasisLedger
 		item.setLimitResetEpoch(window[0] + BUY_LIMIT_WINDOW.getSeconds());
 	}
 
-	/** Persists the GE buy ledger (the durable claims) and buy-limit windows to the RS profile config. */
+	/**
+	 * Persists the GE buy ledger (the durable claims) and buy-limit windows to the RS profile config.
+	 *
+	 * <p>Called eagerly at each of the handful of points that change this state - a buy fill, a sell
+	 * realization, ledger consumption, a suspension change, an offer reconcile - rather than on a
+	 * debounce. The state used to be written at most once a minute and flushed unconditionally only
+	 * at plugin shutdown; {@code onGameStateChanged} has no equivalent, and the next {@code LOGGED_IN}
+	 * calls {@link #load()}, which overwrites the in-memory ledger with whatever was last on disk. So
+	 * logging out or hopping accounts within 60 seconds of a buy filling lost that fill's durable
+	 * claim, and the units later collected fell through to {@code fallbackPrice} - a purchase made at
+	 * a known price silently booked at the current market instead (#328).
+	 *
+	 * <p>These events are far rarer than the quantity changes {@code persistTrackedItems()} already
+	 * writes eagerly, so removing the debounce costs nothing worth keeping the window for.
+	 */
 	void persist()
 	{
-		lastGeStateSave = Instant.now();
 		persistence.saveGeState(sourceAttribution.exportDurable(), geBuyLimits);
 	}
 
@@ -988,14 +995,6 @@ class CostBasisLedger
 			if (itemId != null && window != null && window.length >= 2)
 				geBuyLimits.put(itemId, window);
 		});
-	}
-
-	/** Persists the GE state at most once per {@link #GE_STATE_SAVE_INTERVAL}. */
-	private void scheduleGeStateSave()
-	{
-		if (lastGeStateSave == null
-				|| Duration.between(lastGeStateSave, Instant.now()).compareTo(GE_STATE_SAVE_INTERVAL) >= 0)
-			persist();
 	}
 
 	/**
