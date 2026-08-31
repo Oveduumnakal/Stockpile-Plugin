@@ -12196,33 +12196,58 @@ _class_
 
 Scene overlay that outlines tracked items lying on the ground.
 
-<p>On each frame it walks the plugin's known ground items, keeps those whose
-canonical id is tracked, and draws their tile polygon in the configured
-highlight color &ndash; pulsing via the plugin's breathing alpha. Does nothing
+<p>On each frame it walks the plugin's <em>tracked</em> ground items and draws their tile polygon
+in the configured highlight color &ndash; pulsing via the plugin's breathing alpha. Does nothing
 when ground highlighting is disabled in config.
+
+<p>The plugin maintains that subset, so the per-frame cost is proportional to what is drawn. This
+used to walk every ground item in the scene and canonicalize each one, which at the Grand
+Exchange, Wintertodt or a death pile is thousands of item-manager calls per frame to find
+the two that matter (#325).
 
 ### Field Summary
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `private int` | `cachedAlpha` | The alpha `#cachedBreathing` was built at. |
+| `private Color` | `cachedBase` | The configured highlight colour `#cachedBreathing` was built from. |
+| `private Color` | `cachedBreathing` | The last colour handed to `#breathingColor()`, reused while the colour and alpha hold. |
 | `private final Client` | `client` |  |
 | `private final StockpileConfig` | `config` |  |
-| `private final ItemManager` | `itemManager` |  |
 | `private final StockpilePlugin` | `plugin` |  |
 
 ### Constructor Summary
 
 | Constructor | Description |
 |---|---|
-| `StockpileGroundOverlay(Client client, StockpilePlugin plugin, StockpileConfig config, ItemManager itemManager)` |  |
+| `StockpileGroundOverlay(Client client, StockpilePlugin plugin, StockpileConfig config)` |  |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `private Color` | `breathingColor()` |  |
 | `public Dimension` | `render(Graphics2D graphics)` | Draws the ground-item highlights for tracked items on the game scene. |
 
 ### Field Detail
+
+#### cachedAlpha
+
+`private int cachedAlpha`
+
+The alpha `#cachedBreathing` was built at.
+
+#### cachedBase
+
+`private Color cachedBase`
+
+The configured highlight colour `#cachedBreathing` was built from.
+
+#### cachedBreathing
+
+`private Color cachedBreathing`
+
+The last colour handed to `#breathingColor()`, reused while the colour and alpha hold.
 
 #### client
 
@@ -12232,10 +12257,6 @@ when ground highlighting is disabled in config.
 
 `private final StockpileConfig config`
 
-#### itemManager
-
-`private final ItemManager itemManager`
-
 #### plugin
 
 `private final StockpilePlugin plugin`
@@ -12244,9 +12265,18 @@ when ground highlighting is disabled in config.
 
 #### StockpileGroundOverlay
 
-`StockpileGroundOverlay(Client client, StockpilePlugin plugin, StockpileConfig config, ItemManager itemManager)`
+`StockpileGroundOverlay(Client client, StockpilePlugin plugin, StockpileConfig config)`
 
 ### Method Detail
+
+#### breathingColor
+
+`private Color breathingColor()`
+
+- **Returns:** the highlight colour at the current breathing alpha, reusing the last instance while
+        neither the configured colour nor the rounded alpha has moved. The alpha changes only
+        once per frame and repeats across frames, so this allocates on a step rather than on
+        every paint.
 
 #### render
 
@@ -15412,6 +15442,8 @@ executor.
 | `private final List<ItemDespawned>` | `tickGroundDespawns` |  |
 | `private final List<ItemQuantityChanged>` | `tickGroundQuantityChanges` |  |
 | `private final List<ItemSpawned>` | `tickGroundSpawns` | This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65). |
+| `private final Map<TileItem,Tile>` | `trackedGroundItems` | The tracked subset of `#groundItems`, so the ground overlay's per-frame work is proportional to what it actually draws rather than to everything on the floor (#325). |
+| `private int` | `trackedGroundRevision` | `trackedItems.keySet().hashCode()` when `#trackedGroundItems` was last rebuilt. |
 | `private final Map<Integer,TrackedItem>` | `trackedItems` |  |
 | `private boolean` | `uncategorizedCollapsed` |  |
 | `private WikiRealtimePriceClient` | `wikiPriceClient` |  |
@@ -15485,9 +15517,9 @@ executor.
 | `private Widget` | `findGeCloseButton()` | Locates the GE window's close (X) button by walking to the top-level ancestor of the open offer container and searching its subtree for a visible widget with a "Close" action (#139). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
 | `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
-| `Map<TileItem,Tile>` | `getGroundItems()` |  |
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
+| `Map<TileItem,Tile>` | `getTrackedGroundItems()` |  |
 | `private boolean` | `hasMarketData(int itemId)` |  |
 | `private void` | `hideGeButton()` | Hides and forgets the injected GE button, if one is currently on the offer interface. |
 | `private void` | `hideGeTrackButton()` | Hides and forgets the injected Track/Untrack button, if one is currently on the offer interface (#139). |
@@ -15624,6 +15656,7 @@ executor.
 | `private void` | `syncQuantitiesForItem(TrackedItem tracked)` | Recounts a single item across all containers and the rune pouch and sets its quantity. |
 | `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: each item's quantity follows its containers, and - when `StockpileConfig#autoAddItems()` is on - positive deltas open new lots and negative deltas close lots FIFO. |
 | `private void` | `syncRunePouch()` | Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits. |
+| `private void` | `syncTrackedGroundItems()` | Re-derives `#trackedGroundItems` when the tracked set has changed, so an item already on the floor starts (or stops) being outlined the moment it is tracked or untracked. |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
@@ -16335,6 +16368,19 @@ The tick of the most recent Thieving XP gain, marking a gain as free stolen loot
 
 This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65).
 
+#### trackedGroundItems
+
+`private final Map<TileItem,Tile> trackedGroundItems`
+
+The tracked subset of `#groundItems`, so the ground overlay's per-frame work is
+proportional to what it actually draws rather than to everything on the floor (#325).
+
+#### trackedGroundRevision
+
+`private int trackedGroundRevision`
+
+`trackedItems.keySet().hashCode()` when `#trackedGroundItems` was last rebuilt.
+
 #### trackedItems
 
 `private final Map<Integer,TrackedItem> trackedItems`
@@ -16938,12 +16984,6 @@ establishes the baseline, since a login must produce no pouch delta.
 
 Brings the compare window to the front if one is open. Runs on the EDT.
 
-#### getGroundItems
-
-`Map<TileItem,Tile> getGroundItems()`
-
-- **Returns:** the live map of on-screen ground items to their tiles (used by the ground overlay).
-
 #### getItemIdFromMenuEntry
 
 `private int getItemIdFromMenuEntry(MenuEntry entry)`
@@ -16955,6 +16995,16 @@ Brings the compare window to the front if one is open. Runs on the EDT.
 `List<TrackedItem> getOverlayItems()`
 
 - **Returns:** the tracked items shown on the overlay (in tracked order), capped at `#OVERLAY_MAX`.
+
+#### getTrackedGroundItems
+
+`Map<TileItem,Tile> getTrackedGroundItems()`
+
+- **Returns:** the live map of on-screen <em>tracked</em> ground items to their tiles, for the ground
+        overlay. It used to be handed the map of every ground item in the scene, and
+        canonicalized each one on every frame to find the handful that were tracked - thousands
+        of `ItemManager` calls a frame at the Grand Exchange or a death pile, to draw
+        maybe two outlines, and the same cost when it drew none (#325).
 
 #### hasMarketData
 
@@ -17427,6 +17477,10 @@ Buffers ground-stack quantity changes so drops onto an existing stack correlate 
 `public void onItemSpawned(ItemSpawned event)`
 
 Records a ground item and its tile so the ground overlay can outline it, buffering it for #65.
+
+<p>Every ground item goes into `#groundItems`, since the tracked set can change while an
+item is already on the floor; only the tracked ones go into `#trackedGroundItems`, which
+is what the overlay reads.
 
 #### onMenuOpened
 
@@ -18079,6 +18133,16 @@ The gate now covers only the lot side, which is what the setting is actually for
 `private void syncRunePouch()`
 
 Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits.
+
+#### syncTrackedGroundItems
+
+`private void syncTrackedGroundItems()`
+
+Re-derives `#trackedGroundItems` when the tracked set has changed, so an item already on
+the floor starts (or stops) being outlined the moment it is tracked or untracked. Spawns and
+despawns maintain the map incrementally; only a tracked-set change needs the sweep, and the
+key-set hash makes detecting that cost one pass over the tracked items rather than the floor.
+Runs once per game tick on the client thread.
 
 #### toggleCompactView
 
