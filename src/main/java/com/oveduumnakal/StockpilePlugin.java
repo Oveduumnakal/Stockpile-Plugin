@@ -1224,8 +1224,27 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		int rate = Math.max(30, config.priceRefreshSeconds());
 		priceRefreshTask = executor.scheduleAtFixedRate(
-				this::refreshGePrices, 0, rate, TimeUnit.SECONDS
+				this::refreshGePricesGuarded, 0, rate, TimeUnit.SECONDS
 		);
+	}
+
+	/**
+	 * Runs one scheduled price refresh, swallowing anything it throws.
+	 *
+	 * <p>An exception escaping a {@code scheduleAtFixedRate} task cancels that task permanently, so a
+	 * single bad response would stop price refreshes for the rest of the session with nothing but a
+	 * swallowed future to show for it. Logging and continuing means the next tick simply tries again.
+	 */
+	private void refreshGePricesGuarded()
+	{
+		try
+		{
+			refreshGePrices();
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("Scheduled price refresh failed; retrying on the next tick", e);
+		}
 	}
 
 	/** How often at most the price cache is rewritten to config during regular refreshes. */
