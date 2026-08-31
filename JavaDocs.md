@@ -15502,6 +15502,7 @@ executor.
 | `private void` | `refreshCompareWindow()` | Re-reads the compare columns from current prices, if a window is open. |
 | `private void` | `refreshDetailWindows()` | Re-populates every open pop-out window with fresh data. |
 | `private void` | `refreshGePrices()` | Fetches the latest prices for all items in the background, then applies them on the client thread. |
+| `private void` | `refreshGePricesGuarded()` | Runs one scheduled price refresh, swallowing anything it throws. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
 | `private void` | `refreshPanel(boolean pricesUpdated)` | Pushes the current tracked items and totals to the panel on the Swing thread. |
 | `private void` | `registerGeButtonSprite(BufferedImage icon)` | Registers the bundled Stockpile icon as a custom sprite override so it can be drawn on the injected GE button (#140). |
@@ -17604,6 +17605,16 @@ Re-populates every open pop-out window with fresh data. Runs on the EDT.
 `private void refreshGePrices()`
 
 Fetches the latest prices for all items in the background, then applies them on the client thread.
+
+#### refreshGePricesGuarded
+
+`private void refreshGePricesGuarded()`
+
+Runs one scheduled price refresh, swallowing anything it throws.
+
+<p>An exception escaping a `scheduleAtFixedRate` task cancels that task permanently, so a
+single bad response would stop price refreshes for the rest of the session with nothing but a
+swallowed future to show for it. Logging and continuing means the next tick simply tries again.
 
 #### refreshPanel
 
