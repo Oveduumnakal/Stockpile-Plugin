@@ -4,10 +4,13 @@
  */
 package com.oveduumnakal;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 
 import com.google.gson.Gson;
 import org.junit.Test;
@@ -16,7 +19,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** Round-trip, compactness, and defensive-decode coverage for {@link PortfolioShareCodec}. */
+/**
+ * Round-trip, compactness, and defensive-decode coverage for {@link PortfolioShareCodec}, including
+ * the inflate-size and token-length caps that keep a gzip bomb from taking the client down (#330).
+ */
 public class PortfolioShareCodecTest
 {
 	private final PortfolioShareCodec codec = new PortfolioShareCodec(new Gson());
@@ -94,5 +100,62 @@ public class PortfolioShareCodecTest
 		String notGzip = encoder.encodeToString("not gzip".getBytes());
 		assertNull(codec.decode("STKPL1:" + notGzip));
 		assertNull(codec.decode("{ this is : not json }"));
+	}
+
+	/** A valid STKPL1 token whose payload gunzips to {@code size} bytes of highly compressible data. */
+	private static String bomb(int size) throws Exception
+	{
+		byte[] payload = new byte[size];
+		Arrays.fill(payload, (byte) 'A');
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try (GZIPOutputStream gzip = new GZIPOutputStream(bytes))
+		{
+			gzip.write(payload);
+		}
+
+		Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+		return PortfolioShareCodec.PREFIX + encoder.encodeToString(bytes.toByteArray());
+	}
+
+	/**
+	 * A share code arrives from someone else, so an unbounded gunzip is a denial of service: gzip
+	 * reaches ~1000:1, and the resulting OutOfMemoryError is not caught and kills the client.
+	 */
+	@Test
+	public void anOversizedInflatedPayloadDecodesToNull() throws Exception
+	{
+		String token = bomb(PortfolioShareCodec.MAX_INFLATED_BYTES + 4096);
+		assertTrue("the bomb must stay small compressed", token.length() < 4096);
+		assertNull(codec.decode(token));
+	}
+
+	/** A payload under the cap is still read - the guard bounds the size, it does not reject compression. */
+	@Test
+	public void aLargeButUnderCapPayloadStillInflates() throws Exception
+	{
+		assertNull("valid JSON is still required", codec.decode(bomb(1024)));
+	}
+
+	/** An over-long token body is rejected before it is even Base64-decoded. */
+	@Test
+	public void anOversizedTokenBodyDecodesToNull()
+	{
+		StringBuilder body = new StringBuilder(PortfolioShareCodec.MAX_TOKEN_CHARS + 16);
+		for (int i = 0; i < PortfolioShareCodec.MAX_TOKEN_CHARS + 16; i++)
+			body.append('A');
+
+		assertNull(codec.decode(PortfolioShareCodec.PREFIX + body));
+	}
+
+	/** The caps must not touch a normal code: a real snapshot still round-trips. */
+	@Test
+	public void aNormalTokenIsUnaffectedByTheCaps() throws Exception
+	{
+		String token = codec.encode(sample());
+		assertTrue(token.length() < PortfolioShareCodec.MAX_TOKEN_CHARS);
+
+		PortfolioShareCodec.Snapshot back = codec.decode(token);
+		List<PortfolioShareCodec.Entry> expected = sample().getItems();
+		assertEquals(expected.size(), back.getItems().size());
 	}
 }
