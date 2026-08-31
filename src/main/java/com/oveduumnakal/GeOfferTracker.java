@@ -52,13 +52,16 @@ class GeOfferTracker
 	 * Cumulative progress last seen for one GE slot, used to compute each event's increment.
 	 * {@code itemId} identifies which offer that progress belongs to, so a slot reused for a
 	 * different item without an intervening empty state restarts from a fresh baseline instead
-	 * of subtracting the previous offer's counters.
+	 * of subtracting the previous offer's counters. {@code cancelEmitted} records that this offer's
+	 * cancellation remainder has already been reported, so a re-sent cancelled state does not queue
+	 * it a second time.
 	 */
 	private static final class SlotState
 	{
 		int itemId;
 		int lastQuantitySold;
 		long lastSpent;
+		boolean cancelEmitted;
 	}
 
 	private final Map<Integer, SlotState> slots = new HashMap<>();
@@ -68,7 +71,10 @@ class GeOfferTracker
 	 * empty when it carries no actionable change (baseline seed, empty slot, or a
 	 * no-progress update). A cancellation whose event also advanced the fill counters
 	 * emits that final {@code FILL} before the {@code CANCELLED} remainder, so the
-	 * filled units realize at their true price instead of being discarded.
+	 * filled units realize at their true price instead of being discarded. The remainder
+	 * is emitted only on the transition into the cancelled state: a cancelled-but-uncollected
+	 * offer stays in that state in the slot, and a world hop re-sends its event, which would
+	 * otherwise queue the un-suspend a second time (#331).
 	 *
 	 * @param buying whether the state is a buy side ({@code BUYING}/{@code BOUGHT}/{@code CANCELLED_BUY})
 	 * @param cancelled whether the state is a cancellation ({@code CANCELLED_BUY}/{@code CANCELLED_SELL})
@@ -114,8 +120,15 @@ class GeOfferTracker
 		if (cancelled)
 		{
 			int returned = totalQuantity - quantitySold;
-			if (returned > 0)
+			if (returned > 0 && !state.cancelEmitted)
+			{
+				state.cancelEmitted = true;
 				events.add(new Event(Type.CANCELLED, kind, itemId, returned, 0));
+			}
+		}
+		else
+		{
+			state.cancelEmitted = false;
 		}
 
 		return events;
