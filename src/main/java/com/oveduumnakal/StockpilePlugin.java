@@ -3760,9 +3760,17 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * Per-tick work: flushes any pending quantity sync, evaluates notifications,
-	 * and (when ground highlighting is on) reorders tracked items' "Take" menu
-	 * entries to the bottom so they don't get in the way of normal actions.
+	 * Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders
+	 * tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions.
+	 *
+	 * <p>Notifications are deliberately <em>not</em> evaluated here. {@code ClientTick} fires once per
+	 * client loop - up to ~50 times a second, on the thread the game loop runs on - while the data the
+	 * rules read only changes on a price refresh, once a minute by default. Each pass walked every
+	 * item and rule, and the categorical metrics are not cheap: {@code MarketClassifier.volatility}
+	 * boxes up to ~336 samples into an {@code ArrayList} and streams it twice, and
+	 * {@code ITM_PROFIT} streams the item's whole acquisitions list twice (#321). It is already called
+	 * once per refresh from {@code applyGePrices}, and from {@code syncQuantitiesFromContainers} when
+	 * a quantity actually moved, which is what quantity rules need.
 	 */
 	@Subscribe
 	public void onClientTick(ClientTick event)
@@ -3788,8 +3796,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		}
 
 		ledger.flushPendingRealize();
-
-		evaluateNotifications();
 
 		if (!config.highlightTrackedItems().ground() || client.isMenuOpen())
 			return;
@@ -5465,6 +5471,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			persistTrackedItems();
 			refreshPanel();
+			evaluateNotifications();
 		}
 	}
 
