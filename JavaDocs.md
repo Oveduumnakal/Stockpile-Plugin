@@ -96,6 +96,7 @@
 - [com.oveduumnakal.ProfileConfigStore](#comoveduumnakalprofileconfigstore)
 - [com.oveduumnakal.PulseEntry](#comoveduumnakalpulseentry)
 - [com.oveduumnakal.QuickActionDelivery](#comoveduumnakalquickactiondelivery)
+- [com.oveduumnakal.RowSection](#comoveduumnakalrowsection)
 - [com.oveduumnakal.SectionSlot](#comoveduumnakalsectionslot)
 - [com.oveduumnakal.SeriesTimestep](#comoveduumnakalseriestimestep)
 - [com.oveduumnakal.SessionStats](#comoveduumnakalsessionstats)
@@ -112,7 +113,6 @@
 - [com.oveduumnakal.StockpileHighlightOverlay](#comoveduumnakalstockpilehighlightoverlay)
 - [com.oveduumnakal.StockpilePanel](#comoveduumnakalstockpilepanel)
 - [com.oveduumnakal.StockpilePanel.ChangelogSection](#comoveduumnakalstockpilepanelchangelogsection)
-- [com.oveduumnakal.StockpilePanel.RowSection](#comoveduumnakalstockpilepanelrowsection)
 - [com.oveduumnakal.StockpilePanel.RowView](#comoveduumnakalstockpilepanelrowview)
 - [com.oveduumnakal.StockpilePersistence](#comoveduumnakalstockpilepersistence)
 - [com.oveduumnakal.StockpilePersistence.CachedPrice](#comoveduumnakalstockpilepersistencecachedprice)
@@ -11606,6 +11606,112 @@ Returns the display label shown in the UI.
 
 ---
 
+## com.oveduumnakal.RowSection
+
+_class_
+
+`final class RowSection`
+
+One display section of the tracked list (#275): an optional group header (`title`/`key`/
+`collapsed`) and its filtered items. A flat, header-less list is a single section with a null title.
+
+<p>Also owns how the list is split into sections and the structural signature the panel uses to decide
+between a full rebuild and an in-place refresh. Both were private to `StockpilePanel`; they live
+here, free of Swing, so they can be tested directly (#391).
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `static final String` | `FAVORITES_TITLE` | Header text for the favorites pseudo-group. |
+| `static final String` | `UNCATEGORIZED_TITLE` | Header text for items in no (or an unknown) category. |
+| `final boolean` | `collapsed` |  |
+| `final List<TrackedItem>` | `items` |  |
+| `final String` | `key` |  |
+| `final String` | `title` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static boolean` | `groupingActive(List<TrackedItem> items, List<CategoryState> categories)` |  |
+| `static List<RowSection>` | `plan(List<TrackedItem> items, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed, Predicate<TrackedItem> filter)` | Computes the ordered, filtered display sections: a single flat section when no grouping is active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized. |
+| `static String` | `signature(String globals, List<RowSection> sections, boolean compactView)` |  |
+
+### Field Detail
+
+#### FAVORITES_TITLE
+
+`static final String FAVORITES_TITLE`
+
+Header text for the favorites pseudo-group.
+
+#### UNCATEGORIZED_TITLE
+
+`static final String UNCATEGORIZED_TITLE`
+
+Header text for items in no (or an unknown) category.
+
+#### collapsed
+
+`final boolean collapsed`
+
+#### items
+
+`final List<TrackedItem> items`
+
+#### key
+
+`final String key`
+
+#### title
+
+`final String title`
+
+### Constructor Detail
+
+#### RowSection
+
+`RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)`
+
+### Method Detail
+
+#### groupingActive
+
+`static boolean groupingActive(List<TrackedItem> items, List<CategoryState> categories)`
+
+- **Returns:** whether the list is grouped: any favorite item, or any user category defined.
+
+#### plan
+
+`static List<RowSection> plan(List<TrackedItem> items, List<CategoryState> categories, boolean favoritesCollapsed, boolean uncategorizedCollapsed, Predicate<TrackedItem> filter)`
+
+Computes the ordered, filtered display sections: a single flat section when no grouping is active,
+otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized.
+A favorite shows only under Favorites; an item whose category no longer exists falls to Uncategorized.
+Empty groups are skipped.
+
+- **Parameter** `filter` — the tracked-list name filter; items it rejects are left out of every section
+
+#### signature
+
+`static String signature(String globals, List<RowSection> sections, boolean compactView)`
+
+- **Parameter** `globals` — the render-wide scaffolding flags, already encoded by the caller
+- **Parameter** `compactView` — whether the whole list is in compact view
+- **Returns:** a signature of the render's structure (the globals, group order/collapse, and each rendered
+        row's id and compact shape) for the in-place gate (#275); value-only data such as prices,
+        quantities, deltas and group totals is excluded so it can be refreshed in place. A collapsed
+        group contributes its header only.
+
+---
+
 ## com.oveduumnakal.SectionSlot
 
 _enum_
@@ -13939,7 +14045,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | Type | Description |
 |---|---|
 | _class_ [`ChangelogSection`](#comoveduumnakalstockpilepanelchangelogsection) | One navigable changelog section: heading depth (0 for `##`, 1 for `###`), text, and anchor. |
-| _class_ [`RowSection`](#comoveduumnakalstockpilepanelrowsection) | One display section of the tracked list (#275): an optional group header (`title`/`key`/ `collapsed`) and its filtered items. |
 | _class_ [`RowView`](#comoveduumnakalstockpilepanelrowview) | Cached scaffolding for one tracked-item row (#275): the reusable card, identity labels and favourite star built once, plus the `#contentSlot` whose price/compact/loading content is refilled by `#populateRow` on a value change, and the `#hoverListener` re-attached to that new content. |
 
 ### Field Summary
@@ -14182,7 +14287,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static Icon` | `compactMenuIcon(Color color)` | Draws two stacked bars (per-item compact) tinted `color`. |
 | `static Icon` | `compareIcon(Color color)` | Draws two overlapping rings — the Venn-overlap Compare glyph (#280) — tinted `color`. |
 | `private List<Integer>` | `computeDragGroup(int itemId)` | Determines the dragged item's group as the contiguous run of item rows between accordion headers in the rendered list (the whole list when ungrouped), returning its item ids in visual order. |
-| `private List<RowSection>` | `computeSections(List<TrackedItem> items)` | Computes the ordered, filtered display sections (#275): a single flat section when no grouping is active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then Uncategorized. |
+| `private List<RowSection>` | `computeSections(List<TrackedItem> items)` | Computes the ordered, filtered display sections (#275) via `RowSection#plan`, and refreshes `#groupingActive`. |
 | `public StockpileConfig` | `config()` | {@inheritDoc} Supplies the panel's live plugin config to the detail view. |
 | `private void` | `confirmAndClearAll()` | Prompts for confirmation, then clears all tracked items via the plugin callback. |
 | `private static boolean` | `containsIgnoreCase(DefaultListModel<String> model, String value)` |  |
@@ -15520,9 +15625,8 @@ visual order.
 
 `private List<RowSection> computeSections(List<TrackedItem> items)`
 
-Computes the ordered, filtered display sections (#275): a single flat section when no grouping is
-active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then
-Uncategorized. Empty groups are skipped. Also refreshes `#groupingActive`.
+Computes the ordered, filtered display sections (#275) via `RowSection#plan`, and refreshes
+`#groupingActive`.
 
 #### config
 
@@ -16150,9 +16254,8 @@ Stops the edge-autoscroll timer, if running.
 
 `private String structuralSignature(List<RowSection> sections)`
 
-- **Returns:** a signature of the render's structure (scaffolding globals, group order/collapse, and each
-        rendered row's id and compact shape) for the in-place gate (#275); value-only data such as
-        prices, quantities, deltas and group totals is excluded so it can be refreshed in place.
+- **Returns:** the render's structural signature for the in-place gate (#275): the scaffolding globals
+        encoded here, then the section and row shape from `RowSection#signature`
 
 #### styledFooterButton
 
@@ -16336,56 +16439,6 @@ One navigable changelog section: heading depth (0 for `##`, 1 for `###`), text, 
 #### text
 
 `String text`
-
----
-
-## com.oveduumnakal.StockpilePanel.RowSection
-
-_class_
-
-`private static final class RowSection`
-
-One display section of the tracked list (#275): an optional group header (`title`/`key`/
-`collapsed`) and its filtered items. A flat, header-less list is a single section with a null title.
-
-### Field Summary
-
-| Modifier and Type | Field | Description |
-|---|---|---|
-| `private final boolean` | `collapsed` |  |
-| `private final List<TrackedItem>` | `items` |  |
-| `private final String` | `key` |  |
-| `private final String` | `title` |  |
-
-### Constructor Summary
-
-| Constructor | Description |
-|---|---|
-| `RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)` |  |
-
-### Field Detail
-
-#### collapsed
-
-`private final boolean collapsed`
-
-#### items
-
-`private final List<TrackedItem> items`
-
-#### key
-
-`private final String key`
-
-#### title
-
-`private final String title`
-
-### Constructor Detail
-
-#### RowSection
-
-`private RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)`
 
 ---
 

@@ -2503,78 +2503,23 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/**
-	 * Computes the ordered, filtered display sections (#275): a single flat section when no grouping is
-	 * active, otherwise the Favorites pseudo-group (pinned on top), each user category in order, then
-	 * Uncategorized. Empty groups are skipped. Also refreshes {@link #groupingActive}.
+	 * Computes the ordered, filtered display sections (#275) via {@link RowSection#plan}, and refreshes
+	 * {@link #groupingActive}.
 	 */
 	private List<RowSection> computeSections(List<TrackedItem> items)
 	{
-		boolean hasFavorites = items.stream().anyMatch(TrackedItem::isFavorite);
-		groupingActive = hasFavorites || !categories.isEmpty();
-
-		List<RowSection> sections = new ArrayList<>();
-
-		if (!groupingActive)
-		{
-			List<TrackedItem> visible = new ArrayList<>();
-			for (TrackedItem item : items)
-				if (matchesFilter(item))
-					visible.add(item);
-
-			if (!visible.isEmpty())
-				sections.add(new RowSection(null, null, false, visible));
-
-			return sections;
-		}
-
-		Set<String> categoryNames = new HashSet<>();
-		for (CategoryState cat : categories)
-			categoryNames.add(cat.getName());
-
-		List<TrackedItem> favorites = new ArrayList<>();
-		for (TrackedItem item : items)
-			if (item.isFavorite() && matchesFilter(item))
-				favorites.add(item);
-
-		if (!favorites.isEmpty())
-			sections.add(new RowSection("★ Favorites", CategoryState.FAVORITES_KEY, favoritesCollapsed, favorites));
-
-		for (CategoryState cat : categories)
-		{
-			List<TrackedItem> inCategory = new ArrayList<>();
-			for (TrackedItem item : items)
-				if (!item.isFavorite() && cat.getName().equals(item.getCategory()) && matchesFilter(item))
-					inCategory.add(item);
-
-			if (!inCategory.isEmpty())
-				sections.add(new RowSection(cat.getName(), cat.getName(), cat.isCollapsed(), inCategory));
-		}
-
-		List<TrackedItem> uncategorized = new ArrayList<>();
-		for (TrackedItem item : items)
-		{
-			String cat = item.getCategory();
-			boolean uncat = cat == null || cat.isEmpty() || !categoryNames.contains(cat);
-			if (!item.isFavorite() && uncat && matchesFilter(item))
-				uncategorized.add(item);
-		}
-
-		if (!uncategorized.isEmpty())
-			sections.add(new RowSection("Uncategorized", CategoryState.UNCATEGORIZED_KEY, uncategorizedCollapsed,
-					uncategorized));
-
-		return sections;
+		groupingActive = RowSection.groupingActive(items, categories);
+		return RowSection.plan(items, categories, favoritesCollapsed, uncategorizedCollapsed, this::matchesFilter);
 	}
 
 	/**
-	 * @return a signature of the render's structure (scaffolding globals, group order/collapse, and each
-	 *         rendered row's id and compact shape) for the in-place gate (#275); value-only data such as
-	 *         prices, quantities, deltas and group totals is excluded so it can be refreshed in place.
+	 * @return the render's structural signature for the in-place gate (#275): the scaffolding globals
+	 *         encoded here, then the section and row shape from {@link RowSection#signature}
 	 */
 	private String structuralSignature(List<RowSection> sections)
 	{
-		StringBuilder sb = new StringBuilder();
-		sb.append('G')
+		StringBuilder globals = new StringBuilder();
+		globals.append('G')
 				.append(config.showQuantityValue() ? 1 : 0)
 				.append(config.showScreenOverlay() ? 1 : 0)
 				.append(config.compactView() ? 1 : 0)
@@ -2582,23 +2527,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				.append(reorderMode ? 1 : 0)
 				.append(config.quickActionDelivery().ordinal());
 
-		for (RowSection s : sections)
-		{
-			sb.append(";H:")
-					.append(s.title)
-					.append(':')
-					.append(s.key)
-					.append(':')
-					.append(s.collapsed);
-			if (s.collapsed)
-				continue;
-
-			for (TrackedItem item : s.items)
-				sb.append(";I:").append(item.getItemId())
-						.append(':').append(config.compactView() || item.isCompact() ? 1 : 0);
-		}
-
-		return sb.toString();
+		return RowSection.signature(globals.toString(), sections, config.compactView());
 	}
 
 	/** @return whether every row the plan will render already has a cached {@link RowView} (#275). */
@@ -3798,26 +3727,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				count++;
 
 		return count;
-	}
-
-	/**
-	 * One display section of the tracked list (#275): an optional group header ({@code title}/{@code key}/
-	 * {@code collapsed}) and its filtered items. A flat, header-less list is a single section with a null title.
-	 */
-	private static final class RowSection
-	{
-		private final String title;
-		private final String key;
-		private final boolean collapsed;
-		private final List<TrackedItem> items;
-
-		private RowSection(String title, String key, boolean collapsed, List<TrackedItem> items)
-		{
-			this.title = title;
-			this.key = key;
-			this.collapsed = collapsed;
-			this.items = items;
-		}
 	}
 
 	/**
