@@ -1083,10 +1083,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		refreshAgeTimer.start();
 
 		loadingGlowTimer = new Timer(50, e -> updateLoadingGlow());
-		loadingGlowTimer.start();
-
 		pulseTimer = new Timer(25, e -> updatePulses());
-		pulseTimer.start();
 	}
 
 	/** Moves the GE estimates block above or below the other sections per the configured position. */
@@ -2027,13 +2024,21 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		Color base = delta > 0 ? COLOR_HIGH : delta < 0 ? COLOR_LOW : LOADING_COLOR;
 		label.setForeground(new Color(base.getRed(), base.getGreen(), base.getBlue(), 0));
 		pulseEntries.add(new PulseEntry(label, base, System.currentTimeMillis()));
+		pulseTimer.start();
 	}
 
-	/** Timer tick that advances every active pulse's color toward its base, retiring finished ones. */
+	/**
+	 * Timer tick that advances every active pulse's color toward its base, retiring finished ones,
+	 * and stops the timer once none are left. It used to run at 40 Hz for the life of the client
+	 * whether or not the panel was even visible, early-returning on an empty list (#327).
+	 */
 	private void updatePulses()
 	{
 		if (pulseEntries.isEmpty())
+		{
+			pulseTimer.stop();
 			return;
+		}
 
 		long now = System.currentTimeMillis();
 		Iterator<PulseEntry> it = pulseEntries.iterator();
@@ -2055,11 +2060,18 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		}
 	}
 
-	/** Timer tick that breathes the shared glow colour across every label still awaiting prices. */
+	/**
+	 * Timer tick that breathes the shared glow colour across every label still awaiting prices, and
+	 * stops the timer once there are none. It used to run at 20 Hz for the life of the client
+	 * whether or not the panel was even visible, early-returning on an empty list (#327).
+	 */
 	private void updateLoadingGlow()
 	{
 		if (loadingLabels.isEmpty())
+		{
+			loadingGlowTimer.stop();
 			return;
+		}
 
 		double phase = (System.currentTimeMillis() % LOADING_GLOW_PERIOD_MS) / (double) LOADING_GLOW_PERIOD_MS;
 		double wave = (Math.sin(phase * 2 * Math.PI) + 1) / 2;
@@ -4054,6 +4066,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				loading = new JLabel("Prices loading...");
 				loading.setForeground(LOADING_COLOR);
 				loadingLabels.add(loading);
+				loadingGlowTimer.start();
 			}
 
 			loading.setFont(FontManager.getRunescapeSmallFont());

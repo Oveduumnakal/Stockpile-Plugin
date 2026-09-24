@@ -2145,7 +2145,7 @@ the row, giving an at-a-glance trend beneath each column.
 
 | Modifier and Type | Field | Description |
 |---|---|---|
-| `private final List<WikiRealtimePriceClient.PricePoint>` | `series` |  |
+| `private final List<Long>` | `points` | The plotted midpoints, derived once at construction. |
 
 ### Constructor Summary
 
@@ -2157,14 +2157,17 @@ the row, giving an at-a-glance trend beneath each column.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private List<Long>` | `midpoints()` |  |
+| `private static List<Long>` | `midpoints(List<WikiRealtimePriceClient.PricePoint> series)` |  |
 | `protected void` | `paintComponent(Graphics g)` |  |
 
 ### Field Detail
 
-#### series
+#### points
 
-`private final List<WikiRealtimePriceClient.PricePoint> series`
+`private final List<Long> points`
+
+The plotted midpoints, derived once at construction. The series is fixed for this
+component's life, so rebuilding a boxed list on every repaint bought nothing (#327).
 
 ### Constructor Detail
 
@@ -2178,7 +2181,7 @@ the row, giving an at-a-glance trend beneath each column.
 
 #### midpoints
 
-`private List<Long> midpoints()`
+`private static List<Long> midpoints(List<WikiRealtimePriceClient.PricePoint> series)`
 
 - **Returns:** the in-order series midpoints (high/low average), skipping points with no price.
 
@@ -2201,7 +2204,8 @@ volume (high plus low) drawn as a bar scaled to the row, sitting beneath the pri
 
 | Modifier and Type | Field | Description |
 |---|---|---|
-| `private final List<WikiRealtimePriceClient.PricePoint>` | `series` |  |
+| `private final long` | `max` | The largest value in `#volumes`, so each paint does not re-scan for it. |
+| `private final List<Long>` | `volumes` | The plotted volumes, derived once at construction. |
 
 ### Constructor Summary
 
@@ -2214,13 +2218,22 @@ volume (high plus low) drawn as a bar scaled to the row, sitting beneath the pri
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `protected void` | `paintComponent(Graphics g)` |  |
-| `private List<Long>` | `volumes()` |  |
+| `private static List<Long>` | `volumes(List<WikiRealtimePriceClient.PricePoint> series)` |  |
 
 ### Field Detail
 
-#### series
+#### max
 
-`private final List<WikiRealtimePriceClient.PricePoint> series`
+`private final long max`
+
+The largest value in `#volumes`, so each paint does not re-scan for it.
+
+#### volumes
+
+`private final List<Long> volumes`
+
+The plotted volumes, derived once at construction. The series is fixed for this component's
+life, so rebuilding a boxed list on every repaint bought nothing (#327).
 
 ### Constructor Detail
 
@@ -2238,7 +2251,7 @@ volume (high plus low) drawn as a bar scaled to the row, sitting beneath the pri
 
 #### volumes
 
-`private List<Long> volumes()`
+`private static List<Long> volumes(List<WikiRealtimePriceClient.PricePoint> series)`
 
 - **Returns:** each point's total traded volume (high plus low) in series order.
 
@@ -9806,6 +9819,8 @@ Small custom-painted bar showing where the live price sits within its 30-day low
 |---|---|---|
 | `private static final int` | `BAR_ARC` |  |
 | `private static final int` | `BAR_H` |  |
+| `private static final Color[]` | `GRADIENT_COLORS` | Gradient stop colours matching `#GRADIENT_FRACTIONS`. |
+| `private static final float[]` | `GRADIENT_FRACTIONS` | Gradient stop positions for the range bar: red at 0, gold at the midpoint, green at 1. |
 | `private static final Color` | `RANGE_GOLD` |  |
 | `private static final Color` | `RANGE_GREEN` |  |
 | `private static final Color` | `RANGE_RED` |  |
@@ -9839,6 +9854,18 @@ Small custom-painted bar showing where the live price sits within its 30-day low
 #### BAR_H
 
 `private static final int BAR_H`
+
+#### GRADIENT_COLORS
+
+`private static final Color[] GRADIENT_COLORS`
+
+Gradient stop colours matching `#GRADIENT_FRACTIONS`.
+
+#### GRADIENT_FRACTIONS
+
+`private static final float[] GRADIENT_FRACTIONS`
+
+Gradient stop positions for the range bar: red at 0, gold at the midpoint, green at 1.
 
 #### RANGE_GOLD
 
@@ -12736,9 +12763,9 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `updateDragAutoscroll(MouseEvent e)` | Starts/stops edge autoscroll based on whether the drag pointer is near the viewport's top or bottom. |
 | `private void` | `updateDropTarget(int yInPanel)` | Finds the list index where a drop at `yInPanel` would insert, and the indicator line position. |
 | `private void` | `updateFilterToggle()` | Updates the header filter button's funnel icon, tinting it gold while the filter field is shown. |
-| `private void` | `updateLoadingGlow()` | Timer tick that breathes the shared glow colour across every label still awaiting prices. |
+| `private void` | `updateLoadingGlow()` | Timer tick that breathes the shared glow colour across every label still awaiting prices, and stops the timer once there are none. |
 | `private void` | `updatePortfolioChartButton()` | Shows the chart pop-out button (and its balancing strut) only once at least two history points exist to plot. |
-| `private void` | `updatePulses()` | Timer tick that advances every active pulse's color toward its base, retiring finished ones. |
+| `private void` | `updatePulses()` | Timer tick that advances every active pulse's color toward its base, retiring finished ones, and stops the timer once none are left. |
 | `private void` | `updateRefreshLabel()` | Updates the footer's "updated N ago" text from the last price-refresh timestamp. |
 | `private void` | `updateReorderToggle()` | Highlights the header reorder toggle and reveals the manage-categories button when manage mode is active. |
 | `private void` | `updateRowsInPlace(List<RowSection> sections, PriceIndicatorMode indicatorMode)` | Refreshes group-header totals and each row's values in place against the cached scaffolding (#275). |
@@ -14700,7 +14727,9 @@ Updates the header filter button's funnel icon, tinting it gold while the filter
 
 `private void updateLoadingGlow()`
 
-Timer tick that breathes the shared glow colour across every label still awaiting prices.
+Timer tick that breathes the shared glow colour across every label still awaiting prices, and
+stops the timer once there are none. It used to run at 20 Hz for the life of the client
+whether or not the panel was even visible, early-returning on an empty list (#327).
 
 #### updatePortfolioChartButton
 
@@ -14712,7 +14741,9 @@ Shows the chart pop-out button (and its balancing strut) only once at least two 
 
 `private void updatePulses()`
 
-Timer tick that advances every active pulse's color toward its base, retiring finished ones.
+Timer tick that advances every active pulse's color toward its base, retiring finished ones,
+and stops the timer once none are left. It used to run at 40 Hz for the life of the client
+whether or not the panel was even visible, early-returning on an empty list (#327).
 
 #### updateRefreshLabel
 
