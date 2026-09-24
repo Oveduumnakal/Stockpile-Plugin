@@ -95,6 +95,25 @@ class NotificationsTableModel extends AbstractTableModel
 		}
 	}
 
+	/**
+	 * @return the row showing exactly {@code rule}, or -1. By identity: {@link NotificationRule} compares
+	 *         by value, and every blank default row equals every other.
+	 */
+	private int rowOf(NotificationRule rule)
+	{
+		if (item == null)
+			return -1;
+
+		List<NotificationRule> rules = item.getNotifications();
+		for (int i = 0; i < rules.size(); i++)
+		{
+			if (rules.get(i) == rule)
+				return i;
+		}
+
+		return -1;
+	}
+
 	@Override
 	public Object getValueAt(int r, int c)
 	{
@@ -139,7 +158,7 @@ class NotificationsTableModel extends AbstractTableModel
 				change.accept(target);
 		}, () ->
 		{
-			int row = item == null ? -1 : item.getNotifications().indexOf(target);
+			int row = rowOf(target);
 			if (row >= 0)
 				fireTableRowsUpdated(row, row);
 		});

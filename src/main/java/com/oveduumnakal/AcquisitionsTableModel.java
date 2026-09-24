@@ -5,6 +5,7 @@
 package com.oveduumnakal;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
@@ -99,29 +100,57 @@ class AcquisitionsTableModel extends AbstractTableModel
 		return rec.getSoldAt() != null ? rec.sellSourceOrUnknown() : rec.sourceOrUnknown();
 	}
 
+	/**
+	 * @return the rows the table shows: the item's lots as of the last client-thread refresh. The live
+	 *         list belongs to the client thread, where the FIFO engine adds, closes and merges lots as
+	 *         offers fill, so the table reads a snapshot instead of racing it (#374).
+	 */
+	private List<AcquisitionRecord> rows()
+	{
+		return item == null ? Collections.emptyList() : item.getLotsSnapshot();
+	}
+
+	/** @return the lot shown in {@code row}, or {@code null} when there is no such row. */
+	AcquisitionRecord recordAt(int row)
+	{
+		List<AcquisitionRecord> rows = rows();
+		return row >= 0 && row < rows.size() ? rows.get(row) : null;
+	}
+
+	/**
+	 * @return the row showing exactly {@code rec}, or -1. By identity: {@link AcquisitionRecord} compares
+	 *         by value, so two lots with the same quantity and prices would otherwise be confused.
+	 */
+	int rowOf(AcquisitionRecord rec)
+	{
+		List<AcquisitionRecord> rows = rows();
+		for (int i = 0; i < rows.size(); i++)
+		{
+			if (rows.get(i) == rec)
+				return i;
+		}
+
+		return -1;
+	}
+
 	/** @return the source label for the lot in {@code row}, for the compact table's tooltip. */
 	String sourceLabelAt(int row)
 	{
-		if (item == null || row < 0 || row >= item.getAcquisitions().size())
-			return "";
-
-		return displaySource(item.getAcquisitions().get(row)).toString();
+		AcquisitionRecord rec = recordAt(row);
+		return rec == null ? "" : displaySource(rec).toString();
 	}
 
 	/** @return whether the lot in {@code row} was closed at an estimated price rather than an observed sale. */
 	boolean isSellEstimated(int row)
 	{
-		if (item == null || row < 0 || row >= item.getAcquisitions().size())
-			return false;
-
-		AcquisitionRecord rec = item.getAcquisitions().get(row);
-		return rec.isSellEstimated();
+		AcquisitionRecord rec = recordAt(row);
+		return rec != null && rec.isSellEstimated();
 	}
 
 	@Override
 	public int getRowCount()
 	{
-		return item == null ? 0 : item.getAcquisitions().size();
+		return rows().size();
 	}
 
 	@Override
@@ -157,7 +186,10 @@ class AcquisitionsTableModel extends AbstractTableModel
 	@Override
 	public Object getValueAt(int r, int c)
 	{
-		AcquisitionRecord rec = item.getAcquisitions().get(r);
+		AcquisitionRecord rec = recordAt(r);
+		if (rec == null)
+			return "";
+
 		if (isSymbolColumn(c))
 			return displaySource(rec);
 
@@ -179,13 +211,18 @@ class AcquisitionsTableModel extends AbstractTableModel
 	 *
 	 * <p>The parse and validation happen here on the EDT, but the record is only written on the
 	 * client thread, which owns the list - the FIFO engine adds, removes and re-prices lots from
-	 * there while offers fill (#315). The row index is re-checked inside the mutation, since the
-	 * engine may have closed or removed a lot between the edit and its application.
+	 * there while offers fill (#315).
+	 *
+	 * <p>The lot is captured by identity, not row index. The index was re-checked only against the
+	 * list's size, so if the engine removed or merged an earlier lot between the edit and its
+	 * application, row {@code r} pointed at a different lot and the edit landed there (#374). Now the
+	 * edit reaches the lot the user edited, or nothing if that lot is gone.
 	 */
 	@Override
 	public void setValueAt(Object value, int r, int c)
 	{
-		if (item == null || r < 0 || r >= item.getAcquisitions().size() || c > 2)
+		AcquisitionRecord target = recordAt(r);
+		if (target == null || c > 2)
 			return;
 
 		String s = value == null ? "" : value.toString().trim();
@@ -203,26 +240,30 @@ class AcquisitionsTableModel extends AbstractTableModel
 
 		editAcquisitions.edit(detailItemId.getAsInt(), records ->
 		{
-			if (r >= records.size())
+			if (records.stream().noneMatch(rec -> rec == target))
 				return;
 
-			AcquisitionRecord rec = records.get(r);
 			switch (c)
 			{
 				case 0:
-					rec.setQuantity(quantity);
-					rec.setSource(AcquisitionSource.MANUAL);
+					target.setQuantity(quantity);
+					target.setSource(AcquisitionSource.MANUAL);
 					break;
 				case 1:
-					rec.setBoughtAt(price);
-					rec.setSource(AcquisitionSource.MANUAL);
+					target.setBoughtAt(price);
+					target.setSource(AcquisitionSource.MANUAL);
 					break;
 				default:
-					rec.setSoldAt(price);
-					rec.setSellSource(price == null ? null : AcquisitionSource.MANUAL);
+					target.setSoldAt(price);
+					target.setSellSource(price == null ? null : AcquisitionSource.MANUAL);
 					break;
 			}
-		}, () -> fireTableRowsUpdated(r, r));
+		}, () ->
+		{
+			int row = rowOf(target);
+			if (row >= 0)
+				fireTableRowsUpdated(row, row);
+		});
 	}
 
 	/** The client-thread edit seam the model commits through; see {@link DetailViewHost#editAcquisitions}. */

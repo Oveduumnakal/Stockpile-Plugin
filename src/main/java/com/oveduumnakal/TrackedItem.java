@@ -6,6 +6,7 @@ package com.oveduumnakal;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -293,13 +294,23 @@ public class TrackedItem
 	private volatile CostSnapshot costs = CostSnapshot.EMPTY;
 
 	/**
-	 * Recomputes {@link #costs} from the current lots at the current average price.
+	 * The acquisition lots as of the last client-thread refresh, for the EDT's collection-log table.
+	 * A shallow, unmodifiable copy: the same record instances - so an edit can find its lot by
+	 * identity - in a list the FIFO engine never resizes under the table's feet (#374).
+	 */
+	@EqualsAndHashCode.Exclude
+	@ToString.Exclude
+	private volatile List<AcquisitionRecord> lotsSnapshot = Collections.emptyList();
+
+	/**
+	 * Recomputes {@link #costs} and {@link #lotsSnapshot} from the current lots at the current average price.
 	 * Client thread only &mdash; it streams the live acquisitions list.
 	 */
 	public void refreshCosts()
 	{
 		costs = new CostSnapshot(getCostBasis(), getRealizedProfit(), getRecordQuantitySum(),
 				getProfitAt(avgPrice));
+		lotsSnapshot = Collections.unmodifiableList(new ArrayList<>(acquisitions));
 	}
 
 	/** @return total gp paid for the lots still held (unsold acquisitions). */

@@ -39,7 +39,6 @@ import java.awt.image.BufferedImage;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -808,23 +807,13 @@ public class DetailView extends JPanel implements Scrollable
 				return;
 
 			if (acquisitionsTable.isEditing())
-
 				acquisitionsTable.getCellEditor().stopCellEditing();
 
-			int[] selected = acquisitionsTable.getSelectedRows();
-			if (selected.length == 0)
+			Set<AcquisitionRecord> doomed = selectedLots(acquisitionsTable, acquisitionsModel);
+			if (doomed.isEmpty())
 				return;
 
-			Arrays.sort(selected);
-			host.editAcquisitions(boundItemId, records ->
-			{
-				for (int i = selected.length - 1; i >= 0; i--)
-				{
-					int idx = selected[i];
-					if (idx >= 0 && idx < records.size())
-						records.remove(idx);
-				}
-			}, () ->
+			host.editAcquisitions(boundItemId, records -> records.removeIf(doomed::contains), () ->
 			{
 				acquisitionsModel.fireTableDataChanged();
 				acquisitionsTable.revalidate();
@@ -877,7 +866,7 @@ public class DetailView extends JPanel implements Scrollable
 		clearBtn.addActionListener(e ->
 		{
 			TrackedItem t = host.trackedItem(boundItemId);
-			if (t == null || t.getAcquisitions().isEmpty())
+			if (t == null || t.getLotsSnapshot().isEmpty())
 				return;
 
 			int choice = JOptionPane.showConfirmDialog(
@@ -2387,26 +2376,35 @@ public class DetailView extends JPanel implements Scrollable
 			return;
 
 		if (table.isEditing())
-
 			table.getCellEditor().stopCellEditing();
 
-		int[] selected = table.getSelectedRows();
-		if (selected.length == 0)
+		Set<AcquisitionRecord> doomed = selectedLots(table, model);
+		if (doomed.isEmpty())
 			return;
 
-		Arrays.sort(selected);
-		host.editAcquisitions(boundItemId, records ->
-		{
-			for (int i = selected.length - 1; i >= 0; i--)
-			{
-				if (selected[i] >= 0 && selected[i] < records.size())
-					records.remove(selected[i]);
-			}
-		}, () ->
+		host.editAcquisitions(boundItemId, records -> records.removeIf(doomed::contains), () ->
 		{
 			model.fireTableDataChanged();
 			table.revalidate();
 		});
+	}
+
+	/**
+	 * @return the lots behind a table's selected rows, compared by identity. Removal used to delete by
+	 *         row index on the client thread, which deleted the wrong lot whenever the engine had removed
+	 *         or merged an earlier one in the meantime (#374).
+	 */
+	private static Set<AcquisitionRecord> selectedLots(JTable table, AcquisitionsTableModel model)
+	{
+		Set<AcquisitionRecord> lots = Collections.newSetFromMap(new IdentityHashMap<>());
+		for (int row : table.getSelectedRows())
+		{
+			AcquisitionRecord rec = model.recordAt(row);
+			if (rec != null)
+				lots.add(rec);
+		}
+
+		return lots;
 	}
 
 	/** Consolidates the acquisitions log, merging like rows and dropping empty ones. */
@@ -2424,7 +2422,7 @@ public class DetailView extends JPanel implements Scrollable
 	private void acqClear()
 	{
 		TrackedItem t = host.trackedItem(boundItemId);
-		if (t == null || t.getAcquisitions().isEmpty())
+		if (t == null || t.getLotsSnapshot().isEmpty())
 			return;
 
 		int choice = JOptionPane.showConfirmDialog(
