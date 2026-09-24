@@ -123,7 +123,7 @@ class StockpilePersistence
 	}
 
 	/** Adapts a live {@link ConfigManager} to the {@link ProfileConfigStore} seam. */
-	private static ProfileConfigStore backedBy(ConfigManager configManager)
+	static ProfileConfigStore backedBy(ConfigManager configManager)
 	{
 		return new ProfileConfigStore()
 		{
