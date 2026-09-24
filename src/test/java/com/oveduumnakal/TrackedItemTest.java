@@ -5,7 +5,9 @@
 package com.oveduumnakal;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import org.junit.Test;
 
@@ -162,5 +164,71 @@ public class TrackedItemTest
 
 		t.restoreSuspended(SuspensionSource.DEATH, 0, saved);
 		assertEquals("a non-positive restore clears the entry", 0, t.getSuspended(SuspensionSource.DEATH));
+	}
+
+	@Test
+	public void nonPositiveSuspensionsAreIgnored()
+	{
+		TrackedItem t = itemWith(0, 125);
+
+		t.addSuspended(SuspensionSource.GROUND, 0);
+		t.addSuspended(SuspensionSource.GROUND, -3);
+
+		assertEquals(0, t.getSuspended(SuspensionSource.GROUND));
+		assertNull("nothing suspended, nothing stamped", t.getSuspendedAt(SuspensionSource.GROUND));
+		assertEquals(0, t.reduceSuspended(SuspensionSource.GROUND, 5));
+		t.addSuspended(SuspensionSource.GROUND, 4);
+		assertEquals("a non-positive reduce restores nothing", 0, t.reduceSuspended(SuspensionSource.GROUND, 0));
+		assertEquals(4, t.getSuspended(SuspensionSource.GROUND));
+	}
+
+	@Test
+	public void settingOrRestoringZeroDropsTheSuspension()
+	{
+		TrackedItem t = itemWith(0, 125);
+		t.addSuspended(SuspensionSource.DEATH, 3);
+		t.addSuspended(SuspensionSource.POUCH, 2);
+
+		t.setSuspended(SuspensionSource.DEATH, 0);
+		t.restoreSuspended(SuspensionSource.POUCH, 0, Instant.now());
+
+		assertEquals(0, t.getTotalSuspendedQuantity());
+		assertNull(t.getSuspendedAt(SuspensionSource.DEATH));
+	}
+
+	@Test
+	public void eachWindowReadsItsSamplingSeries()
+	{
+		TrackedItem t = itemWith(0, 125);
+		List<WikiRealtimePriceClient.PricePoint> fiveMin = new ArrayList<>();
+		List<WikiRealtimePriceClient.PricePoint> hour = new ArrayList<>();
+		List<WikiRealtimePriceClient.PricePoint> sixHour = new ArrayList<>();
+		List<WikiRealtimePriceClient.PricePoint> day = new ArrayList<>();
+		t.setSeries5m(fiveMin);
+		t.setSeries1h(hour);
+		t.setSeries6h(sixHour);
+		t.setSeries24h(day);
+
+		assertSame(fiveMin, t.getSeriesFor(TimeWindow.LIVE));
+		assertSame(fiveMin, t.getSeriesFor(TimeWindow.H24));
+		assertSame(hour, t.getSeriesFor(TimeWindow.WEEK));
+		assertSame(sixHour, t.getSeriesFor(TimeWindow.MONTH));
+		assertSame(day, t.getSeriesFor(TimeWindow.MONTH3));
+		assertSame(day, t.getSeriesFor(TimeWindow.MONTH6));
+		assertSame(day, t.getSeriesFor(TimeWindow.YEAR));
+	}
+
+	@Test
+	public void onlyStackableItemsDrawTheirQuantityOnTheIcon()
+	{
+		TrackedItem t = itemWith(250, 125);
+
+		assertEquals(1, t.iconStackSize());
+
+		t.setStackable(true);
+		assertEquals(250, t.iconStackSize());
+
+		t.setQuantity(0);
+		assertEquals("an empty stack still draws one", 1, t.iconStackSize());
 	}
 }
