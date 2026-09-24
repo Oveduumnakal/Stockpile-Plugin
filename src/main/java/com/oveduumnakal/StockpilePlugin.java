@@ -30,12 +30,14 @@ import java.awt.image.BufferedImage;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -3037,20 +3039,41 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	private List<TrackedItem> itemsFor(int itemId)
 	{
 		List<TrackedItem> items = new ArrayList<>(4);
-		TrackedItem tracked = trackedItems.get(itemId);
-		if (tracked != null)
-			items.add(tracked);
+		for (TrackedItem item : allLiveItems())
+		{
+			if (item.getItemId() == itemId)
+				items.add(item);
+		}
 
-		if (previewItem != null && previewItem.getItemId() == itemId)
+		return items;
+	}
+
+	/**
+	 * @return every in-memory {@link TrackedItem}, across the tracked list, the sidebar preview, the
+	 *         pop-out windows and the Compare set, each instance once.
+	 *
+	 * <p>De-duplicated by <em>identity</em>, not by item id: a pop-out or Compare entry for a tracked
+	 *         item holds the very same instance, while an untracked id can legitimately be held twice
+	 *         (preview an item, then add it to Compare) and both copies need the update - that split
+	 *         was the root cause of #309. The four collections used to be walked separately with
+	 *         hand-written {@code containsKey} guards that grew a clause per collection (#337).
+	 */
+	private List<TrackedItem> allLiveItems()
+	{
+		Set<TrackedItem> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+		List<TrackedItem> items = new ArrayList<>();
+		if (previewItem != null && seen.add(previewItem))
 			items.add(previewItem);
 
-		TrackedItem window = windowItems.get(itemId);
-		if (window != null)
-			items.add(window);
-
-		TrackedItem compare = compareItems.get(itemId);
-		if (compare != null)
-			items.add(compare);
+		for (Collection<TrackedItem> source
+				: Arrays.asList(trackedItems.values(), windowItems.values(), compareItems.values()))
+		{
+			for (TrackedItem item : source)
+			{
+				if (seen.add(item))
+					items.add(item);
+			}
+		}
 
 		return items;
 	}
@@ -3202,64 +3225,39 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * cost basis on first successful price if one wasn't set, then re-evaluates
 	 * notifications and refreshes the panel (including the open detail view).
 	 * A failed (empty) fetch only triggers a plain refresh.
+	 *
+	 * <p>Both halves - applying prices and requesting history - used to be written out four times,
+	 * once per collection, each copy carrying a hand-maintained {@code containsKey} guard that grew a
+	 * clause per collection. They now iterate {@link #allLiveItems()} once. The history pass still
+	 * de-duplicates by item id, so a tracked item held by a pop-out or Compare is fetched once, and
+	 * an untracked item that is not on screen is still not fetched at all (#337).
 	 */
 	private void applyGePrices(Map<Integer, WikiRealtimePriceClient.ItemPrices> all)
 	{
 		boolean fetchFailed = all.isEmpty();
 
-		for (TrackedItem item : trackedItems.values())
+		for (TrackedItem item : allLiveItems())
 		{
 			WikiRealtimePriceClient.ItemPrices prices = all.get(item.getItemId());
-			if (prices != null)
+			if (prices == null)
 			{
-				applyLivePrices(item, prices);
+				if (!item.hasPrices() && item.isTradeable() && mappingsLoaded)
+					item.setPriceLoadFailed(true);
 
-				if (!item.isCostBasisInitialized())
-				{
-					if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
-						ledger.addOpenAcquisition(item, item.getQuantity(), ledger.fallbackPrice(item),
-								AcquisitionSource.UNKNOWN);
-
-					item.setCostBasisInitialized(true);
-					persistTrackedItems();
-				}
+				continue;
 			}
-			else if (!item.hasPrices() && item.isTradeable() && mappingsLoaded)
-				item.setPriceLoadFailed(true);
-		}
 
-		if (previewItem != null)
-		{
-			WikiRealtimePriceClient.ItemPrices prices = all.get(previewItem.getItemId());
-			if (prices != null)
-				applyLivePrices(previewItem, prices);
-			else if (!previewItem.hasPrices() && previewItem.isTradeable() && mappingsLoaded)
-				previewItem.setPriceLoadFailed(true);
-		}
+			applyLivePrices(item, prices);
 
-		for (TrackedItem windowItem : windowItems.values())
-		{
-			if (trackedItems.containsKey(windowItem.getItemId()))
-				continue;
+			if (trackedItems.get(item.getItemId()) == item && !item.isCostBasisInitialized())
+			{
+				if (item.getQuantity() > 0 && item.getAcquisitions().isEmpty())
+					ledger.addOpenAcquisition(item, item.getQuantity(), ledger.fallbackPrice(item),
+							AcquisitionSource.UNKNOWN);
 
-			WikiRealtimePriceClient.ItemPrices prices = all.get(windowItem.getItemId());
-			if (prices != null)
-				applyLivePrices(windowItem, prices);
-			else if (!windowItem.hasPrices() && windowItem.isTradeable() && mappingsLoaded)
-				windowItem.setPriceLoadFailed(true);
-		}
-
-		for (TrackedItem compareItem : compareItems.values())
-		{
-			if (trackedItems.containsKey(compareItem.getItemId())
-					|| windowItems.containsKey(compareItem.getItemId()))
-				continue;
-
-			WikiRealtimePriceClient.ItemPrices prices = all.get(compareItem.getItemId());
-			if (prices != null)
-				applyLivePrices(compareItem, prices);
-			else if (!compareItem.hasPrices() && compareItem.isTradeable() && mappingsLoaded)
-				compareItem.setPriceLoadFailed(true);
+				item.setCostBasisInitialized(true);
+				persistTrackedItems();
+			}
 		}
 
 		if (fetchFailed)
@@ -3282,34 +3280,18 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		final Set<Integer> detailIds = new HashSet<>(windowItems.keySet());
 		detailIds.add(panel.getDetailItemId());
 		detailIds.addAll(compareIds);
-		for (TrackedItem item : trackedItems.values())
-		{
-			if (item.isTradeable() && item.hasPrices())
-			{
-				if (detailIds.contains(item.getItemId()))
-					requestDetailData(item.getItemId());
-				else
-					requestSeries(item.getItemId(), false);
-			}
-		}
 
-		if (previewItem != null && detailIds.contains(previewItem.getItemId())
-				&& previewItem.isTradeable() && previewItem.hasPrices())
-			requestDetailData(previewItem.getItemId());
-
-		for (TrackedItem windowItem : windowItems.values())
+		final Set<Integer> requested = new HashSet<>();
+		for (TrackedItem item : allLiveItems())
 		{
-			if (!trackedItems.containsKey(windowItem.getItemId())
-					&& windowItem.isTradeable() && windowItem.hasPrices())
-				requestDetailData(windowItem.getItemId());
-		}
+			int itemId = item.getItemId();
+			if (!item.isTradeable() || !item.hasPrices() || !requested.add(itemId))
+				continue;
 
-		for (TrackedItem compareItem : compareItems.values())
-		{
-			if (!trackedItems.containsKey(compareItem.getItemId())
-					&& !windowItems.containsKey(compareItem.getItemId())
-					&& compareItem.isTradeable() && compareItem.hasPrices())
-				requestDetailData(compareItem.getItemId());
+			if (detailIds.contains(itemId))
+				requestDetailData(itemId);
+			else if (trackedItems.containsKey(itemId))
+				requestSeries(itemId, false);
 		}
 	}
 
