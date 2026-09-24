@@ -474,8 +474,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/** The tick of the most recent Thieving XP gain, marking a gain as free stolen loot (#217). */
 	private int thievingXpTick = -1;
 
-	/** Ids claimed by this tick's dose-swap pass, so the XP-less combine detector skips a decant/consume (#231). */
-
 	private boolean pendingQuantitySync = false;
 	private final Map<Integer, Integer> pendingItemDeltas = new HashMap<>();
 
@@ -3710,7 +3708,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		}
 
 		if (LOOT_SACK_OPTION.equals(event.getMenuOption())
-				&& target.toLowerCase().contains(LOOT_SACK_TARGET))
+				&& target.toLowerCase(Locale.ROOT).contains(LOOT_SACK_TARGET))
 		{
 			rewardContainerTick = client.getTickCount();
 			return;
@@ -4056,6 +4054,16 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			{
 				TrackedItem item = lookupItem(canonicalId);
 				return item == null ? null : new long[]{item.getHighPrice(), item.getLowPrice()};
+			}
+
+			@Override
+			public List<WikiRealtimePriceClient.PricePoint> freshSeries(int canonicalId, SeriesTimestep step)
+			{
+				Instant last = seriesFetchedAt.get(seriesKey(canonicalId, step));
+				if (last == null || Duration.between(last, Instant.now()).compareTo(step.getFreshness()) >= 0)
+					return null;
+
+				return knownSeries(canonicalId, step);
 			}
 
 			@Override
@@ -4415,7 +4423,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/** @return whether a "Fill" menu target names a fur/meat hunting pouch (any size) (#214). */
 	private static boolean isPouchTarget(String target)
 	{
-		String lower = target.toLowerCase();
+		String lower = target.toLowerCase(Locale.ROOT);
 		return POUCH_TARGETS.stream().anyMatch(lower::contains);
 	}
 
@@ -5052,12 +5060,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	}
 
 	/**
-	 * Callback after the user edits an item's acquisitions: re-derives its held quantity
-	 * from the lots and persists. Open lots also cover suspended units (in-flight GE
-	 * sells, trades, drops, deaths), which {@code quantity} must exclude — otherwise an
-	 * edit made mid-suspension would double-count the suspended units as held.
-	 */
-	/**
 	 * Applies an acquisition-log edit on the client thread, which owns the list, then persists,
 	 * refreshes, and hands control back to the EDT. See {@link DetailViewHost#editAcquisitions} for
 	 * why the editor may not touch the list directly (#315).
@@ -5079,6 +5081,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		});
 	}
 
+	/**
+	 * Callback after the user edits an item's acquisitions: re-derives its held quantity
+	 * from the lots and persists. Open lots also cover suspended units (in-flight GE
+	 * sells, trades, drops, deaths), which {@code quantity} must exclude — otherwise an
+	 * edit made mid-suspension would double-count the suspended units as held.
+	 */
 	void onAcquisitionsEdited(int itemId)
 	{
 		clientThread.invokeLater(() ->
@@ -5198,11 +5206,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		refreshPanel(false);
 	}
 
-	/**
-	 * Returns the current client game tick.
-	 *
-	 * @return the tick count
-	 */
 	/** {@inheritDoc} */
 	@Override
 	public String itemName(int itemId)

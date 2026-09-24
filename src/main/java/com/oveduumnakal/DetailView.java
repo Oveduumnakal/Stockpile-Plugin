@@ -863,28 +863,7 @@ public class DetailView extends JPanel implements Scrollable
 		clearBtn.setFont(smallFont());
 		clearBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		clearBtn.setMargin(new Insets(2, 5, 2, 5));
-		clearBtn.addActionListener(e ->
-		{
-			TrackedItem t = host.trackedItem(boundItemId);
-			if (t == null || t.getLotsSnapshot().isEmpty())
-				return;
-
-			int choice = JOptionPane.showConfirmDialog(
-					DetailView.this,
-					"Clear the entire collection log for this item?",
-					"Clear Collection Log",
-					JOptionPane.YES_NO_OPTION,
-					JOptionPane.WARNING_MESSAGE);
-			if (choice != JOptionPane.YES_OPTION)
-				return;
-
-			if (acquisitionsTable.isEditing())
-
-				acquisitionsTable.getCellEditor().cancelCellEditing();
-
-			if (onClearAcquisitions != null)
-				onClearAcquisitions.accept(boundItemId);
-		});
+		clearBtn.addActionListener(e -> acqClear(acquisitionsTable));
 
 		JButton[] logButtons = {addRowBtn, removeRowBtn, cleanBtn, clearBtn};
 		int btnHeight = 0;
@@ -2288,7 +2267,7 @@ public class DetailView extends JPanel implements Scrollable
 
 		JButton clearBtn = acqTextButton("Clear", StockpileColors.LOW);
 		clearBtn.setToolTipText("Remove every row from the collection log");
-		clearBtn.addActionListener(e -> acqClear());
+		clearBtn.addActionListener(e -> acqClear(table));
 
 		JButton[] btns = {addBtn, removeBtn, cleanBtn, clearBtn};
 		int btnHeight = 0;
@@ -2418,8 +2397,12 @@ public class DetailView extends JPanel implements Scrollable
 				model::fireTableDataChanged);
 	}
 
-	/** Clears all acquisitions for the current item after confirmation, via the plugin callback. */
-	private void acqClear()
+	/**
+	 * Clears all acquisitions for the current item after confirmation, via the plugin callback, first
+	 * cancelling any cell edit in progress on {@code table} so it can't write back into a cleared log.
+	 * Shared by the card's and the pop-out's Clear buttons, which used to carry two copies of it.
+	 */
+	private void acqClear(JTable table)
 	{
 		TrackedItem t = host.trackedItem(boundItemId);
 		if (t == null || t.getLotsSnapshot().isEmpty())
@@ -2434,8 +2417,10 @@ public class DetailView extends JPanel implements Scrollable
 		if (choice != JOptionPane.YES_OPTION)
 			return;
 
-		if (onClearAcquisitions != null)
+		if (table.isEditing())
+			table.getCellEditor().cancelCellEditing();
 
+		if (onClearAcquisitions != null)
 			onClearAcquisitions.accept(boundItemId);
 	}
 

@@ -574,48 +574,66 @@ class GeIntegration
 	 * info-block line, overwriting it in place once they arrive (#142). Falls back down a chain:
 	 * the latest priced 5m sample, then the latest priced 1h sample, then the item's latest instant
 	 * high/low; whichever lands first sets the row-label prefix (5m / 1h / Latest).
+	 *
+	 * <p>A 5m series some live instance already fetched within its freshness window is used directly,
+	 * without a request: this path used to bypass the #320 staleness gate and issue up to two timeseries
+	 * requests on every GE item change, even for an item whose detail view had just loaded them (#382).
 	 */
 	void requestGeLinePrices(int itemId)
 	{
 		int canonical = itemManager.canonicalize(itemId);
+		long[] known = latestSeriesHighLow(host.freshSeries(canonical, SeriesTimestep.FIVE_MIN));
+		if (known[0] > 0 || known[1] > 0)
+		{
+			applyGeLinePrices(itemId, canonical, known, SeriesTimestep.FIVE_MIN.getLabel());
+			return;
+		}
+
 		host.runInBackground(() ->
 		{
-			String source = "5m";
-			long[] highLow = latestSeriesHighLow(host.fetchSeries(canonical, "5m"));
+			String source = SeriesTimestep.FIVE_MIN.getLabel();
+			long[] highLow = latestSeriesHighLow(host.fetchSeries(canonical, source));
 			if (highLow[0] <= 0 && highLow[1] <= 0)
 			{
-				source = "1h";
-				highLow = latestSeriesHighLow(host.fetchSeries(canonical, "1h"));
+				source = SeriesTimestep.HOUR.getLabel();
+				highLow = latestSeriesHighLow(host.fetchSeries(canonical, source));
 			}
 
 			final String seriesSource = source;
 			final long[] seriesHighLow = highLow;
-			host.runOnClientThread(() ->
-			{
-				if (itemId != currentGeItem)
-					return;
-
-				long high = seriesHighLow[0];
-				long low = seriesHighLow[1];
-				String label = seriesSource;
-				if (high <= 0 && low <= 0)
-				{
-					long[] latest = host.latestPrices(canonical);
-					if (latest != null)
-					{
-						high = latest[0];
-						low = latest[1];
-						label = "Latest";
-					}
-				}
-
-				geLineItem = itemId;
-				geLineHigh = high;
-				geLineLow = low;
-				geLineSource = label;
-				applyGeHighLowLine();
-			});
+			host.runOnClientThread(() -> applyGeLinePrices(itemId, canonical, seriesHighLow, seriesSource));
 		});
+	}
+
+	/**
+	 * Stores the offer screen's high/low line for {@code itemId} and redraws it, falling back to the
+	 * item's latest instant prices when the series had none. A no-op when the player has already moved
+	 * on to another item. Client thread only.
+	 */
+	private void applyGeLinePrices(int itemId, int canonical, long[] seriesHighLow, String seriesSource)
+	{
+		if (itemId != currentGeItem)
+			return;
+
+		long high = seriesHighLow[0];
+		long low = seriesHighLow[1];
+		String label = seriesSource;
+		if (high <= 0 && low <= 0)
+		{
+			long[] latest = host.latestPrices(canonical);
+			if (latest != null)
+			{
+				high = latest[0];
+				low = latest[1];
+				label = "Latest";
+			}
+		}
+
+		geLineItem = itemId;
+		geLineHigh = high;
+		geLineLow = low;
+		geLineSource = label;
+		applyGeHighLowLine();
 	}
 
 	/**

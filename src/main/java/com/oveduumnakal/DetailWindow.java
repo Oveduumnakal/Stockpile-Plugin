@@ -100,6 +100,7 @@ final class DetailWindow
 			@Override
 			public void windowClosed(WindowEvent e)
 			{
+				view.stopLoading();
 				view.onLeaveDetail();
 				onClose.accept(DetailWindow.this);
 			}

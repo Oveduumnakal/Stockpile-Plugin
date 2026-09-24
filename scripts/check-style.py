@@ -39,6 +39,9 @@ every Java source file:
      member name) must appear somewhere else in the file. A name referenced only
      from a Javadoc `{@link}` counts as used.
  18. At most one consecutive blank line anywhere in a file.
+ 19. A braceless control header is followed directly by its body: no blank line
+     between `if (x)` / `else` / `for (...)` / `while (...)` and the statement it
+     governs, which otherwise reads as a header guarding nothing.
 
 Not mechanized (judgement calls, enforced by review): the Stream-API preference,
 the two-tab continuation indent and ternary-break shape (both already bounded by
@@ -472,6 +475,8 @@ def check_file(path):
     # Rule 18: no run of two or more consecutive blank lines.
     check_blank_runs(path, lines)
 
+    check_braceless_gap(path, lines, comment)
+
 
 def check_unused_imports(path, lines):
     """Flags an import whose simple name appears nowhere else in the file.
@@ -513,6 +518,26 @@ def check_blank_runs(path, lines):
             report(path, i - run, 'blank-line-run', f"{run} consecutive blank lines")
 
         run = 0
+
+def check_braceless_gap(path, lines, comment):
+    """Flags a blank line between a braceless control header and the statement it governs (rule 19)."""
+    header = re.compile(r'^(?:\}\s*)?(?:else\s+)?' + CONTROL + r'\b|^(?:\}\s*)?else$')
+    for i, raw in enumerate(lines):
+        if comment[i]:
+            continue
+
+        code = strip_strings(raw).split('//')[0].strip()
+        if not header.match(code) or code.startswith('switch') or code.startswith('synchronized'):
+            continue
+
+        end = i if code.endswith('else') else header_end(lines, i)
+        tail = strip_strings(lines[end]).split('//')[0].rstrip()
+        if tail.endswith('{') or tail.endswith(';') or tail.endswith('}'):
+            continue
+
+        if end + 1 < len(lines) and lines[end + 1].strip() == '':
+            report(path, end + 2, 'blank-braceless-body', raw.strip())
+
 
 def import_group(imp):
     """Sort bucket for an import line: 0 java/javax, 2 net.runelite, 3 static, 1 everything else."""

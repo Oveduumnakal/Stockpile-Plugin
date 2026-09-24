@@ -17,6 +17,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -369,7 +370,7 @@ final class CompareWindow
 		String csv = ids.stream()
 				.map(String::valueOf)
 				.collect(Collectors.joining(","));
-		return CODE_PREFIX + Base64.getEncoder().encodeToString(csv.getBytes());
+		return CODE_PREFIX + Base64.getEncoder().encodeToString(csv.getBytes(StandardCharsets.UTF_8));
 	}
 
 	/** @return the item ids decoded from {@code code}, or {@code null} when it is not a valid comparison code. */
@@ -380,7 +381,8 @@ final class CompareWindow
 
 		try
 		{
-			String csv = new String(Base64.getDecoder().decode(code.substring(CODE_PREFIX.length())));
+			String csv = new String(Base64.getDecoder().decode(code.substring(CODE_PREFIX.length())),
+					StandardCharsets.UTF_8);
 			List<Integer> ids = new ArrayList<>();
 			for (String part : csv.split(","))
 			{
