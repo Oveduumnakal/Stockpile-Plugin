@@ -170,7 +170,13 @@ public class StockpileScreenOverlay extends Overlay
 		return new Dimension(width, height);
 	}
 
-	/** First line (name + qty) plus value lines for an item, used for both measuring and drawing. */
+	/**
+	 * First line (name + qty) plus value lines for an item, used for both measuring and drawing.
+	 *
+	 * <p>The profit row reads the same realized-plus-unrealized figure as the panel's "Est. Profit" row
+	 * ({@code TrackedItem.CostSnapshot.profitAtAvg}). It used to compute unrealized profit only, so
+	 * any item with past sales showed two different "profit" numbers under the same setting (#379).
+	 */
 	private List<List<Seg>> blockLines(TrackedItem item, boolean compact)
 	{
 		List<List<Seg>> lines = new ArrayList<>();
@@ -204,7 +210,7 @@ public class StockpileScreenOverlay extends Overlay
 
 			if (config.showItemProfitRow() && item.isCostBasisInitialized())
 			{
-				long profit = (long) item.getRecordQuantitySum() * item.getAvgPrice() - item.getCostBasis();
+				long profit = item.getCosts().getProfitAtAvg();
 				String sign = profit > 0 ? "+" : "";
 				Color color = profit == 0 ? MUTED_COLOR : (profit > 0 ? HIGH_COLOR : LOW_COLOR);
 				lines.add(Arrays.asList(
