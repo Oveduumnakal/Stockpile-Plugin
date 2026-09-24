@@ -48,6 +48,17 @@ public class SourceAttributionCoreTest
 	}
 
 	@Test
+	public void smallerClaimCoversOnlyItsOwnUnits()
+	{
+		core.claim(AcquisitionSource.SHOP, 560, 5, 200, 10);
+
+		SourceAttributionCore.Attribution a = core.attribute(560, 10, 10);
+		assertEquals(AcquisitionSource.SHOP, a.source());
+		assertEquals("a 5-unit claim covers 5 of a 10-unit delta, not all 10 (#372)", 5, a.quantity());
+		assertEquals(AcquisitionSource.UNKNOWN, core.attribute(560, 5, 10).source());
+	}
+
+	@Test
 	public void largerClaimSurvivesPartialConsumption()
 	{
 		core.claim(AcquisitionSource.SHOP, 560, 100, 5, 10);

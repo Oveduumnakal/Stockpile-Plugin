@@ -56,18 +56,23 @@ class SourceAttributionCore
 		}
 	}
 
-	/** The outcome of attributing one delta: its source and, when known, a unit price. */
+	/**
+	 * The outcome of attributing one delta: its source, when known a unit price, and how many of the
+	 * delta's units that claim actually covered.
+	 */
 	static final class Attribution
 	{
-		static final Attribution UNKNOWN = new Attribution(AcquisitionSource.UNKNOWN, null);
+		static final Attribution UNKNOWN = new Attribution(AcquisitionSource.UNKNOWN, null, 0);
 
 		private final AcquisitionSource source;
 		private final Long unitPrice;
+		private final int quantity;
 
-		Attribution(AcquisitionSource source, Long unitPrice)
+		Attribution(AcquisitionSource source, Long unitPrice, int quantity)
 		{
 			this.source = source;
 			this.unitPrice = unitPrice;
+			this.quantity = quantity;
 		}
 
 		AcquisitionSource source()
@@ -79,6 +84,15 @@ class SourceAttributionCore
 		long unitPriceOr(long fallback)
 		{
 			return unitPrice == null ? fallback : unitPrice;
+		}
+
+		/**
+		 * @return how many of the attributed delta's units this claim covers - never more than were asked
+		 *         for, and 0 for {@link #UNKNOWN}
+		 */
+		int quantity()
+		{
+			return quantity;
 		}
 	}
 
@@ -122,7 +136,13 @@ class SourceAttributionCore
 	 * direction-agnostic) of {@code itemId}, consuming the oldest live matching
 	 * claim — partially when the claim is larger than the delta.
 	 *
-	 * @return the claim's attribution, or {@link Attribution#UNKNOWN} when nothing matches
+	 * <p>The result carries only the units that claim covers. A claim smaller than the delta used to
+	 * be returned for the whole delta, so a 5-unit shop claim priced a 10-unit gain entirely at the
+	 * shop price (#372); the caller now attributes the uncovered remainder again, against the next
+	 * claim or the fallback.
+	 *
+	 * @return the claim's attribution with its covered quantity, or {@link Attribution#UNKNOWN} when
+	 *         nothing matches
 	 */
 	Attribution attribute(int itemId, int quantity, int currentTick)
 	{
@@ -136,12 +156,12 @@ class SourceAttributionCore
 			if (c.itemId != itemId || c.expiryTick < currentTick)
 				continue;
 
-			if (c.quantity <= quantity)
+			int covered = Math.min(c.quantity, quantity);
+			c.quantity -= covered;
+			if (c.quantity == 0)
 				it.remove();
-			else
-				c.quantity -= quantity;
 
-			return new Attribution(c.source, c.unitPrice);
+			return new Attribution(c.source, c.unitPrice, covered);
 		}
 
 		return Attribution.UNKNOWN;
