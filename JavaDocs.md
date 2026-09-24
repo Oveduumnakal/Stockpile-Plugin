@@ -1028,7 +1028,7 @@ matches `runelite-plugin.properties`.
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `private static final Pattern` | `HEADING` | A release heading: `# 1.4 - July 25 2026`. |
-| `static final String` | `RESOURCE` | Resource path of the bundled changelog, relative to the classpath root. |
+| `static final String` | `RESOURCE` | Resource path of the bundled changelog, relative to this class's package (`com/oveduumnakal`). |
 | `private final List<Release>` | `releases` |  |
 
 ### Constructor Summary
@@ -1061,7 +1061,11 @@ A release heading: `# 1.4 - July 25 2026`. The `(?!#)` keeps it to a single
 
 `static final String RESOURCE`
 
-Resource path of the bundled changelog, relative to the classpath root.
+Resource path of the bundled changelog, relative to this class's package (`com/oveduumnakal`).
+
+<p>Deliberately package-relative, like `icon.png`: every plugin-hub plugin shares one
+classloader, so a root-level `/changelog.md` is not namespaced to Stockpile and another
+plugin's root changelog could resolve in its place, showing the wrong release notes (#351).
 
 #### releases
 
