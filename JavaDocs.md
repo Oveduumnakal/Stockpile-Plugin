@@ -4056,7 +4056,7 @@ populated detail card and a loading placeholder.
 | `private static String` | `expandedAcqHeader(String compact)` |  |
 | `private void` | `fillDashboardColumn(JPanel column, int[] indices, JPanel[] sections, SectionSlot[] slots)` | Adds the sections named by `indices` (in that fixed order) to a dashboard column, skipping any the config has hidden. |
 | `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
-| `private static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
+| `static String` | `formatDuration(long seconds)` | Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration. |
 | `private static String` | `fullWindowLabel(TimeWindow w)` |  |
 | `public int` | `getBoundItemId()` |  |
 | `public Dimension` | `getPreferredScrollableViewportSize()` |  |
@@ -4100,7 +4100,7 @@ populated detail card and a loading placeholder.
 | `public TrackedItem` | `shownItem()` |  |
 | `private void` | `sizeDashboardGraph(PriceGraphPanel graph, int height)` | Fixes a dashboard chart's height to `height` so it reads at a pop-out-like size rather than the shrunk sidebar height, while leaving its width free to stretch to the column (#109). |
 | `private Font` | `smallFont()` |  |
-| `private static String` | `spelledInterval(TimeWindow window)` |  |
+| `static String` | `spelledInterval(TimeWindow window)` |  |
 | `private void` | `stopDetailLoading()` | Stops the spinner animation and cancels the pending load-timeout, if any. |
 | `public void` | `stopLoading()` | Stops the loading spinner and its safety timeout (used when the host is disposed). |
 | `private void` | `styleNotifButton(JButton btn, Color fg)` | Applies the shared small-button styling to a notifications-section button. |
@@ -4984,7 +4984,7 @@ Lays out the overview grid's header and one row of price/volume labels per selec
 
 #### formatDuration
 
-`private static String formatDuration(long seconds)`
+`static String formatDuration(long seconds)`
 
 Formats a positive second count as a compact `"2h 14m"` / `"43m"` / `"12s"` duration.
 
@@ -5273,7 +5273,7 @@ the shrunk sidebar height, while leaving its width free to stretch to the column
 
 #### spelledInterval
 
-`private static String spelledInterval(TimeWindow window)`
+`static String spelledInterval(TimeWindow window)`
 
 - **Returns:** the window's long label lower-cased for use mid-sentence in tooltips.
 
@@ -14262,7 +14262,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JMenuItem` | `buildFooterMenuItem(String text, Runnable onClick, String tooltip)` | One action inside a footer dropdown, styled to match the footer links. |
 | `private JPanel` | `buildGroupHeader(String title, String groupKey, boolean collapsed, long groupTotal)` | Builds a clickable accordion header (chevron + title + group total value) that toggles the group's collapsed state. |
 | `static JButton` | `buildIconButton(Icon icon, String tooltip, Runnable onClick)` | Builds a borderless icon button with the given icon, tooltip, click action, and a hover highlight. |
-| `private static String` | `buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)` | Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params. |
+| `static String` | `buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)` | Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params. |
 | `private JPanel` | `buildManageEastControls(TrackedItem item)` | Builds the right column of the manage row: an always-visible remove button stacked over a favorite star. |
 | `private JPanel` | `buildManageRow(TrackedItem item, List<TrackedItem> groupItems)` | Builds the dedicated manage-mode row: a stripped-down layout showing only what's needed to organise items. |
 | `private JLabel` | `buildOverlayToggle(TrackedItem item)` | Builds the overlay-select control beneath the favorite star: a painted monitor icon that toggles whether the item appears in the on-screen overlay. |
@@ -14300,11 +14300,11 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `public void` | `editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | {@inheritDoc} Delegates to the plugin's client-thread notification-edit seam. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
-| `private static String` | `escapeHtml(String text)` | Escapes the HTML-significant characters so text renders literally inside an HTML label. |
+| `static String` | `escapeHtml(String text)` | Escapes the HTML-significant characters so text renders literally inside an HTML label. |
 | `public String` | `examine(int itemId)` | {@inheritDoc} Resolves the examine text through the panel's examine lookup. |
 | `private void` | `exportAcquisitionsCsv()` | Copies the acquisitions log as CSV to the clipboard once the plugin has built it. |
 | `private void` | `exportTrackedList()` | Copies the shareable tracked-list code to the clipboard once the plugin has built it. |
-| `private static List<ChangelogSection>` | `extractSections(String body)` |  |
+| `static List<ChangelogSection>` | `extractSections(String body)` |  |
 | `private static String` | `fieldValue(JComponent input)` |  |
 | `private static Icon` | `filterIcon(Color color)` | Paints a small monochrome funnel (filter) icon in the given colour: a wide top bar tapering to a narrow central stem. |
 | `public long` | `fireRunePrice()` | {@inheritDoc} Returns the fire-rune price the panel currently holds. |
@@ -14317,7 +14317,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static long` | `iconCacheKey(TrackedItem item)` |  |
 | `private void` | `importTrackedList()` | Prompts for a tracked-list code, merges it into the current profile, and reports the outcome. |
 | `private static int` | `indexOfItem(List<TrackedItem> list, int itemId)` |  |
-| `private static String` | `inlineLinks(String text)` | Escapes `text`, then turns markdown `[label](url)` links into clickable HTML anchors. |
+| `static String` | `inlineLinks(String text)` | Escapes `text`, then turns markdown `[label](url)` links into clickable HTML anchors. |
 | `private void` | `installCategoryDragReorder(JList<String> list, DefaultListModel<String> model)` | Enables drag-and-drop reordering on the Manage Categories list (#212): dragging a category and dropping it between two others sets the order in one gesture, committing through the same `CategoryActions#reorder(String, int)` path as the ↑/↓ buttons. |
 | `private void` | `installChangelogNavHover(JLabel label, Color restFg, Color restBg)` | Adds a hover highlight (brighten to white on a lighter row) that restores the given resting colours. |
 | `private void` | `installDragHandle(JLabel handle, int itemId)` | Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging updates the drop indicator and edge autoscroll, and releasing commits the move. |
@@ -15455,7 +15455,7 @@ Builds a borderless icon button with the given icon, tooltip, click action, and 
 
 #### buildIssueUrl
 
-`private static String buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)`
+`static String buildIssueUrl(String template, String titlePrefix, String title, List<IssueField> fields, Map<IssueField,JComponent> inputs)`
 
 Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params.
 
@@ -15702,7 +15702,7 @@ Fixes the three totals value labels to the widest one's width so the columns sta
 
 #### escapeHtml
 
-`private static String escapeHtml(String text)`
+`static String escapeHtml(String text)`
 
 Escapes the HTML-significant characters so text renders literally inside an HTML label.
 
@@ -15726,7 +15726,7 @@ Copies the shareable tracked-list code to the clipboard once the plugin has buil
 
 #### extractSections
 
-`private static List<ChangelogSection> extractSections(String body)`
+`static List<ChangelogSection> extractSections(String body)`
 
 - **Returns:** the `##`/`###` section headings of a release body, in order, with scroll anchors.
 
@@ -15806,7 +15806,7 @@ Prompts for a tracked-list code, merges it into the current profile, and reports
 
 #### inlineLinks
 
-`private static String inlineLinks(String text)`
+`static String inlineLinks(String text)`
 
 Escapes `text`, then turns markdown `[label](url)` links into clickable HTML anchors.
 
@@ -16414,7 +16414,7 @@ Reflects the active sort on the header toggle: the effective direction arrow
 
 _class_
 
-`private static class ChangelogSection`
+`static class ChangelogSection`
 
 One navigable changelog section: heading depth (0 for `##`, 1 for `###`), text, and anchor.
 

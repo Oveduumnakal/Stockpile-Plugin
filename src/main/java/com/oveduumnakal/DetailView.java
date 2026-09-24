@@ -463,7 +463,7 @@ public class DetailView extends JPanel implements Scrollable
 	}
 
 	/** Formats a positive second count as a compact {@code "2h 14m"} / {@code "43m"} / {@code "12s"} duration. */
-	private static String formatDuration(long seconds)
+	static String formatDuration(long seconds)
 	{
 		long h = seconds / 3600;
 		long m = (seconds % 3600) / 60;
@@ -3237,7 +3237,7 @@ public class DetailView extends JPanel implements Scrollable
 	}
 
 	/** @return the window's long label lower-cased for use mid-sentence in tooltips. */
-	private static String spelledInterval(TimeWindow window)
+	static String spelledInterval(TimeWindow window)
 	{
 		return window.getLongLabel().toLowerCase(Locale.ROOT);
 	}

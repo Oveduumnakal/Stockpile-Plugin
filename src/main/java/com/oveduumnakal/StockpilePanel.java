@@ -1577,7 +1577,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/** @return the {@code ##}/{@code ###} section headings of a release body, in order, with scroll anchors. */
-	private static List<ChangelogSection> extractSections(String body)
+	static List<ChangelogSection> extractSections(String body)
 	{
 		List<ChangelogSection> sections = new ArrayList<>();
 		int index = 0;
@@ -1601,7 +1601,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 	/** One navigable changelog section: heading depth (0 for {@code ##}, 1 for {@code ###}), text, and anchor. */
 	@Value
-	private static class ChangelogSection
+	static class ChangelogSection
 	{
 		int level;
 
@@ -1611,7 +1611,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/** Escapes the HTML-significant characters so text renders literally inside an HTML label. */
-	private static String escapeHtml(String text)
+	static String escapeHtml(String text)
 	{
 		return text
 				.replace("&", "&amp;")
@@ -1724,7 +1724,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/** Escapes {@code text}, then turns markdown {@code [label](url)} links into clickable HTML anchors. */
-	private static String inlineLinks(String text)
+	static String inlineLinks(String text)
 	{
 		Matcher matcher = MD_LINK.matcher(escapeHtml(text));
 		StringBuffer sb = new StringBuffer();
@@ -1921,7 +1921,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	}
 
 	/** Builds the GitHub new-issue URL with the title and non-empty fields pre-filled as query params. */
-	private static String buildIssueUrl(String template, String titlePrefix, String title,
+	static String buildIssueUrl(String template, String titlePrefix, String title,
 			List<IssueField> fields, Map<IssueField, JComponent> inputs)
 	{
 		StringBuilder url = new StringBuilder(GITHUB_NEW_ISSUE).append("?template=").append(template);
