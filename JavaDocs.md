@@ -2615,7 +2615,7 @@ smoke-test — unit-testable in isolation.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `void` | `addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)` | Adds `qty` units to an item's held lots at `boughtAt` gp. |
+| `void` | `addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)` | Adds `qty` units to an item's held lots at `boughtAt` gp, merging into an existing open lot at the same price and source, or appending a new lot. |
 | `void` | `addPotionEmptied(int count)` | Records `count` empty vessels freed by finishing a potion/drink this tick (#218). |
 | `void` | `applyBuyLimitFields(TrackedItem item)` | Sets the item's transient buy-limit fields from its window, clearing them when the window has expired. |
 | `void` | `applyDelta(TrackedItem tracked, int delta)` | Prices one item's net container delta. |
@@ -2867,11 +2867,14 @@ collection as durable claims (#180); see `SourceAttributionCore`.
 
 `void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)`
 
-Adds `qty` units to an item's held lots at `boughtAt` gp.
+Adds `qty` units to an item's held lots at `boughtAt` gp, merging into an existing
+open lot at the same price and source, or appending a new lot.
 
-<p>First it reverses any equal-and-opposite "wash" closes (a prior sell at
-the same price, which a re-acquire should cancel), then merges into an
-existing open lot at the same price, or appends a new lot.
+<p>This used to first delete any closed lot bought and sold at `boughtAt` - a "wash" undo
+meant to cancel a sell that a re-buy reversed. Nothing limited it to a recent sell, so buying at a
+price you once broke even at erased that historical sale from the log (#371). Container deltas are
+already netted per tick before they reach the ledger, so a genuine same-tick reversal never
+arrives here as a separate close and re-open.
 
 #### addPotionEmptied
 
@@ -2939,10 +2942,14 @@ oldest lot first (FIFO), recording `sellSource` as the sale's
 provenance — `AcquisitionSource#UNKNOWN` marks the price as an
 estimate rather than an observed sale.
 
-<p>It first cancels any just-added open lots bought at the same price (a
-buy immediately followed by a sell nets out), then realizes the remaining
-amount across the oldest open lots, splitting a lot when only part of it is
-sold and merging into matching closed lots where possible.
+<p>Realizes the amount across the oldest open lots, splitting a lot when only part of it is sold
+and merging into matching closed lots where possible.
+
+<p>It used to first delete any open lot bought at `soldAtPrice`, as if a buy and a sell at
+the same price simply netted out. That lot could be months old, so selling at a price you had once
+bought at skipped FIFO, left an older lot open at the wrong basis, and dropped the sale from the log
+entirely; every 0-gp loss close (eating, dying, a destroyed product) likewise deleted 0-cost gathered
+lots instead of closing them (#371).
 
 #### closeGroundLost
 
