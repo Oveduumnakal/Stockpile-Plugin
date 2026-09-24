@@ -47,7 +47,12 @@ public class WikiRealtimePriceClient
 	private static final HttpUrl MAPPING_URL = HttpUrl.parse(
 			"https://prices.runescape.wiki/api/v1/osrs/mapping");
 
-	private static final String USER_AGENT = "RuneLite Stockpile Plugin";
+	/**
+	 * Identifies the plugin to the wiki API, with a contact URL as its usage guidance asks (#320) so
+	 * an operator can reach the author rather than only being able to block the traffic.
+	 */
+	private static final String USER_AGENT =
+			"RuneLite Stockpile Plugin (+https://github.com/Oveduumnakal/Stockpile-Plugin)";
 
 	/**
 	 * The latest instant-buy ({@code high}) and instant-sell ({@code low}) prices

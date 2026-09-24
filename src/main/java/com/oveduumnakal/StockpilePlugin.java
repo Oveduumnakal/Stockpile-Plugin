@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -46,6 +47,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -1200,6 +1202,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		closeAllGroundSuspensions();
 		groundItems.clear();
 		trackedGroundItems.clear();
+		seriesFetchedAt.clear();
 		tickGroundSpawns.clear();
 		tickGroundDespawns.clear();
 		tickGroundQuantityChanges.clear();
@@ -3011,13 +3014,20 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/** Fetches just the 5m series for an item in the background and recomputes its window stats. */
 	private void requestSeries(int itemId, boolean refreshAfter)
 	{
+		if (!claimSeriesFetch(itemId, SeriesTimestep.FIVE_MIN))
+			return;
+
 		executor.execute(() ->
 		{
-			List<WikiRealtimePriceClient.PricePoint> points = wikiPriceClient.fetchTimeseries(itemId, "5m");
+			List<WikiRealtimePriceClient.PricePoint> points =
+					wikiPriceClient.fetchTimeseries(itemId, SeriesTimestep.FIVE_MIN.getLabel());
+			if (points.isEmpty())
+				releaseSeriesFetch(itemId, SeriesTimestep.FIVE_MIN);
+
 			clientThread.invokeLater(() ->
 			{
 				TrackedItem tracked = trackedItems.get(itemId);
-				if (tracked == null)
+				if (tracked == null || points.isEmpty())
 					return;
 
 				tracked.setSeries5m(points);
@@ -3026,6 +3036,91 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					refreshPanel();
 			});
 		});
+	}
+
+	/** When each {@code (item, timestep)} series was last fetched, so a fresh one is not refetched (#320). */
+	private final Map<Long, Instant> seriesFetchedAt = new ConcurrentHashMap<>();
+
+	/** @return the {@link #seriesFetchedAt} key for one item's one timestep. */
+	private static long seriesKey(int itemId, SeriesTimestep step)
+	{
+		return ((long) itemId << 32) | step.ordinal();
+	}
+
+	/**
+	 * Claims one {@code (item, timestep)} fetch, marking it as issued now.
+	 *
+	 * @return whether the caller should fetch: true when the step has gone stale for its own
+	 *         granularity, or when no live instance of the item is holding that series (a freshly
+	 *         previewed or compared copy of an item whose data was fetched onto another instance
+	 *         is filled from that instance instead, so this only fires when nothing has it at all)
+	 */
+	private boolean claimSeriesFetch(int itemId, SeriesTimestep step)
+	{
+		Instant last = seriesFetchedAt.get(seriesKey(itemId, step));
+		boolean fresh = last != null
+				&& Duration.between(last, Instant.now()).compareTo(step.getFreshness()) < 0;
+		if (fresh && knownSeries(itemId, step) != null)
+			return false;
+
+		seriesFetchedAt.put(seriesKey(itemId, step), Instant.now());
+		return true;
+	}
+
+	/** Un-marks a claimed fetch that came back empty, so the next refresh retries rather than waiting out the TTL. */
+	private void releaseSeriesFetch(int itemId, SeriesTimestep step)
+	{
+		seriesFetchedAt.remove(seriesKey(itemId, step));
+	}
+
+	/** @return a non-empty series for {@code step} already held by some live instance of the item, else null. */
+	private List<WikiRealtimePriceClient.PricePoint> knownSeries(int itemId, SeriesTimestep step)
+	{
+		for (TrackedItem item : itemsFor(itemId))
+		{
+			List<WikiRealtimePriceClient.PricePoint> series = seriesOf(item, step);
+			if (!series.isEmpty())
+				return series;
+		}
+
+		return null;
+	}
+
+	/** @return the item's stored series for {@code step}. */
+	private static List<WikiRealtimePriceClient.PricePoint> seriesOf(TrackedItem item, SeriesTimestep step)
+	{
+		switch (step)
+		{
+			case HOUR:
+				return item.getSeries1h();
+			case SIX_HOUR:
+				return item.getSeries6h();
+			case DAY:
+				return item.getSeries24h();
+			default:
+				return item.getSeries5m();
+		}
+	}
+
+	/** Stores {@code points} as the item's series for {@code step}. */
+	private static void setSeriesOf(TrackedItem item, SeriesTimestep step,
+			List<WikiRealtimePriceClient.PricePoint> points)
+	{
+		switch (step)
+		{
+			case HOUR:
+				item.setSeries1h(points);
+				break;
+			case SIX_HOUR:
+				item.setSeries6h(points);
+				break;
+			case DAY:
+				item.setSeries24h(points);
+				break;
+			default:
+				item.setSeries5m(points);
+				break;
+		}
 	}
 
 	/**
@@ -3087,27 +3182,57 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * one found: an untracked item can be held as the panel's preview and as a Compare preview at the same
 	 * time, and writing to only one leaves the other rendering a permanently empty trend, volume, and
 	 * ratings block (#309).
+	 *
+	 * <p>Only the steps that have gone stale for their own granularity are actually fetched (#320) - a
+	 * {@code 24h} series gains a point once a day, so reissuing it every minute cannot produce new
+	 * data. A step that is fresh is filled from whichever live instance already holds it, so a newly
+	 * previewed or compared copy of an item still gets the full picture without a network round trip.
+	 * The apply and refresh below run either way, so a caller that opens a view still sees it populate.
 	 */
 	private void requestDetailData(int itemId)
 	{
+		EnumSet<SeriesTimestep> due = EnumSet.noneOf(SeriesTimestep.class);
+		for (SeriesTimestep step : SeriesTimestep.values())
+		{
+			if (claimSeriesFetch(itemId, step))
+				due.add(step);
+		}
+
 		executor.execute(() ->
 		{
-			List<WikiRealtimePriceClient.PricePoint> s5 = wikiPriceClient.fetchTimeseries(itemId, "5m");
-			List<WikiRealtimePriceClient.PricePoint> s1h = wikiPriceClient.fetchTimeseries(itemId, "1h");
-			List<WikiRealtimePriceClient.PricePoint> s6 = wikiPriceClient.fetchTimeseries(itemId, "6h");
-			List<WikiRealtimePriceClient.PricePoint> s24 = wikiPriceClient.fetchTimeseries(itemId, "24h");
+			Map<SeriesTimestep, List<WikiRealtimePriceClient.PricePoint>> fetched =
+					new EnumMap<>(SeriesTimestep.class);
+			for (SeriesTimestep step : due)
+			{
+				List<WikiRealtimePriceClient.PricePoint> points =
+						wikiPriceClient.fetchTimeseries(itemId, step.getLabel());
+				if (points.isEmpty())
+					releaseSeriesFetch(itemId, step);
+				else
+					fetched.put(step, points);
+			}
+
 			clientThread.invokeLater(() ->
 			{
 				List<TrackedItem> targets = itemsFor(itemId);
 				if (targets.isEmpty())
 					return;
 
+				for (SeriesTimestep step : SeriesTimestep.values())
+				{
+					List<WikiRealtimePriceClient.PricePoint> points = fetched.get(step);
+					if (points == null)
+						points = knownSeries(itemId, step);
+
+					if (points == null)
+						continue;
+
+					for (TrackedItem tracked : targets)
+						setSeriesOf(tracked, step, points);
+				}
+
 				for (TrackedItem tracked : targets)
 				{
-					tracked.setSeries5m(s5);
-					tracked.setSeries1h(s1h);
-					tracked.setSeries6h(s6);
-					tracked.setSeries24h(s24);
 					applyItemMetadata(tracked);
 					recomputeWindowStats(tracked);
 				}
