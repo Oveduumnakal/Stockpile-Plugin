@@ -12629,6 +12629,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `installDragHandle(JLabel handle, int itemId)` | Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging updates the drop indicator and edge autoscroll, and releasing commits the move. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, Color tint)` | Installs a compact gp value on a label with no tooltip caption. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)` | Installs a prefixed compact gp value on a label via `#installShortValue`. |
+| `private static void` | `installNoData(JLabel label)` | Marks a price cell as having no data, for a window whose history series has not loaded (#333). |
 | `private MouseAdapter` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
 | `static void` | `installShortValue(JLabel label, long value, String shortText, String tooltipLabel, Color tint)` | Installs a pre-formatted compact value on a label with a full-number tooltip and a hover tint. |
 | `private static void` | `installToggleHover(JLabel button, BooleanSupplier selected, Consumer<Color> apply, Runnable restore)` | Installs grey↔gold hover colouring on a header toggle: an unselected (grey) button turns gold while hovered, a selected (gold) button turns grey, and its resting state colour is repainted on exit. |
@@ -14129,6 +14130,13 @@ Installs a compact gp value on a label with no tooltip caption.
 `private void installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)`
 
 Installs a prefixed compact gp value on a label via `#installShortValue`.
+
+#### installNoData
+
+`private static void installNoData(JLabel label)`
+
+Marks a price cell as having no data, for a window whose history series has not loaded (#333).
+Clears any hover tint and tooltip so nothing suggests the dash is a real figure.
 
 #### installRowHover
 
@@ -17644,6 +17652,14 @@ live tracked item or its preview) and hands it to the EDT to open or update the 
 
 Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series.
 
+<p>A window whose own series has not loaded gets <em>no</em> entry. It used to fall back to the
+5-minute series, which covers roughly the last 24 hours - and since `computeStats` only
+filters points older than the window, nothing was filtered: a "1 Year" or "6 Month" figure was
+a day of data presented as real, with nothing in the UI to distinguish it. That reached the
+detail view's overview rows, the Compare columns, and `NotificationMetric` thresholds, so
+a rule like "1 Year Average &lt; X" could fire on a day's data (#333). Leaving the entry absent
+lets every reader show its existing no-data state instead.
+
 #### reconcileAllQuantities
 
 `private void reconcileAllQuantities()`
@@ -18195,6 +18211,7 @@ Hidden entirely when the overlay is disabled or no items are selected.
 | `private static final Color` | `LOW_COLOR` |  |
 | `private static final Color` | `MUTED_COLOR` |  |
 | `private static final Color` | `NAME_COLOR` |  |
+| `private static final String` | `NO_DATA` | Drawn in place of a figure for a window whose history has not loaded yet (#333). |
 | `private static final int` | `PAD` |  |
 | `private static final Color` | `QTY_COLOR` |  |
 | `private static final int` | `SEG_GAP` |  |
@@ -18268,6 +18285,12 @@ Dark brown border matching RuneLite's tan overlay background (rather than a star
 #### NAME_COLOR
 
 `private static final Color NAME_COLOR`
+
+#### NO_DATA
+
+`private static final String NO_DATA`
+
+Drawn in place of a figure for a window whose history has not loaded yet (#333).
 
 #### PAD
 
@@ -18373,6 +18396,10 @@ Converts a scaled `Image` to a drawable `BufferedImage`.
 `private List<Seg> windowLine(TrackedItem item, TimeWindow window)`
 
 Builds one standard-layout price line for a window, honouring the configured visible columns.
+
+<p>A non-live window whose series has not loaded has no stats at all (#333) and draws
+`#NO_DATA` rather than borrowing the live prices, which would label the current price as
+a year's average.
 
 ---
 

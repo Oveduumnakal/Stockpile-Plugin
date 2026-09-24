@@ -3100,7 +3100,17 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		});
 	}
 
-	/** Rebuilds an item's per-window {@link PriceStats} from its current prices (LIVE) and history series. */
+	/**
+	 * Rebuilds an item's per-window {@link PriceStats} from its current prices (LIVE) and history series.
+	 *
+	 * <p>A window whose own series has not loaded gets <em>no</em> entry. It used to fall back to the
+	 * 5-minute series, which covers roughly the last 24 hours - and since {@code computeStats} only
+	 * filters points older than the window, nothing was filtered: a "1 Year" or "6 Month" figure was
+	 * a day of data presented as real, with nothing in the UI to distinguish it. That reached the
+	 * detail view's overview rows, the Compare columns, and {@code NotificationMetric} thresholds, so
+	 * a rule like "1 Year Average &lt; X" could fire on a day's data (#333). Leaving the entry absent
+	 * lets every reader show its existing no-data state instead.
+	 */
 	private void recomputeWindowStats(TrackedItem tracked)
 	{
 		Map<TimeWindow, PriceStats> stats = new EnumMap<>(TimeWindow.class);
@@ -3116,10 +3126,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			else
 			{
 				List<WikiRealtimePriceClient.PricePoint> series = tracked.getSeriesFor(w);
-				if (series.isEmpty())
-					series = tracked.getSeries5m();
-
-				stats.put(w, WikiRealtimePriceClient.computeStats(series, w));
+				if (!series.isEmpty())
+					stats.put(w, WikiRealtimePriceClient.computeStats(series, w));
 			}
 		}
 

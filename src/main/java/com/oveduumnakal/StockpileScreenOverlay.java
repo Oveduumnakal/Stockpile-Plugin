@@ -36,6 +36,9 @@ public class StockpileScreenOverlay extends Overlay
 	private static final Color NAME_COLOR = Color.WHITE;
 	private static final Color QTY_COLOR = new Color(200, 200, 200);
 	private static final Color LABEL_COLOR = new Color(170, 170, 170);
+
+	/** Drawn in place of a figure for a window whose history has not loaded yet (#333). */
+	private static final String NO_DATA = "-";
 	private static final Color HIGH_COLOR = StockpileColors.HIGH;
 	private static final Color LOW_COLOR = StockpileColors.LOW;
 	private static final Color AVG_COLOR = StockpileColors.AVG;
@@ -191,29 +194,36 @@ public class StockpileScreenOverlay extends Overlay
 		return lines;
 	}
 
-	/** Builds one standard-layout price line for a window, honouring the configured visible columns. */
+	/**
+	 * Builds one standard-layout price line for a window, honouring the configured visible columns.
+	 *
+	 * <p>A non-live window whose series has not loaded has no stats at all (#333) and draws
+	 * {@link #NO_DATA} rather than borrowing the live prices, which would label the current price as
+	 * a year's average.
+	 */
 	private List<Seg> windowLine(TrackedItem item, TimeWindow window)
 	{
 		PriceStats stats = item.getWindowStats().get(window);
-		boolean live = window == TimeWindow.LIVE || stats == null;
-		long high = live ? item.getHighPrice() : stats.getHigh();
-		long low = live ? item.getLowPrice() : stats.getLow();
-		long avg = live ? item.getAvgPrice() : stats.getAvg();
-		long vol = !live && stats != null ? stats.getVolume() : 0;
+		boolean live = window == TimeWindow.LIVE;
+		boolean noData = !live && stats == null;
+		long high = live ? item.getHighPrice() : (noData ? 0 : stats.getHigh());
+		long low = live ? item.getLowPrice() : (noData ? 0 : stats.getLow());
+		long avg = live ? item.getAvgPrice() : (noData ? 0 : stats.getAvg());
+		long vol = noData ? 0 : (live ? 0 : stats.getVolume());
 
 		List<Seg> line = new ArrayList<>();
 		line.add(new Seg(window.getLabel(), LABEL_COLOR));
 		if (config.showColHigh())
-			line.add(new Seg(GpFormat.shortValue(high), HIGH_COLOR));
+			line.add(new Seg(noData ? NO_DATA : GpFormat.shortValue(high), HIGH_COLOR));
 
 		if (config.showColLow())
-			line.add(new Seg(GpFormat.shortValue(low), LOW_COLOR));
+			line.add(new Seg(noData ? NO_DATA : GpFormat.shortValue(low), LOW_COLOR));
 
 		if (config.showColAvg())
-			line.add(new Seg(GpFormat.shortValue(avg), AVG_COLOR));
+			line.add(new Seg(noData ? NO_DATA : GpFormat.shortValue(avg), AVG_COLOR));
 
 		if (config.showColVolume() && !live)
-			line.add(new Seg(GpFormat.shortValue(vol), VOLUME_COLOR));
+			line.add(new Seg(noData ? NO_DATA : GpFormat.shortValue(vol), VOLUME_COLOR));
 
 		return line;
 	}
