@@ -10,7 +10,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.IntUnaryOperator;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -44,6 +47,15 @@ public final class PortfolioShareCodec
 
 	/** Ceiling on the compressed token body, so an oversized paste is rejected before it is decoded. */
 	static final int MAX_TOKEN_CHARS = 256 * 1024;
+
+	/**
+	 * Most items one import adds. A realistic watchlist is a few dozen; the cap stops a hostile code from
+	 * tracking thousands of ids, each with its own lookups, series fetches and persisted state (#375).
+	 */
+	static final int MAX_IMPORT_ITEMS = 500;
+
+	/** Most categories one import creates, for the same reason as {@link #MAX_IMPORT_ITEMS}. */
+	static final int MAX_IMPORT_CATEGORIES = 100;
 
 	private final Gson gson;
 
@@ -153,6 +165,38 @@ public final class PortfolioShareCodec
 		{
 			return null;
 		}
+	}
+
+	/**
+	 * Normalizes a decoded entry list before it is merged: maps every id through {@code canonicalize}
+	 * (unnoting, de-placeholdering), drops null entries and non-positive ids, keeps the first entry per
+	 * canonical id, cleans each category name with {@link CategoryState#sanitizeName}, and stops at
+	 * {@link #MAX_IMPORT_ITEMS}. The code comes from someone else, so none of it is trusted (#375).
+	 *
+	 * @param entries the decoded entries, possibly hostile
+	 * @param canonicalize maps a raw item id to the id it should be tracked under
+	 * @return the entries to merge, in their original order
+	 */
+	static List<Entry> normalize(List<Entry> entries, IntUnaryOperator canonicalize)
+	{
+		List<Entry> clean = new ArrayList<>();
+		Set<Integer> seen = new HashSet<>();
+		for (Entry entry : entries)
+		{
+			if (clean.size() >= MAX_IMPORT_ITEMS)
+				break;
+
+			if (entry == null || entry.id <= 0)
+				continue;
+
+			int id = canonicalize.applyAsInt(entry.id);
+			if (id <= 0 || !seen.add(id))
+				continue;
+
+			clean.add(new Entry(id, entry.mode, CategoryState.sanitizeName(entry.category), entry.favorite));
+		}
+
+		return clean;
 	}
 
 	/** The exported watchlist: the tracked entries plus the category definitions to recreate. */

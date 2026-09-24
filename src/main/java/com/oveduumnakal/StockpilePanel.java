@@ -3020,6 +3020,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		chevron.setFont(FontManager.getRunescapeSmallFont());
 
 		JLabel titleLabel = new JLabel(title);
+		titleLabel.putClientProperty("html.disable", Boolean.TRUE);
 		titleLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		titleLabel.setFont(FontManager.getRunescapeBoldFont());
 

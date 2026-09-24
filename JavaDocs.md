@@ -975,9 +975,16 @@ collapsed state, persisted separately from the tracked items themselves.
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `public static final String` | `FAVORITES_KEY` | Group key for the special "Favorites" pseudo-group (pinned above all categories). |
+| `static final int` | `MAX_NAME_LENGTH` | The longest category name kept; anything past it is cut, so a pasted name cannot swamp the panel. |
 | `public static final String` | `UNCATEGORIZED_KEY` | Group key for the catch-all "Uncategorized" group (items with no category). |
 | `private boolean` | `collapsed` |  |
 | `private String` | `name` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `static String` | `sanitizeName(String name)` | Makes a category name safe to store and render: drops ` ` and control characters, collapses runs of whitespace, and caps the length at `#MAX_NAME_LENGTH`. |
 
 ### Field Detail
 
@@ -986,6 +993,12 @@ collapsed state, persisted separately from the tracked items themselves.
 `public static final String FAVORITES_KEY`
 
 Group key for the special "Favorites" pseudo-group (pinned above all categories).
+
+#### MAX_NAME_LENGTH
+
+`static final int MAX_NAME_LENGTH`
+
+The longest category name kept; anything past it is cut, so a pasted name cannot swamp the panel.
 
 #### UNCATEGORIZED_KEY
 
@@ -1000,6 +1013,23 @@ Group key for the catch-all "Uncategorized" group (items with no category).
 #### name
 
 `private String name`
+
+### Method Detail
+
+#### sanitizeName
+
+`static String sanitizeName(String name)`
+
+Makes a category name safe to store and render: drops `<`, `>` and control characters,
+collapses runs of whitespace, and caps the length at `#MAX_NAME_LENGTH`.
+
+<p>Category names reach Swing labels, and Swing renders any label text beginning with
+`<html>` as HTML - including `<img src="http://...">`, which it fetches on the EDT.
+Share codes carry category names and are meant to be pasted from other players, so without this a
+code could make every importer's client request an arbitrary URL, revealing their IP (#375).
+
+- **Parameter** `name` — the raw name, typed or imported
+- **Returns:** the cleaned name, or `null` when nothing usable is left
 
 ---
 
@@ -9696,6 +9726,8 @@ deliberately oversized payload - decoding is bounded at both ends (#330).
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `static final int` | `MAX_IMPORT_CATEGORIES` | Most categories one import creates, for the same reason as `#MAX_IMPORT_ITEMS`. |
+| `static final int` | `MAX_IMPORT_ITEMS` | Most items one import adds. |
 | `static final int` | `MAX_INFLATED_BYTES` | Ceiling on the inflated payload, about 100x the largest realistic watchlist. |
 | `static final int` | `MAX_TOKEN_CHARS` | Ceiling on the compressed token body, so an oversized paste is rejected before it is decoded. |
 | `static final String` | `PREFIX` | Token marker + format version; a future breaking change bumps the digit. |
@@ -9714,8 +9746,22 @@ deliberately oversized payload - decoding is bounded at both ends (#330).
 | `public Snapshot` | `decode(String input)` | Parses a token (or raw JSON) back into a snapshot. |
 | `public String` | `encode(Snapshot snapshot)` |  |
 | `private String` | `inflate(String token)` | Base64-decodes and gunzips a token body; `null` on any corruption or on a payload that exceeds `#MAX_TOKEN_CHARS` compressed or `#MAX_INFLATED_BYTES` inflated. |
+| `static List<Entry>` | `normalize(List<Entry> entries, IntUnaryOperator canonicalize)` | Normalizes a decoded entry list before it is merged: maps every id through `canonicalize` (unnoting, de-placeholdering), drops null entries and non-positive ids, keeps the first entry per canonical id, cleans each category name with `CategoryState#sanitizeName`, and stops at `#MAX_IMPORT_ITEMS`. |
 
 ### Field Detail
+
+#### MAX_IMPORT_CATEGORIES
+
+`static final int MAX_IMPORT_CATEGORIES`
+
+Most categories one import creates, for the same reason as `#MAX_IMPORT_ITEMS`.
+
+#### MAX_IMPORT_ITEMS
+
+`static final int MAX_IMPORT_ITEMS`
+
+Most items one import adds. A realistic watchlist is a few dozen; the cap stops a hostile code from
+tracking thousands of ids, each with its own lookups, series fetches and persisted state (#375).
 
 #### MAX_INFLATED_BYTES
 
@@ -9778,6 +9824,19 @@ exceeds `#MAX_TOKEN_CHARS` compressed or `#MAX_INFLATED_BYTES` inflated.
 gzip reaches roughly 1000:1 on repetitive data, so an unbounded read turns a few KB of input
 into gigabytes. That throws `OutOfMemoryError`, which this method's catch does not cover
 and which takes the client with it, on the client thread (#330).
+
+#### normalize
+
+`static List<Entry> normalize(List<Entry> entries, IntUnaryOperator canonicalize)`
+
+Normalizes a decoded entry list before it is merged: maps every id through `canonicalize`
+(unnoting, de-placeholdering), drops null entries and non-positive ids, keeps the first entry per
+canonical id, cleans each category name with `CategoryState#sanitizeName`, and stops at
+`#MAX_IMPORT_ITEMS`. The code comes from someone else, so none of it is trusted (#375).
+
+- **Parameter** `entries` — the decoded entries, possibly hostile
+- **Parameter** `canonicalize` — maps a raw item id to the id it should be tracked under
+- **Returns:** the entries to merge, in their original order
 
 ---
 
@@ -17914,6 +17973,9 @@ missing categories they reference. Non-destructive — existing items are left
 untouched. Decode, count, and merge all run on the client thread (the counts
 read `trackedItems`); the outcome summary is handed to `onResult`
 on the EDT.
+
+<p>The code is someone else's, so its contents are normalized first: ids canonicalized,
+de-duplicated and capped, category names sanitized (#375).
 
 #### inAutoCategorizeScope
 
