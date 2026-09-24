@@ -25,6 +25,8 @@ dependencies {
 	testImplementation 'junit:junit:4.12'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+	testImplementation 'org.mockito:mockito-core:5.12.0'
+	testImplementation 'com.google.inject.extensions:guice-testlib:4.1.0'
 }
 
 group = 'com.oveduumnakal'
