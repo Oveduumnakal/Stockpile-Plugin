@@ -2513,7 +2513,6 @@ smoke-test — unit-testable in isolation.
 | `private static final Duration` | `BUY_LIMIT_WINDOW` | The rolling GE buy-limit window length. |
 | `private static final int` | `DEATH_LOSS_BATCH_GRACE_TICKS` | How many ticks past the first consumed death loss the same death may keep consuming. |
 | `private static final int` | `DEATH_LOSS_WINDOW_TICKS` | How many ticks after a death removals still count as death losses (respawn wipe + lag). |
-| `private static final Duration` | `GE_STATE_SAVE_INTERVAL` | How often at most the GE ledger/window are rewritten to config during activity. |
 | `private static final int` | `GRAVE_RECOVERY_GRACE_TICKS` | Once an expired gravestone has been gone this many ticks, its remaining suspensions close as lost. |
 | `private int` | `deathLossTick` | The tick the current death first consumed a loss, bounding it to its own batch; -1 when none. |
 | `private int` | `deathTick` | The tick the local player died, opening the death-loss window; -1 when none (#70). |
@@ -2522,7 +2521,6 @@ smoke-test — unit-testable in isolation.
 | `private int` | `graveGoneTick` | The tick the observed gravestone vanished (collected or expired), pending the grace check; -1 when none. |
 | `private boolean` | `graveSeen` | True once the player's gravestone has been observed active, so its later loss is a real transition. |
 | `private final LedgerHost` | `host` |  |
-| `private Instant` | `lastGeStateSave` |  |
 | `private final Map<Integer,Long>` | `pendingConsumedOutput` | Per-output transferred basis of a drunk dose awaiting the lower-dose potion (#218). |
 | `private final Map<Integer,Long>` | `pendingDecantOutput` | Per-output transferred basis of a decant awaiting its produced potions (#220). |
 | `private final Map<Integer,Integer>` | `pendingGroundSuspend` | Units dropped on the floor this tick awaiting the container decrease that suspends them. |
@@ -2615,7 +2613,6 @@ smoke-test — unit-testable in isolation.
 | `void` | `resetForLogin()` | Clears the transient session ledger state carried at login (matches the pre-#255 login reset). |
 | `void` | `resetForShutdown()` | Clears the transient session ledger state at shutdown (matches the pre-#255 shutdown reset). |
 | `void` | `resetPotionEmptied()` | Resets the running count of empty vessels freed this tick (a fresh detection pass). |
-| `private void` | `scheduleGeStateSave()` | Persists the GE state at most once per `#GE_STATE_SAVE_INTERVAL`. |
 | `private void` | `seedCancelledSellReturns(GrandExchangeOffer[] offers)` | Queues the uncollected remainder of every cancelled sell offer as a pending un-suspend, so those units stay suspended (they are still the player's, sitting in the collection box) and collecting them restores the original lots instead of opening fresh ones. |
 | `void` | `signalDeath()` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `void` | `signalPotionDiscard()` | Marks that a potion was "Empty"-clicked (discarded) this tick (#232). |
@@ -2642,12 +2639,6 @@ How many ticks past the first consumed death loss the same death may keep consum
 `private static final int DEATH_LOSS_WINDOW_TICKS`
 
 How many ticks after a death removals still count as death losses (respawn wipe + lag).
-
-#### GE_STATE_SAVE_INTERVAL
-
-`private static final Duration GE_STATE_SAVE_INTERVAL`
-
-How often at most the GE ledger/window are rewritten to config during activity.
 
 #### GRAVE_RECOVERY_GRACE_TICKS
 
@@ -2694,10 +2685,6 @@ True once the player's gravestone has been observed active, so its later loss is
 #### host
 
 `private final LedgerHost host`
-
-#### lastGeStateSave
-
-`private Instant lastGeStateSave`
 
 #### pendingConsumedOutput
 
@@ -3181,6 +3168,18 @@ clock was collected — its returning items un-suspend themselves, so no loss is
 
 Persists the GE buy ledger (the durable claims) and buy-limit windows to the RS profile config.
 
+<p>Called eagerly at each of the handful of points that change this state - a buy fill, a sell
+realization, ledger consumption, a suspension change, an offer reconcile - rather than on a
+debounce. The state used to be written at most once a minute and flushed unconditionally only
+at plugin shutdown; `onGameStateChanged` has no equivalent, and the next `LOGGED_IN`
+calls `#load()`, which overwrites the in-memory ledger with whatever was last on disk. So
+logging out or hopping accounts within 60 seconds of a buy filling lost that fill's durable
+claim, and the units later collected fell through to `fallbackPrice` - a purchase made at
+a known price silently booked at the current market instead (#328).
+
+<p>These events are far rarer than the quantity changes `persistTrackedItems()` already
+writes eagerly, so removing the debounce costs nothing worth keeping the window for.
+
 #### potionEmptiedTick
 
 `int potionEmptiedTick()`
@@ -3322,12 +3321,6 @@ Clears the transient session ledger state at shutdown (matches the pre-#255 shut
 `void resetPotionEmptied()`
 
 Resets the running count of empty vessels freed this tick (a fresh detection pass).
-
-#### scheduleGeStateSave
-
-`private void scheduleGeStateSave()`
-
-Persists the GE state at most once per `#GE_STATE_SAVE_INTERVAL`.
 
 #### seedCancelledSellReturns
 
