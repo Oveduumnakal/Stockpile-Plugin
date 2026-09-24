@@ -187,7 +187,8 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final AcquisitionsTableModel.AcquisitionEditor onEditAcquisitions;
 	private final Consumer<Integer> onRequestDetailData;
 	private final Consumer<Integer> onClearAcquisitions;
-	private final Consumer<Integer> onNotificationsEdited;
+	/** The plugin callbacks, held for the client-thread notification-edit seam (#373). */
+	private final PanelActions notificationEditor;
 	private final Runnable onClearAll;
 	private final IntFunction<String> examineLookup;
 	/**
@@ -528,7 +529,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onEditAcquisitions = actions::editAcquisitions;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
-		this.onNotificationsEdited = actions::notificationsEdited;
+		this.notificationEditor = actions;
 		this.onClearAll = actions::clearAll;
 		this.examineLookup = actions::examineLookup;
 		this.onReorder = actions::reorder;
@@ -5313,12 +5314,12 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 			onClearAcquisitions.accept(itemId);
 	}
 
-	/** {@inheritDoc} Delegates to the panel's notifications-edited callback when present. */
+	/** {@inheritDoc} Delegates to the plugin's client-thread notification-edit seam. */
 	@Override
-	public void notificationsEdited(int itemId)
+	public void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)
 	{
-		if (onNotificationsEdited != null)
-			onNotificationsEdited.accept(itemId);
+		if (notificationEditor != null)
+			notificationEditor.editNotifications(itemId, mutation, onApplied);
 	}
 
 	/** {@inheritDoc} Delegates to the panel's add-item callback. */

@@ -70,8 +70,16 @@ public interface PanelActions
 	/** Clears all acquisition lots recorded for {@code itemId}. */
 	void clearAcquisitions(int itemId);
 
-	/** Notifies the plugin that {@code itemId}'s notification rules were edited and must be persisted. */
-	void notificationsEdited(int itemId);
+	/**
+	 * Applies {@code mutation} to {@code itemId}'s notification rules on the client thread, which owns
+	 * them, persists, then runs {@code onApplied} on the EDT. See {@link DetailViewHost#editNotifications}
+	 * for why the panel may not touch the list directly (#373).
+	 *
+	 * @param itemId the item whose rules to edit
+	 * @param mutation applied to the live list on the client thread
+	 * @param onApplied run on the EDT once the mutation has been applied
+	 */
+	void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied);
 
 	/** Stops tracking every item and clears all tracked state. */
 	void clearAll();

@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.OptionalDouble;
 
@@ -22,6 +23,9 @@ import lombok.Data;
 @Data
 public class NotificationRule
 {
+	/** How many (blank) rule rows every tracked item keeps, so the table always offers room to add one. */
+	static final int DEFAULT_ROWS = 5;
+
 	private NotificationMetric metric;
 	private TimeWindow timeWindow;
 	private NotificationOperation operation;
@@ -37,6 +41,18 @@ public class NotificationRule
 	 * persisted.
 	 */
 	private transient Boolean lastCondition;
+
+	/**
+	 * Pads {@code rules} with blank rules up to {@link #DEFAULT_ROWS}. Runs on the client thread, which
+	 * owns the list; the detail view used to seed these rows from the EDT while rendering (#373).
+	 *
+	 * @param rules an item's live rule list
+	 */
+	static void ensureDefaultRows(List<NotificationRule> rules)
+	{
+		while (rules.size() < DEFAULT_ROWS)
+			rules.add(new NotificationRule());
+	}
 
 	/**
 	 * Parses a numeric threshold, accepting commas and a k/m/b suffix

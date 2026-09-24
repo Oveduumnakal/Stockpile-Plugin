@@ -629,6 +629,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/** The per-tick source detectors, extracted behind {@link DetectorHost} (#334). */
 	private DeltaDetectors detectors;
 
+	/** Evaluates notification rules against an item, extracted so the rule engine is unit-testable (#373). */
+	private final NotificationEvaluator notificationEvaluator =
+			new NotificationEvaluator(() -> runePrice(NATURE_RUNE_ID), () -> runePrice(FIRE_RUNE_ID));
+
 	/**
 	 * Ticks after login during which {@code GrandExchangeOfferChanged} events are treated as the
 	 * login offer sync (pre-existing offers) rather than user actions. The client delivers the GE
@@ -941,9 +945,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 					}
 
 					@Override
-					public void notificationsEdited(int itemId)
+					public void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation,
+							Runnable onApplied)
 					{
-						onNotificationsEdited(itemId);
+						StockpilePlugin.this.editNotifications(itemId, mutation, onApplied);
 					}
 
 					@Override
@@ -1514,6 +1519,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 
 			tracked.setNotificationsInitialized(notificationsInitialized);
 			tracked.setCostBasisInitialized(costBasisInitialized);
+			seedDefaultNotifications(tracked);
 			trackedItems.put(itemId, tracked);
 
 			if (syncOnAdd && tracked.getMode() == TrackItemMode.TRACK)
@@ -1752,9 +1758,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			}
 
 			@Override
-			public void notificationsEdited(int id)
+			public void editNotifications(int id, Consumer<List<NotificationRule>> mutation, Runnable onApplied)
 			{
-				onNotificationsEdited(id);
+				StockpilePlugin.this.editNotifications(id, mutation, onApplied);
 			}
 
 			@Override
@@ -2566,6 +2572,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 				tracked.setCategory(entry.getCategory());
 			}
 
+			seedDefaultNotifications(tracked);
 			trackedItems.put(entry.getId(), tracked);
 			if (tracked.getMode() == TrackItemMode.TRACK)
 				syncQuantitiesForItem(tracked);
@@ -4967,22 +4974,38 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		});
 	}
 
-	/** Callback after the user edits an item's notification rules: just persists the change. */
-	private void onNotificationsEdited(int itemId)
+	/**
+	 * Applies a notification-rule edit on the client thread, which owns the list, then persists and
+	 * hands control back to the EDT. See {@link DetailViewHost#editNotifications} for why the view may
+	 * not touch the list directly (#373).
+	 */
+	void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)
 	{
 		clientThread.invokeLater(() ->
 		{
-			if (trackedItems.containsKey(itemId))
-				persistTrackedItems();
+			TrackedItem tracked = trackedItems.get(itemId);
+			if (tracked == null)
+				return;
+
+			mutation.accept(tracked.getNotifications());
+			tracked.setNotificationsInitialized(true);
+			persistTrackedItems();
+			SwingUtilities.invokeLater(onApplied);
 		});
 	}
 
 	/**
-	 * Maximum plausible Δ% for a notification: changes beyond this magnitude
-	 * indicate a sparse/stale window average (a near-zero denominator) rather than
-	 * a real move, and are ignored so a one-shot rule isn't fired on noise.
+	 * Gives a newly tracked item its blank rule rows, which the detail view used to seed from the EDT
+	 * while rendering (#373). Client thread only.
 	 */
-	private static final double MAX_DELTA_PCT = 1000.0;
+	private static void seedDefaultNotifications(TrackedItem tracked)
+	{
+		if (!tracked.getNotifications().isEmpty())
+			return;
+
+		NotificationRule.ensureDefaultRows(tracked.getNotifications());
+		tracked.setNotificationsInitialized(true);
+	}
 
 	private static final long GLOW_PERIOD_SLOW_MS = 2000;
 	private static final long GLOW_PERIOD_MEDIUM_MS = 1500;
@@ -5245,7 +5268,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			while (it.hasNext())
 			{
 				NotificationRule rule = it.next();
-				Boolean condition = evaluateRule(item, rule);
+				Boolean condition = notificationEvaluator.evaluate(item, rule);
 				if (condition == null)
 					continue;
 
@@ -5266,118 +5289,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 					changed = true;
 				}
 			}
+
+			NotificationRule.ensureDefaultRows(item.getNotifications());
 		}
 
 		if (changed)
 		{
 			persistTrackedItems();
 			refreshPanel();
-		}
-	}
-
-	/**
-	 * Evaluates a single rule against an item.
-	 *
-	 * @return {@code TRUE}/{@code FALSE} for the condition, or {@code null} when it
-	 *         can't be evaluated yet (incomplete rule or missing/unparseable data)
-	 */
-	private Boolean evaluateRule(TrackedItem item, NotificationRule rule)
-	{
-		NotificationMetric metric = rule.getMetric();
-		if (metric == null || rule.getOperation() == null)
-			return null;
-
-		if (metric.isCategorical())
-		{
-			String current = categoryValue(item, metric);
-			if (current == null || rule.getValue() == null)
-				return null;
-
-			return current.equalsIgnoreCase(rule.getValue().trim());
-		}
-
-		TimeWindow window = metric.locksTimeframeToMonth() ? TimeWindow.MONTH : rule.getTimeWindow();
-		OptionalDouble current = numericValue(item, metric, window);
-		if (!current.isPresent())
-			return null;
-
-		OptionalDouble target = metric.getKind() == NotificationMetric.Kind.PERCENT
-				? NotificationRule.parsePercent(rule.getValue())
-				: NotificationRule.parseNumeric(rule.getValue());
-		if (!target.isPresent())
-			return null;
-
-		return rule.getOperation().test(current.getAsDouble(), target.getAsDouble());
-	}
-
-	/**
-	 * Resolves the current numeric reading of a metric for an item over a window
-	 * (price, volume, profit, HA profit, Δ% vs. the window average, or quantity).
-	 *
-	 * @return the value, or empty when the underlying data is missing or unreliable
-	 */
-	private OptionalDouble numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)
-	{
-		if (metric == NotificationMetric.QUANTITY)
-			return OptionalDouble.of(item.getQuantity());
-
-		PriceStats s = item.getWindowStats().get(window);
-		long avg = s == null ? 0 : s.getAvg();
-		switch (metric)
-		{
-			case HIGH:
-				return s == null ? OptionalDouble.empty() : OptionalDouble.of(s.getHigh());
-			case LOW:
-				return s == null ? OptionalDouble.empty() : OptionalDouble.of(s.getLow());
-			case AVERAGE:
-				return s == null ? OptionalDouble.empty() : OptionalDouble.of(s.getAvg());
-			case VOLUME:
-				return s == null ? OptionalDouble.empty() : OptionalDouble.of(s.getVolume());
-			case ITM_PROFIT:
-				return avg <= 0 ? OptionalDouble.empty() : OptionalDouble.of(item.getProfitAt(avg));
-			case HA_PROFIT:
-				if (avg <= 0 || item.getHighAlch() <= 0)
-					return OptionalDouble.empty();
-
-				return OptionalDouble.of(MarketMath.highAlchProfit(item.getHighAlch(), avg,
-						runePrice(NATURE_RUNE_ID), runePrice(FIRE_RUNE_ID)));
-			case DELTA_PCT:
-			{
-				double pct = MarketMath.changePct(item.getAvgPrice(), avg);
-				if (Double.isNaN(pct))
-					return OptionalDouble.empty();
-
-				return Math.abs(pct) > MAX_DELTA_PCT ? OptionalDouble.empty() : OptionalDouble.of(pct);
-			}
-			default:
-				return OptionalDouble.empty();
-		}
-	}
-
-	/**
-	 * Resolves the current categorical rating of a metric for an item
-	 * (volatility, liquidity, or 30-day range position) via {@link MarketClassifier}.
-	 *
-	 * @return the rating label, or {@code null} when it can't be classified
-	 */
-	private String categoryValue(TrackedItem item, NotificationMetric metric)
-	{
-		switch (metric)
-		{
-			case VOLATILITY:
-				return MarketClassifier.volatility(item.getSeriesFor(TimeWindow.WEEK));
-			case LIQUIDITY:
-			{
-				PriceStats s = item.getWindowStats().get(TimeWindow.H24);
-				return MarketClassifier.liquidity(s == null ? 0 : s.getVolume());
-			}
-			case RANGE_30D:
-			{
-				long[] range = MarketClassifier.thirtyDayRange(item.getSeriesFor(TimeWindow.MONTH));
-				return MarketClassifier.rangePosition(range[0], range[1], item.getAvgPrice());
-			}
-			default:
-				return null;
 		}
 	}
 
