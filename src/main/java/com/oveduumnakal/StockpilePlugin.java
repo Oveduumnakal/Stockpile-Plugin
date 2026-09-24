@@ -48,9 +48,11 @@ import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -1164,7 +1166,20 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		}
 	}
 
-	/** Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state. */
+	/** How long {@link #shutDown()} waits for the client thread to run the state teardown before doing it itself. */
+	private static final long SHUTDOWN_TEARDOWN_WAIT_MS = 1_000;
+
+	/**
+	 * Tears down the nav button, overlays, panel, and refresh task, then clears all in-memory state.
+	 *
+	 * <p>RuneLite calls this on the EDT, but the tracked items, the ledger and the ground/window maps
+	 * are client-thread state, and tasks already queued with {@code clientThread.invokeLater} - an add,
+	 * a price apply, a quantity sync - can run at the same moment. Closing ground suspensions runs
+	 * {@code closeFifo} on live lot lists and the final persist serializes them, so doing that from here
+	 * raced them (#376). The Swing and overlay teardown stays on the EDT; the state teardown is handed to
+	 * the client thread, with a bounded wait and a direct fallback for when the client thread is no
+	 * longer running (client exit), so the final persist still happens.
+	 */
 	@Override
 	protected void shutDown() throws Exception
 	{
@@ -1177,10 +1192,38 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		screenOverlays.clear();
 		SwingUtilities.invokeLater(this::closeAllDetailWindows);
 		SwingUtilities.invokeLater(this::closeCompareWindow);
+		panel.shutdown();
+		if (priceRefreshTask != null)
+		{
+			priceRefreshTask.cancel(false);
+			priceRefreshTask = null;
+		}
+
+		AtomicBoolean tornDown = new AtomicBoolean();
+		CountDownLatch done = new CountDownLatch(1);
+		Runnable teardown = () ->
+		{
+			if (tornDown.compareAndSet(false, true))
+				tearDownState();
+
+			done.countDown();
+		};
+
+		clientThread.invokeLater(teardown);
+		if (!done.await(SHUTDOWN_TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS))
+			teardown.run();
+	}
+
+	/**
+	 * Clears and persists the client-thread state at shutdown: closes lingering ground suspensions,
+	 * writes the price cache, GE ledger and portfolio history, and empties every map. Runs once, on the
+	 * client thread unless that thread is gone; see {@link #shutDown()}.
+	 */
+	private void tearDownState()
+	{
 		windowItems.clear();
 		compareIds.clear();
 		compareItems.clear();
-		panel.shutdown();
 		closeAllGroundSuspensions();
 		groundItems.clear();
 		trackedGroundItems.clear();
@@ -1188,14 +1231,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		tickGroundSpawns.clear();
 		tickGroundDespawns.clear();
 		tickGroundQuantityChanges.clear();
-		clientThread.invokeLater(geIntegration::shutDown);
+		geIntegration.shutDown();
 		persistPriceCache();
-		if (priceRefreshTask != null)
-		{
-			priceRefreshTask.cancel(false);
-			priceRefreshTask = null;
-		}
-
 		ledger.persist();
 		persistPortfolioHistorySync();
 		trackedItems.clear();

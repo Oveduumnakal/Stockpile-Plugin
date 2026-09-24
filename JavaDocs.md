@@ -16730,6 +16730,7 @@ executor.
 | `private static final int[]` | `RUNE_POUCH_TYPE_VARBITS` |  |
 | `private static final ImmutableSet<Integer>` | `RUNE_POUCH_VARBITS` |  |
 | `private static final Set<String>` | `SECTION_SLOT_KEYS` |  |
+| `private static final long` | `SHUTDOWN_TEARDOWN_WAIT_MS` | How long `#shutDown()` waits for the client thread to run the state teardown before doing it itself. |
 | `private static final ImmutableSet<Integer>` | `TRACKED_CONTAINERS` |  |
 | `private static final int` | `TRADE_OTHER_CONTAINER` | The partner-side trade container: the offer container id with the "other player" bit set. |
 | `private static final Duration` | `WHATS_NEW_WINDOW` | How long after first launching a new release the "What's New" indicator stays highlighted. |
@@ -16994,7 +16995,7 @@ executor.
 | `private static void` | `setSeriesOf(TrackedItem item, SeriesTimestep step, List<WikiRealtimePriceClient.PricePoint> points)` | Stores `points` as the item's series for `step`. |
 | `private void` | `setSortMode(SortMode mode)` | Persists the chosen sort mode; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `showOrUpdateCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids, boolean focus)` | Opens the compare window (or updates the open one) with `entries`, disposing it when the set is empty. |
-| `protected void` | `shutDown() throws Exception` | Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state. |
+| `protected void` | `shutDown() throws Exception` | Tears down the nav button, overlays, panel, and refresh task, then clears all in-memory state. |
 | `public boolean` | `sourcePricing()` | Returns whether source-aware pricing is enabled in config. |
 | `protected void` | `startUp() throws Exception` | Builds the side panel (wiring its callbacks back to this plugin), registers the nav button and overlays, restores persisted items, and kicks off the metadata fetch and recurring price refresh. |
 | `private void` | `swapConflictingSection(ConfigChanged event)` | Keeps detail-section slots unique: when a section is moved to a slot already occupied by another, the other section is swapped into the vacated slot. |
@@ -17003,6 +17004,7 @@ executor.
 | `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: each item's quantity follows its containers, and - when `StockpileConfig#autoAddItems()` is on - positive deltas open new lots and negative deltas close lots FIFO. |
 | `private void` | `syncRunePouch()` | Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits. |
 | `private void` | `syncTrackedGroundItems()` | Re-derives `#trackedGroundItems` when the tracked set has changed, so an item already on the floor starts (or stops) being outlined the moment it is tracked or untracked. |
+| `private void` | `tearDownState()` | Clears and persists the client-thread state at shutdown: closes lingering ground suspensions, writes the price cache, GE ledger and portfolio history, and empties every map. |
 | `public int` | `thievingXpTick()` | {@inheritDoc} |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleSortReversed()` | Flips the persisted sort direction; the resulting `ConfigChanged` rebuilds the panel. |
@@ -17249,6 +17251,12 @@ so suppressing the delta here avoids the phantom login acquisition (#237).
 #### SECTION_SLOT_KEYS
 
 `private static final Set<String> SECTION_SLOT_KEYS`
+
+#### SHUTDOWN_TEARDOWN_WAIT_MS
+
+`private static final long SHUTDOWN_TEARDOWN_WAIT_MS`
+
+How long `#shutDown()` waits for the client thread to run the state teardown before doing it itself.
 
 #### TRACKED_CONTAINERS
 
@@ -19149,7 +19157,15 @@ empty. Runs on the EDT.
 
 `protected void shutDown() throws Exception`
 
-Tears down the nav button, overlays, panel, and refresh task and clears all in-memory state.
+Tears down the nav button, overlays, panel, and refresh task, then clears all in-memory state.
+
+<p>RuneLite calls this on the EDT, but the tracked items, the ledger and the ground/window maps
+are client-thread state, and tasks already queued with `clientThread.invokeLater` - an add,
+a price apply, a quantity sync - can run at the same moment. Closing ground suspensions runs
+`closeFifo` on live lot lists and the final persist serializes them, so doing that from here
+raced them (#376). The Swing and overlay teardown stays on the EDT; the state teardown is handed to
+the client thread, with a bounded wait and a direct fallback for when the client thread is no
+longer running (client exit), so the final persist still happens.
 
 #### sourcePricing
 
@@ -19228,6 +19244,14 @@ the floor starts (or stops) being outlined the moment it is tracked or untracked
 despawns maintain the map incrementally; only a tracked-set change needs the sweep, and the
 key-set hash makes detecting that cost one pass over the tracked items rather than the floor.
 Runs once per game tick on the client thread.
+
+#### tearDownState
+
+`private void tearDownState()`
+
+Clears and persists the client-thread state at shutdown: closes lingering ground suspensions,
+writes the price cache, GE ledger and portfolio history, and empties every map. Runs once, on the
+client thread unless that thread is gone; see `#shutDown()`.
 
 #### thievingXpTick
 
