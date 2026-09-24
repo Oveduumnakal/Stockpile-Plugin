@@ -2678,6 +2678,7 @@ smoke-test — unit-testable in isolation.
 |---|---|---|
 | `void` | `addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)` | Adds `qty` units to an item's held lots at `boughtAt` gp, merging into an existing open lot at the same price and source, or appending a new lot. |
 | `void` | `addPotionEmptied(int count)` | Records `count` empty vessels freed by finishing a potion/drink this tick (#218). |
+| `static long` | `afterGeTax(long grossUnitPrice)` |  |
 | `void` | `applyBuyLimitFields(TrackedItem item)` | Sets the item's transient buy-limit fields from its window, clearing them when the window has expired. |
 | `void` | `applyDelta(TrackedItem tracked, int delta)` | Prices one item's net container delta. |
 | `private SourceAttributionCore.Attribution` | `attributeDelta(int itemId, int quantity)` | Attributes a quantity change against the open detector claims, honouring the Source-Based Pricing kill switch: when disabled, everything is `AcquisitionSource#UNKNOWN` and priced by the classic fallbacks. |
@@ -2734,7 +2735,7 @@ smoke-test — unit-testable in isolation.
 | `void` | `queueTradeUnsuspend(int itemId, int qty)` | Queues `qty` units of `itemId` for trade un-suspension (withdrawn from a trade). |
 | `private void` | `realize(SuspensionSource source, int itemId, int qty, long unitPrice)` | Closes `qty` suspended units of a settled sale at its realized `unitPrice`, booking the source's `SuspensionSource#realizeSource()`. |
 | `private int` | `realizeOpenLots(List<AcquisitionRecord> records, int remaining, long soldAtPrice, AcquisitionSource sellSource, AcquisitionSource onlySource)` | Realizes up to `remaining` units across the open lots oldest-first, closing (or splitting) each at `soldAtPrice` with `sellSource` and merging into a matching closed lot where possible. |
-| `private void` | `realizeSell(int itemId, int qty, long unitPrice)` | Realizes a completed GE sell fill against its SELL suspension, then debounces a GE-state save. |
+| `private void` | `realizeSell(int itemId, int qty, long unitPrice)` | Realizes a completed GE sell fill against its SELL suspension, then persists the GE state. |
 | `void` | `realizeTradeSale(int itemId, int qty, long unitPrice)` | Realizes a completed player trade against its `SuspensionSource#TRADE` suspension — the same shortfall-parking race fix the GE sell path carries (#175), so a same-tick offer+accept that outruns the offer's inventory decrease no longer drops the sale. |
 | `private void` | `reconcileBuyLedgerFromOffers(GrandExchangeOffer[] offers)` | Reconciles the durable GE buy ledger against the live buy offers at login (#259): sums the filled-but-still-in-GE quantity of every open BUY offer per item and prunes durable claims beyond it, dropping orphaned buys that were collected long ago and would otherwise misprice later FIFO collections. |
 | `void` | `reconcileSuspendedFromOffers()` | Rewrites `suspendedQuantity` from the live open sell offers plus the pending cancelled-sell returns (units cancelled but not yet collected, which are still the player's), so offline fills or cancels self-heal at login; released units are then re-priced by the caller's reconcile. |
@@ -2944,6 +2945,19 @@ arrives here as a separate close and re-open.
 `void addPotionEmptied(int count)`
 
 Records `count` empty vessels freed by finishing a potion/drink this tick (#218).
+
+#### afterGeTax
+
+`static long afterGeTax(long grossUnitPrice)`
+
+- **Returns:** what the seller actually receives per unit of a GE sale at `grossUnitPrice`.
+
+<p>`GrandExchangeOffer.getSpent()` reports a sell's gross, pre-tax total, not the coins that
+reach the collection box, so realizing a fill at `spent / quantity` overstated every GE
+sale by up to 2% (#380). The tax rules - 2% per item rounded down, waived under 50 gp, capped at
+5M - live in `MarketMath#geTax`. The fill's unit price is an average across the fill, so an
+uneven fill is taxed at its average price, which can differ from the game's per-item rounding by
+a gp or so per unit.
 
 #### applyBuyLimitFields
 
@@ -3416,7 +3430,7 @@ a matched pass followed by an unrestricted one.
 
 `private void realizeSell(int itemId, int qty, long unitPrice)`
 
-Realizes a completed GE sell fill against its SELL suspension, then debounces a GE-state save.
+Realizes a completed GE sell fill against its SELL suspension, then persists the GE state.
 
 #### realizeTradeSale
 

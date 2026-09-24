@@ -369,8 +369,18 @@ public class CostBasisLedgerTest
 		AcquisitionRecord sold = firstClosed(t);
 		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals("the sold lot closes at the realized price", 1, closedCount(t));
-		assertEquals(150, (long) sold.getSoldAt());
+		assertEquals("150 gp gross less the 2% GE tax (#380)", 147, (long) sold.getSoldAt());
 		assertEquals("basis is preserved", 100, sold.getBoughtAt());
+	}
+
+	@Test
+	public void geSellPricesFollowTheTaxRules()
+	{
+		assertEquals("under 50 gp the tax is waived", 49, CostBasisLedger.afterGeTax(49));
+		assertEquals("2% rounded down", 50 - 1, CostBasisLedger.afterGeTax(50));
+		assertEquals(1_000_000 - 20_000, CostBasisLedger.afterGeTax(1_000_000));
+		assertEquals("capped at 5M per item", 1_000_000_000L - 5_000_000L,
+				CostBasisLedger.afterGeTax(1_000_000_000L));
 	}
 
 	@Test
@@ -389,7 +399,7 @@ public class CostBasisLedgerTest
 		AcquisitionRecord sold = firstClosed(t);
 		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
 		assertEquals("the parked fill closes once the units suspend", 1, closedCount(t));
-		assertEquals(150, (long) sold.getSoldAt());
+		assertEquals(147, (long) sold.getSoldAt());
 	}
 
 	@Test
