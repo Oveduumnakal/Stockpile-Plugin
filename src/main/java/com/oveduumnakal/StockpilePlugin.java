@@ -377,10 +377,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/** The partner-side trade container: the offer container id with the "other player" bit set. */
 	private static final int TRADE_OTHER_CONTAINER = InventoryID.TRADEOFFER | 0x8000;
 
-	/** Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). */
-	private final Map<Integer, Integer> myTradeOffer = new HashMap<>();
-	private final Map<Integer, Integer> theirTradeOffer = new HashMap<>();
-
 	/** Skills whose XP drops identify a processing action for the basis-transfer pairing (#69). */
 	private static final Set<Skill> PROCESSING_SKILLS = ImmutableSet.of(
 			Skill.COOKING, Skill.SMITHING, Skill.CRAFTING, Skill.FLETCHING, Skill.HERBLORE, Skill.MAGIC,
@@ -487,14 +483,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 
 	/** {@code trackedItems.keySet().hashCode()} when {@link #trackedGroundItems} was last rebuilt. */
 	private int trackedGroundRevision;
-
-	/** This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65). */
-	private final List<ItemSpawned> tickGroundSpawns = new ArrayList<>();
-	private final List<ItemDespawned> tickGroundDespawns = new ArrayList<>();
-	private final List<ItemQuantityChanged> tickGroundQuantityChanges = new ArrayList<>();
-
-	/** Ground items this player dropped: the {@code TileItem} → how many of its units are ours. */
-	private final Map<TileItem, Integer> myDrops = new HashMap<>();
 
 	/**
 	 * True while the configured Context Menu Key is held, gating the right-click Stockpile section (#285). Driven by
@@ -635,6 +623,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 
 	/** The per-tick source detectors, extracted behind {@link DetectorHost} (#334). */
 	private DeltaDetectors detectors;
+
+	/** The ground drop/pickup detector (#65), extracted behind {@link DetectorHost} (#334). */
+	private GroundDetector groundDetector;
+
+	/** The player-trade detector (#66), extracted behind {@link DetectorHost} (#334). */
+	private TradeDetector tradeDetector;
 
 	/** Evaluates notification rules against an item, extracted so the rule engine is unit-testable (#373). */
 	private final NotificationEvaluator notificationEvaluator =
@@ -831,6 +825,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		persistence = new StockpilePersistence(profileStore, gson);
 		ledger = new CostBasisLedger(this, persistence);
 		detectors = new DeltaDetectors(this, ledger);
+		groundDetector = new GroundDetector(this, ledger);
+		tradeDetector = new TradeDetector(this, ledger);
 		geIntegration = new GeIntegration(client, itemManager, config, geHost());
 		changelog = Changelog.load();
 		detectVersionChange();
@@ -1230,9 +1226,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		groundItems.clear();
 		trackedGroundItems.clear();
 		seriesFetchedAt.clear();
-		tickGroundSpawns.clear();
-		tickGroundDespawns.clear();
-		tickGroundQuantityChanges.clear();
+		groundDetector.clearTick();
 		geIntegration.shutDown();
 		persistPriceCache();
 		ledger.persist();
@@ -3877,7 +3871,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		if (containerId == InventoryID.TRADEOFFER || containerId == TRADE_OTHER_CONTAINER)
 		{
 			boolean mine = containerId == InventoryID.TRADEOFFER;
-			captureTradeOffer(mine ? myTradeOffer : theirTradeOffer, event.getItemContainer(), mine);
+			tradeDetector.onOfferChanged(event.getItemContainer(), mine);
 			return;
 		}
 
@@ -3910,7 +3904,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			pendingQuantitySync = true;
 
 			if (shopOpen && containerId == InventoryID.INV)
-				registerShopClaims(oldCounts, newCounts);
+				detectors.registerShopClaims(oldCounts, newCounts);
 		}
 
 		containerCounts.put(containerId, newCounts);
@@ -3944,7 +3938,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	public void onClientTick(ClientTick event)
 	{
 		ledger.expireClaims(client.getTickCount());
-		correlateGroundActivity();
+		if (groundDetector.correlate(pendingItemDeltas))
+		{
+			persistTrackedItems();
+			refreshPanel();
+		}
+
 		if (runePouchDirty)
 		{
 			runePouchDirty = false;
@@ -4115,7 +4114,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		if (isTracked(itemManager.canonicalize(event.getItem().getId())))
 		{
 			trackedGroundItems.put(event.getItem(), event.getTile());
-			tickGroundSpawns.add(event);
+			groundDetector.onSpawn(event);
 		}
 	}
 
@@ -4125,125 +4124,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	{
 		groundItems.remove(event.getItem());
 		trackedGroundItems.remove(event.getItem());
-		if (myDrops.containsKey(event.getItem()) || isTracked(itemManager.canonicalize(event.getItem().getId())))
-			tickGroundDespawns.add(event);
+		groundDetector.onDespawn(event);
 	}
 
 	/** Buffers ground-stack quantity changes so drops onto an existing stack correlate like spawns (#65). */
 	@Subscribe
 	public void onItemQuantityChanged(ItemQuantityChanged event)
 	{
-		if (myDrops.containsKey(event.getItem()) || isTracked(itemManager.canonicalize(event.getItem().getId())))
-			tickGroundQuantityChanges.add(event);
-	}
-
-	/**
-	 * Correlates this tick's ground-item activity with the pending inventory deltas (#65):
-	 * a spawn (or stack increase) on the player's tile matching a pending removal is our
-	 * drop — its units queue for ground suspension and the {@code TileItem} is remembered;
-	 * a despawn of a remembered drop with no matching pickup closes its units as lost at 0;
-	 * a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a
-	 * {@link AcquisitionSource#GROUND} acquisition at 0. Runs before the quantity sync
-	 * consumes the deltas.
-	 */
-	private void correlateGroundActivity()
-	{
-		if (tickGroundSpawns.isEmpty() && tickGroundDespawns.isEmpty() && tickGroundQuantityChanges.isEmpty())
-			return;
-
-		WorldPoint myLocation = client.getLocalPlayer() == null
-				? null
-				: client.getLocalPlayer().getWorldLocation();
-
-		for (ItemSpawned spawn : tickGroundSpawns)
-			correlateGroundGain(spawn.getItem(), spawn.getTile(), spawn.getItem().getQuantity(), myLocation);
-
-		boolean groundLossClosed = false;
-		for (ItemQuantityChanged change : tickGroundQuantityChanges)
-		{
-			int delta = change.getNewQuantity() - change.getOldQuantity();
-			if (delta > 0)
-				correlateGroundGain(change.getItem(), change.getTile(), delta, myLocation);
-			else
-				groundLossClosed |= correlateGroundTaken(change.getItem(), -delta);
-		}
-
-		for (ItemDespawned despawn : tickGroundDespawns)
-			groundLossClosed |= correlateGroundTaken(despawn.getItem(), despawn.getItem().getQuantity());
-
-		tickGroundSpawns.clear();
-		tickGroundDespawns.clear();
-		tickGroundQuantityChanges.clear();
-
-		if (groundLossClosed)
-		{
-			persistTrackedItems();
-			refreshPanel();
-		}
-	}
-
-	/**
-	 * Handles a ground pile gaining units: on our tile against a pending removal, it's our
-	 * drop. Gated by the Source-Based Pricing toggle — when off, no new ground suspensions
-	 * are taken, so a drop closes classically at the average price; drops suspended while
-	 * the toggle was on still resolve through the un-suspend/lost paths.
-	 */
-	private void correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)
-	{
-		if (!config.sourcePricing())
-			return;
-
-		if (myLocation == null || !myLocation.equals(tile.getWorldLocation()))
-			return;
-
-		int canonicalId = itemManager.canonicalize(item.getId());
-		if (!isTracked(canonicalId))
-			return;
-
-		int queued = ledger.pendingGroundSuspend(canonicalId);
-		int pendingRemoval = -pendingItemDeltas.getOrDefault(canonicalId, 0) - queued;
-		if (pendingRemoval <= 0)
-			return;
-
-		int qty = Math.min(gained, pendingRemoval);
-		ledger.queueGroundSuspend(canonicalId, qty);
-		myDrops.merge(item, qty, Integer::sum);
-	}
-
-	/**
-	 * Handles a ground pile losing units: a remembered drop with a matching pending
-	 * addition is a re-pickup (the greedy un-suspend consumes it during the sync);
-	 * with no matching addition its units close as lost at 0. An unfamiliar pile
-	 * matching a pending addition is a loot pickup, claimed as {@code GROUND} at 0.
-	 */
-	private boolean correlateGroundTaken(TileItem item, int taken)
-	{
-		int canonicalId = itemManager.canonicalize(item.getId());
-		Integer ours = myDrops.get(item);
-		int pendingAddition = pendingItemDeltas.getOrDefault(canonicalId, 0);
-
-		if (ours != null)
-		{
-			int resolved = Math.min(ours, taken);
-			boolean lossClosed = false;
-			if (pendingAddition > 0)
-				ledger.queueGroundUnsuspend(canonicalId, Math.min(resolved, pendingAddition));
-			else
-				lossClosed = ledger.closeGroundLost(canonicalId, resolved);
-
-			if (resolved >= ours)
-				myDrops.remove(item);
-			else
-				myDrops.put(item, ours - resolved);
-
-			return lossClosed;
-		}
-
-		if (pendingAddition > 0 && isTracked(canonicalId))
-			ledger.claim(AcquisitionSource.GROUND, canonicalId, Math.min(taken, pendingAddition), 0,
-					client.getTickCount());
-
-		return false;
+		groundDetector.onQuantityChanged(event);
 	}
 
 	/** Marks the local player's death, opening the death-loss suspension window (#70). */
@@ -4303,53 +4191,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	}
 
 	/**
-	 * Snapshots one side of the trade window (canonical id → quantity) as its container
-	 * changes. For our own side, diffs the new offer against the previous snapshot and
-	 * queues the change so the matching inventory removal suspends (rather than closes) the
-	 * offered lots, and a later withdrawal un-suspends them (#66).
-	 */
-	private void captureTradeOffer(Map<Integer, Integer> side, ItemContainer container, boolean mine)
-	{
-		Map<Integer, Integer> previous = mine ? new HashMap<>(side) : null;
-		side.clear();
-		if (container != null)
-		{
-			for (Item item : container.getItems())
-			{
-				if (item.getId() > 0)
-					side.merge(itemManager.canonicalize(item.getId()), item.getQuantity(), Integer::sum);
-			}
-		}
-
-		if (mine)
-			queueTradeSuspension(previous, side);
-	}
-
-	/**
-	 * Turns the change in our own offer into pending suspend/un-suspend intents: items added to
-	 * the offer left our inventory and should suspend, items withdrawn returned and should
-	 * un-suspend. Only tracked, non-currency items queue — coins and platinum tokens are the
-	 * trade's numerator, not a lot, and untracked items never flow through {@link CostBasisLedger#applyDelta}
-	 * to consume the intent.
-	 */
-	private void queueTradeSuspension(Map<Integer, Integer> before, Map<Integer, Integer> after)
-	{
-		if (!config.sourcePricing())
-			return;
-
-		ItemDeltas.forEachDelta(before, after, (id, delta) ->
-		{
-			if (isTradeCurrency(id) || !isTracked(id))
-				return;
-
-			if (delta > 0)
-				ledger.queueTradeSuspend(id, delta);
-			else
-				ledger.queueTradeUnsuspend(id, -delta);
-		});
-	}
-
-	/**
 	 * Registers the completed trade's claims when the game confirms the exchange (#66), and picks up
 	 * the pouch-deposit and reward-loot signals.
 	 *
@@ -4363,7 +4204,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	public void onChatMessage(ChatMessage event)
 	{
 		if (event.getType() == ChatMessageType.TRADE && "Accepted trade.".equals(event.getMessage()))
-			registerTradeClaims();
+			tradeDetector.onTradeAccepted();
 
 		if (!isGameMessage(event.getType()))
 			return;
@@ -4407,154 +4248,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		return POUCH_TARGETS.stream().anyMatch(lower::contains);
 	}
 
-	/**
-	 * Books a completed trade's item movements as {@link AcquisitionSource#PLAYER_TRADE} (#66):
-	 * items received buy in at the gp we gave apportioned across them by market value, and
-	 * items given close at the gp we received apportioned the same way. Pure item-for-item
-	 * legs price at 0; coins and platinum tokens (valued at 1,000 gp each) are the
-	 * numerator, never an apportionment target.
-	 *
-	 * <p>The two sides settle differently. Received items only enter our inventory now, so they
-	 * are registered as claims for the imminent additions to match. Given items already left our
-	 * inventory when they were offered (suspended, not closed), so there is no delta to match —
-	 * they are closed here directly against their trade suspension.
-	 */
-	private void registerTradeClaims()
-	{
-		long gpPaid = tradeGp(myTradeOffer);
-		long gpReceived = tradeGp(theirTradeOffer);
-
-		claimReceivedItems(theirTradeOffer, gpPaid);
-		closeGivenItems(myTradeOffer, gpReceived);
-
-		myTradeOffer.clear();
-		theirTradeOffer.clear();
-	}
-
-	/** Gp value of one platinum token, the coin-equivalent currency for trades above max cash. */
-	private static final long PLATINUM_TOKEN_GP = 1_000L;
-
-	/**
-	 * @return whether the item is trade currency — coins or platinum tokens — which
-	 *         forms the trade's gp numerator rather than a lot-bearing item leg
-	 */
-	private static boolean isTradeCurrency(int itemId)
-	{
-		return itemId == ItemID.COINS || itemId == ItemID.PLATINUM;
-	}
-
-	/** @return one trade side's money in gp: coins plus platinum tokens at 1,000 gp each. */
-	private static long tradeGp(Map<Integer, Integer> side)
-	{
-		return side.getOrDefault(ItemID.COINS, 0)
-				+ PLATINUM_TOKEN_GP * side.getOrDefault(ItemID.PLATINUM, 0);
-	}
-
-	/** Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. */
-	private List<TradeApportioner.Leg> tradeLegs(Map<Integer, Integer> side)
-	{
-		List<TradeApportioner.Leg> legs = new ArrayList<>();
-		for (Map.Entry<Integer, Integer> entry : side.entrySet())
-		{
-			if (!isTradeCurrency(entry.getKey()) && entry.getValue() > 0)
-				legs.add(new TradeApportioner.Leg(entry.getKey(), entry.getValue(),
-						marketUnitValue(entry.getKey())));
-		}
-
-		return legs;
-	}
-
-	/** Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. */
-	private void claimReceivedItems(Map<Integer, Integer> side, long gp)
-	{
-		List<TradeApportioner.Leg> legs = tradeLegs(side);
-		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
-		for (TradeApportioner.Leg leg : legs)
-		{
-			if (isTracked(leg.itemId))
-				ledger.claim(AcquisitionSource.PLAYER_TRADE, leg.itemId, leg.quantity,
-						prices.get(leg.itemId), client.getTickCount());
-		}
-	}
-
-	/**
-	 * Closes given items as sells at the apportioned per-unit price, realizing them against the trade
-	 * suspension taken when they were offered. Any leg whose suspension has not landed yet — a same-tick
-	 * offer+accept where "Accepted trade." outran the offer's inventory decrease — is parked and retried
-	 * after the container sync, exactly as the GE sell path does, so the sale is never dropped (#175).
-	 */
-	private void closeGivenItems(Map<Integer, Integer> side, long gp)
-	{
-		List<TradeApportioner.Leg> legs = tradeLegs(side);
-		Map<Integer, Long> prices = TradeApportioner.apportion(legs, gp);
-		for (TradeApportioner.Leg leg : legs)
-		{
-			if (isTracked(leg.itemId))
-				ledger.realizeTradeSale(leg.itemId, leg.quantity, prices.get(leg.itemId));
-		}
-	}
-
-	/** @return an item's unit market value for apportionment weights: the tracked avg, or the wiki price. */
-	private long marketUnitValue(int itemId)
-	{
-		TrackedItem tracked = trackedItems.get(itemId);
-		if (tracked != null && tracked.getAvgPrice() > 0)
-			return tracked.getAvgPrice();
-
-		return itemManager.getItemPrice(itemId);
-	}
-
-	/**
-	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked
-	 * non-coin item moved: the coins paid or received, divided across the quantity,
-	 * price the item's {@link AcquisitionSource#SHOP} claim. A buy must pay coins; a
-	 * sell must not spend them, and a worthless sell the shop pays nothing for is still
-	 * a shop sale at 0. Anything murkier — multi-item changes, specialty-currency shops
-	 * (tokkul, marks) that move a second item rather than coins — stays unclaimed and
-	 * takes the unknown-source path.
-	 */
-	private void registerShopClaims(Map<Integer, Integer> oldCounts, Map<Integer, Integer> newCounts)
-	{
-		long coinDelta = 0;
-		int changedItem = 0;
-		int itemDelta = 0;
-		int changedCount = 0;
-
-		for (int itemId : ItemDeltas.keyUnion(oldCounts, newCounts))
-		{
-			int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
-			if (delta == 0)
-				continue;
-
-			if (itemId == ItemID.COINS)
-			{
-				coinDelta = delta;
-			}
-			else
-			{
-				changedCount++;
-				changedItem = itemId;
-				itemDelta = delta;
-			}
-		}
-
-		if (changedCount != 1 || itemDelta == 0 || !isTracked(changedItem))
-			return;
-
-		boolean sell = itemDelta < 0;
-		if (sell ? coinDelta < 0 : coinDelta >= 0)
-			return;
-
-		long unitPrice = Math.abs(coinDelta) / Math.abs(itemDelta);
-		ledger.claim(AcquisitionSource.SHOP, changedItem, Math.abs(itemDelta), unitPrice,
-				client.getTickCount());
-	}
-
 	/** Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking. */
 	private void closeAllGroundSuspensions()
 	{
 		ledger.closeAllGroundSuspensions();
-		myDrops.clear();
+		groundDetector.forgetDrops();
 	}
 
 	/**
@@ -4577,10 +4275,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			case LOADING:
 				groundItems.clear();
 				trackedGroundItems.clear();
-				myDrops.clear();
-				tickGroundSpawns.clear();
-				tickGroundDespawns.clear();
-				tickGroundQuantityChanges.clear();
+				groundDetector.forgetDrops();
+				groundDetector.clearTick();
 				break;
 			case LOGGED_IN:
 				if (!sessionInitialized)
@@ -4602,10 +4298,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 					ledger.load();
 					loadPortfolioHistory();
 					ledger.resetForLogin();
-					myDrops.clear();
+					groundDetector.forgetDrops();
 					shopOpen = false;
-					myTradeOffer.clear();
-					theirTradeOffer.clear();
+					tradeDetector.reset();
 					lastSkillXp.clear();
 					processingXpTick = -1;
 					magicXpTick = -1;
@@ -5214,6 +4909,27 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	public int currentTick()
 	{
 		return client.getTickCount();
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public int canonicalize(int itemId)
+	{
+		return itemManager.canonicalize(itemId);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public long guidePrice(int itemId)
+	{
+		return itemManager.getItemPrice(itemId);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public WorldPoint playerLocation()
+	{
+		return client.getLocalPlayer() == null ? null : client.getLocalPlayer().getWorldLocation();
 	}
 
 	/**

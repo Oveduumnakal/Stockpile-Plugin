@@ -17,6 +17,7 @@ import java.util.Set;
 import org.junit.Test;
 
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.coords.WorldPoint;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -339,6 +340,24 @@ public class DeltaDetectorsTest
 		public int rewardContainerTick()
 		{
 			return reward;
+		}
+
+		@Override
+		public int canonicalize(int itemId)
+		{
+			return itemId;
+		}
+
+		@Override
+		public long guidePrice(int itemId)
+		{
+			return untrackedValue;
+		}
+
+		@Override
+		public WorldPoint playerLocation()
+		{
+			return null;
 		}
 	}
 
@@ -716,5 +735,50 @@ public class DeltaDetectorsTest
 
 		assertTrue(ledger.claims.isEmpty());
 		assertTrue(ledger.processingOutputs.isEmpty());
+	}
+
+	/** A tracked item bought from a shop claims the coins paid per unit (#67). */
+	@Test
+	public void aShopBuyClaimsTheCoinsPaidPerUnit()
+	{
+		track(ORE, "Iron ore", 0, 0);
+
+		detectors.registerShopClaims(deltas(COINS, 1_000), deltas(COINS, 500, ORE, 5));
+
+		Claim claim = only();
+		assertEquals(AcquisitionSource.SHOP, claim.source);
+		assertEquals(ORE, claim.itemId);
+		assertEquals(5, claim.quantity);
+		assertEquals(100, claim.unitPrice);
+	}
+
+	/** A sale to a shop claims the coins received per unit, and a worthless sale still claims at 0. */
+	@Test
+	public void aShopSaleClaimsTheCoinsReceivedEvenWhenThereAreNone()
+	{
+		track(ORE, "Iron ore", 3, 0);
+
+		detectors.registerShopClaims(deltas(ORE, 3), deltas(ORE, 1, COINS, 31));
+		assertEquals("31 gp over 2 units, truncated", 15, only().unitPrice);
+
+		ledger.claims.clear();
+		detectors.registerShopClaims(deltas(ORE, 1), deltas());
+		assertEquals(0, only().unitPrice);
+	}
+
+	/** Murky or impossible shop moves stay unclaimed and take the unknown-source path. */
+	@Test
+	public void ambiguousShopChangesAreNotClaimed()
+	{
+		track(ORE, "Iron ore", 5, 0);
+		track(BAR, "Iron bar", 5, 0);
+
+		detectors.registerShopClaims(deltas(COINS, 100, ORE, 5, BAR, 5), deltas(COINS, 0, ORE, 6, BAR, 6));
+		detectors.registerShopClaims(deltas(ORE, 5), deltas(ORE, 6));
+		detectors.registerShopClaims(deltas(COINS, 100, ORE, 5), deltas(COINS, 50, ORE, 4));
+		detectors.registerShopClaims(deltas(COINS, 100, RAW_FISH, 0), deltas(COINS, 50, RAW_FISH, 1));
+		detectors.registerShopClaims(deltas(COINS, 100), deltas(COINS, 50));
+
+		assertTrue("two items, a free buy, a paid sale, an untracked item, coins alone", ledger.claims.isEmpty());
 	}
 }

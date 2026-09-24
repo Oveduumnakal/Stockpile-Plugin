@@ -4,6 +4,8 @@
  */
 package com.oveduumnakal;
 
+import net.runelite.api.coords.WorldPoint;
+
 /**
  * The client seam {@link DeltaDetectors} reads through, in the same shape as {@link LedgerHost}.
  *
@@ -58,4 +60,13 @@ interface DetectorHost
 
 	/** @return the tick a reward/loot container or chat line last signalled loot. */
 	int rewardContainerTick();
+
+	/** @return the canonical id {@code itemId} is counted under (noted forms map to the unnoted item). */
+	int canonicalize(int itemId);
+
+	/** @return {@code itemId}'s guide price, the trade-apportionment weight for an item with no tracked price. */
+	long guidePrice(int itemId);
+
+	/** @return the local player's tile, or {@code null} when there is no local player. */
+	WorldPoint playerLocation();
 }
