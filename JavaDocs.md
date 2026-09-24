@@ -19688,6 +19688,10 @@ Which overlay slot (0-based) this box renders — the item at that index in the 
 
 First line (name + qty) plus value lines for an item, used for both measuring and drawing.
 
+<p>The profit row reads the same realized-plus-unrealized figure as the panel's "Est. Profit" row
+(`TrackedItem.CostSnapshot.profitAtAvg`). It used to compute unrealized profit only, so
+any item with past sales showed two different "profit" numbers under the same setting (#379).
+
 #### drawLine
 
 `private int drawLine(Graphics2D graphics, FontMetrics fm, int x, int baseline, List<Seg> segments)`
