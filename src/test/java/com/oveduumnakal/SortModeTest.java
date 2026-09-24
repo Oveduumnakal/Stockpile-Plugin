@@ -11,6 +11,9 @@ import java.util.List;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Verifies the Profit sort orders items by the same estimated profit their rows display (#173),
@@ -156,5 +159,77 @@ public class SortModeTest
 		List<TrackedItem> items = new ArrayList<>(Arrays.asList(first, second));
 		SortMode.MANUAL.sort(items, false);
 		assertEquals("B", items.get(0).getName());
+	}
+
+	private static List<String> names(List<TrackedItem> items)
+	{
+		List<String> names = new ArrayList<>();
+		for (TrackedItem t : items)
+			names.add(t.getName());
+
+		return names;
+	}
+
+	/** An item whose live average is {@code avg} against a 24h average of {@code dayAvg} (0 = no stats). */
+	private TrackedItem changing(String name, long avg, long dayAvg)
+	{
+		TrackedItem t = item(name, 1, avg);
+		if (dayAvg > 0)
+			t.getWindowStats().put(TimeWindow.H24, new PriceStats(dayAvg, dayAvg, dayAvg, 1));
+
+		return t;
+	}
+
+	@Test
+	public void nameSortsCaseInsensitivelyAndAscendingByDefault()
+	{
+		List<TrackedItem> items = new ArrayList<>(Arrays.asList(item("banana", 1, 1), item("Apple", 1, 1),
+				item("cherry", 1, 1)));
+
+		SortMode.NAME.sort(items, false);
+		assertEquals(Arrays.asList("Apple", "banana", "cherry"), names(items));
+
+		SortMode.NAME.sort(items, true);
+		assertEquals(Arrays.asList("cherry", "banana", "Apple"), names(items));
+	}
+
+	@Test
+	public void valueSortsDescendingAndKeepsUnpricedItemsLast()
+	{
+		List<TrackedItem> items = new ArrayList<>(Arrays.asList(item("Unpriced", 5, 0), item("Small", 1, 500),
+				item("Big", 2, 1_000)));
+
+		SortMode.VALUE.sort(items, false);
+		assertEquals(Arrays.asList("Big", "Small", "Unpriced"), names(items));
+
+		SortMode.VALUE.sort(items, true);
+		assertEquals("unpriced stays last in either direction", Arrays.asList("Small", "Big", "Unpriced"),
+				names(items));
+	}
+
+	@Test
+	public void dayChangeSortsByPercentAndKeepsItemsWithoutABaselineLast()
+	{
+		List<TrackedItem> items = new ArrayList<>(Arrays.asList(changing("No baseline", 500, 0),
+				changing("Down", 90, 100), changing("Up big", 150, 100), changing("Up", 105, 100),
+				changing("No price", 0, 100)));
+
+		SortMode.CHANGE_24H.sort(items, false);
+		assertEquals(Arrays.asList("Up big", "Up", "Down", "No baseline", "No price"), names(items));
+
+		SortMode.CHANGE_24H.sort(items, true);
+		assertEquals(Arrays.asList("Down", "Up", "Up big", "No baseline", "No price"), names(items));
+	}
+
+	@Test
+	public void onlyNameDefaultsToAscending()
+	{
+		assertFalse(SortMode.NAME.descending(false));
+		assertTrue(SortMode.NAME.descending(true));
+		assertTrue(SortMode.VALUE.descending(false));
+		assertTrue(SortMode.PROFIT.descending(false));
+		assertFalse(SortMode.CHANGE_24H.descending(true));
+		assertNull(SortMode.MANUAL.comparator(new ArrayList<>(), false));
+		assertEquals("24h Change", SortMode.CHANGE_24H.toString());
 	}
 }
