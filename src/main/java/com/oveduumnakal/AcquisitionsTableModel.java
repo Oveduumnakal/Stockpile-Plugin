@@ -5,6 +5,7 @@
 package com.oveduumnakal;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import javax.swing.table.AbstractTableModel;
@@ -12,7 +13,8 @@ import javax.swing.table.AbstractTableModel;
 /**
  * Swing table model backing the editable acquisitions log: one row per
  * {@link AcquisitionRecord} with quantity, buy price, sell price, and derived
- * profit columns. Edits are written straight back to the item's records.
+ * profit columns. Edits are parsed here and committed through
+ * {@link AcquisitionEditor} on the client thread, which owns the list (#315).
  */
 class AcquisitionsTableModel extends AbstractTableModel
 {
@@ -26,7 +28,7 @@ class AcquisitionsTableModel extends AbstractTableModel
 	static final String SYMBOL_COL = "";
 
 	private final StockpileConfig config;
-	private final Consumer<Integer> onAcquisitionsEdited;
+	private final AcquisitionEditor editAcquisitions;
 	private final IntSupplier detailItemId;
 	private final boolean expanded;
 	private TrackedItem item;
@@ -34,11 +36,11 @@ class AcquisitionsTableModel extends AbstractTableModel
 	/** The column set last announced via {@code fireTableStructureChanged}, to skip redundant resets. */
 	private String[] lastFiredCols;
 
-	AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited,
+	AcquisitionsTableModel(StockpileConfig config, AcquisitionEditor editAcquisitions,
 			IntSupplier detailItemId, boolean expanded)
 	{
 		this.config = config;
-		this.onAcquisitionsEdited = onAcquisitionsEdited;
+		this.editAcquisitions = editAcquisitions;
 		this.detailItemId = detailItemId;
 		this.expanded = expanded;
 	}
@@ -172,49 +174,67 @@ class AcquisitionsTableModel extends AbstractTableModel
 		}
 	}
 
+	/**
+	 * Commits a cell edit.
+	 *
+	 * <p>The parse and validation happen here on the EDT, but the record is only written on the
+	 * client thread, which owns the list - the FIFO engine adds, removes and re-prices lots from
+	 * there while offers fill (#315). The row index is re-checked inside the mutation, since the
+	 * engine may have closed or removed a lot between the edit and its application.
+	 */
 	@Override
 	public void setValueAt(Object value, int r, int c)
 	{
-		if (item == null || r < 0 || r >= item.getAcquisitions().size())
+		if (item == null || r < 0 || r >= item.getAcquisitions().size() || c > 2)
 			return;
 
-		AcquisitionRecord rec = item.getAcquisitions().get(r);
 		String s = value == null ? "" : value.toString().trim();
+		final Integer quantity;
+		final Long price;
 		try
 		{
-			switch (c)
-			{
-				case 0:
-					rec.setQuantity(Math.max(0, Integer.parseInt(s)));
-					rec.setSource(AcquisitionSource.MANUAL);
-					break;
-				case 1:
-					rec.setBoughtAt(Math.max(0, Long.parseLong(s)));
-					rec.setSource(AcquisitionSource.MANUAL);
-					break;
-				case 2:
-					if (s.isEmpty())
-					{
-						rec.setSoldAt(null);
-						rec.setSellSource(null);
-					}
-					else
-					{
-						rec.setSoldAt(Math.max(0, Long.parseLong(s)));
-						rec.setSellSource(AcquisitionSource.MANUAL);
-					}
-
-					break;
-				default:
-					return;
-			}
-
-			fireTableRowsUpdated(r, r);
-			onAcquisitionsEdited.accept(detailItemId.getAsInt());
+			quantity = c == 0 ? Math.max(0, Integer.parseInt(s)) : null;
+			price = c == 1 || (c == 2 && !s.isEmpty()) ? Math.max(0L, Long.parseLong(s)) : null;
 		}
 		catch (NumberFormatException ex)
 		{
-			// Ignore unparseable input and keep the prior cell value.
+			return;
 		}
+
+		editAcquisitions.edit(detailItemId.getAsInt(), records ->
+		{
+			if (r >= records.size())
+				return;
+
+			AcquisitionRecord rec = records.get(r);
+			switch (c)
+			{
+				case 0:
+					rec.setQuantity(quantity);
+					rec.setSource(AcquisitionSource.MANUAL);
+					break;
+				case 1:
+					rec.setBoughtAt(price);
+					rec.setSource(AcquisitionSource.MANUAL);
+					break;
+				default:
+					rec.setSoldAt(price);
+					rec.setSellSource(price == null ? null : AcquisitionSource.MANUAL);
+					break;
+			}
+		}, () -> fireTableRowsUpdated(r, r));
+	}
+
+	/** The client-thread edit seam the model commits through; see {@link DetailViewHost#editAcquisitions}. */
+	interface AcquisitionEditor
+	{
+		/**
+		 * Applies {@code mutation} to the item's acquisition list on the client thread.
+		 *
+		 * @param itemId the item whose log to edit
+		 * @param mutation applied to the live list on the client thread
+		 * @param onApplied run on the EDT once the mutation has been applied
+		 */
+		void edit(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied);
 	}
 }

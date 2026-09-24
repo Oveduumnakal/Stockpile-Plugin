@@ -10,6 +10,7 @@
 - [com.oveduumnakal.AcquisitionRecord](#comoveduumnakalacquisitionrecord)
 - [com.oveduumnakal.AcquisitionSource](#comoveduumnakalacquisitionsource)
 - [com.oveduumnakal.AcquisitionsTableModel](#comoveduumnakalacquisitionstablemodel)
+- [com.oveduumnakal.AcquisitionsTableModel.AcquisitionEditor](#comoveduumnakalacquisitionstablemodelacquisitioneditor)
 - [com.oveduumnakal.BuySellBar](#comoveduumnakalbuysellbar)
 - [com.oveduumnakal.CategoryActions](#comoveduumnakalcategoryactions)
 - [com.oveduumnakal.CategoryState](#comoveduumnakalcategorystate)
@@ -118,6 +119,7 @@
 - [com.oveduumnakal.TimeWindow](#comoveduumnakaltimewindow)
 - [com.oveduumnakal.TrackItemMode](#comoveduumnakaltrackitemmode)
 - [com.oveduumnakal.TrackedItem](#comoveduumnakaltrackeditem)
+- [com.oveduumnakal.TrackedItem.CostSnapshot](#comoveduumnakaltrackeditemcostsnapshot)
 - [com.oveduumnakal.TrackedItem.SuspensionState](#comoveduumnakaltrackeditemsuspensionstate)
 - [com.oveduumnakal.TradeApportioner](#comoveduumnakaltradeapportioner)
 - [com.oveduumnakal.TradeApportioner.Leg](#comoveduumnakaltradeapportionerleg)
@@ -586,7 +588,14 @@ _class_
 
 Swing table model backing the editable acquisitions log: one row per
 `AcquisitionRecord` with quantity, buy price, sell price, and derived
-profit columns. Edits are written straight back to the item's records.
+profit columns. Edits are parsed here and committed through
+`AcquisitionEditor` on the client thread, which owns the list (#315).
+
+### Nested Type Summary
+
+| Type | Description |
+|---|---|
+| _interface_ [`AcquisitionEditor`](#comoveduumnakalacquisitionstablemodelacquisitioneditor) | The client-thread edit seam the model commits through; see `DetailViewHost#editAcquisitions`. |
 
 ### Field Summary
 
@@ -598,16 +607,16 @@ profit columns. Edits are written straight back to the item's records.
 | `static final String` | `SYMBOL_COL` | Read-only symbol column showing each lot's acquisition source; the compact view's trailing column. |
 | `private final StockpileConfig` | `config` |  |
 | `private final IntSupplier` | `detailItemId` |  |
+| `private final AcquisitionEditor` | `editAcquisitions` |  |
 | `private final boolean` | `expanded` |  |
 | `private TrackedItem` | `item` |  |
 | `private String[]` | `lastFiredCols` | The column set last announced via `fireTableStructureChanged`, to skip redundant resets. |
-| `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 
 ### Constructor Summary
 
 | Constructor | Description |
 |---|---|
-| `AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited, IntSupplier detailItemId, boolean expanded)` |  |
+| `AcquisitionsTableModel(StockpileConfig config, AcquisitionEditor editAcquisitions, IntSupplier detailItemId, boolean expanded)` |  |
 
 ### Method Summary
 
@@ -625,7 +634,7 @@ profit columns. Edits are written straight back to the item's records.
 | `boolean` | `isSymbolColumn(int c)` |  |
 | `long` | `rowProfit(AcquisitionRecord rec)` |  |
 | `void` | `setItem(TrackedItem item)` | Swaps the backing item, announcing a full structure reset only when the column set actually changed — a plain data change keeps the table's layout, column widths, and renderers, so refresh-in-place doesn't collapse the detail card. |
-| `public void` | `setValueAt(Object value, int r, int c)` |  |
+| `public void` | `setValueAt(Object value, int r, int c)` | Commits a cell edit. |
 | `String` | `sourceLabelAt(int row)` |  |
 
 ### Field Detail
@@ -658,6 +667,10 @@ Read-only symbol column showing each lot's acquisition source; the compact view'
 
 `private final IntSupplier detailItemId`
 
+#### editAcquisitions
+
+`private final AcquisitionEditor editAcquisitions`
+
 #### expanded
 
 `private final boolean expanded`
@@ -672,15 +685,11 @@ Read-only symbol column showing each lot's acquisition source; the compact view'
 
 The column set last announced via `fireTableStructureChanged`, to skip redundant resets.
 
-#### onAcquisitionsEdited
-
-`private final Consumer<Integer> onAcquisitionsEdited`
-
 ### Constructor Detail
 
 #### AcquisitionsTableModel
 
-`AcquisitionsTableModel(StockpileConfig config, Consumer<Integer> onAcquisitionsEdited, IntSupplier detailItemId, boolean expanded)`
+`AcquisitionsTableModel(StockpileConfig config, AcquisitionEditor editAcquisitions, IntSupplier detailItemId, boolean expanded)`
 
 ### Method Detail
 
@@ -754,11 +763,46 @@ widths, and renderers, so refresh-in-place doesn't collapse the detail card.
 
 `public void setValueAt(Object value, int r, int c)`
 
+Commits a cell edit.
+
+<p>The parse and validation happen here on the EDT, but the record is only written on the
+client thread, which owns the list - the FIFO engine adds, removes and re-prices lots from
+there while offers fill (#315). The row index is re-checked inside the mutation, since the
+engine may have closed or removed a lot between the edit and its application.
+
 #### sourceLabelAt
 
 `String sourceLabelAt(int row)`
 
 - **Returns:** the source label for the lot in `row`, for the compact table's tooltip.
+
+---
+
+## com.oveduumnakal.AcquisitionsTableModel.AcquisitionEditor
+
+_interface_
+
+`interface AcquisitionEditor`
+
+The client-thread edit seam the model commits through; see `DetailViewHost#editAcquisitions`.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `edit(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies `mutation` to the item's acquisition list on the client thread. |
+
+### Method Detail
+
+#### edit
+
+`void edit(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)`
+
+Applies `mutation` to the item's acquisition list on the client thread.
+
+- **Parameter** `itemId` — the item whose log to edit
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
 ---
 
@@ -5115,6 +5159,7 @@ the fields and callbacks it already holds.
 | `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set, opening or focusing the compare window (#280). |
 | `void` | `clearAcquisitions(int itemId)` | Clears the acquisitions log for `itemId`. |
 | `StockpileConfig` | `config()` |  |
+| `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies `mutation` to the item's acquisition list on the client thread, then signals the edit and runs `onApplied` back on the EDT. |
 | `String` | `examine(int itemId)` |  |
 | `long` | `fireRunePrice()` |  |
 | `ItemManager` | `itemManager()` |  |
@@ -5158,6 +5203,25 @@ Clears the acquisitions log for `itemId`.
 `StockpileConfig config()`
 
 - **Returns:** the live plugin config (colours, toggles, section visibility) the detail view reads.
+
+#### editAcquisitions
+
+`void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)`
+
+Applies `mutation` to the item's acquisition list on the client thread, then signals the
+edit and runs `onApplied` back on the EDT.
+
+<p>The list is client-thread state: the FIFO cost-basis engine adds, removes and re-prices lots
+from there while GE offers fill and containers change. The editor used to mutate the very same
+`ArrayList` from the EDT, so two threads did structural writes with no synchronisation -
+an interleaving can silently drop a record or overwrite a quantity, which corrupts cost basis
+and every profit figure derived from it, and it bites exactly when someone edits the log while
+offers are filling (#315). `buildShareToken` and `buildAcquisitionsCsv` already hop
+for this reason and say so; the editor never got the same treatment.
+
+- **Parameter** `itemId` — the item whose log to edit; a no-op when it is not tracked
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
 #### examine
 
@@ -8001,6 +8065,7 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `addVariantsToCompare(int itemId)` | Adds every variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set (up to the cap), opening or focusing the compare window. |
 | `void` | `clearAcquisitions(int itemId)` | Clears all acquisition lots recorded for `itemId`. |
 | `void` | `clearAll()` | Stops tracking every item and clears all tracked state. |
+| `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies `mutation` to `itemId`'s acquisition lots on the client thread, which owns them, then runs `onApplied` on the EDT. |
 | `String` | `examineLookup(int itemId)` |  |
 | `void` | `exportCsv(Consumer<String> callback)` | Builds the acquisitions CSV and hands it back through `callback`. |
 | `void` | `exportList(Consumer<String> callback)` | Builds the share token for the tracked list and hands it back through `callback`. |
@@ -8063,6 +8128,18 @@ Clears all acquisition lots recorded for `itemId`.
 `void clearAll()`
 
 Stops tracking every item and clears all tracked state.
+
+#### editAcquisitions
+
+`void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)`
+
+Applies `mutation` to `itemId`'s acquisition lots on the client thread, which owns
+them, then runs `onApplied` on the EDT. See `DetailViewHost#editAcquisitions` for
+why the panel may not touch the list directly (#315).
+
+- **Parameter** `itemId` — the item whose log to edit
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
 #### examineLookup
 
@@ -12607,6 +12684,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
 | `private final Runnable` | `onClearAll` |  |
 | `private final Consumer<Integer>` | `onCompareVariants` | Adds every variant of the item (dose line or cooking chain) to the compare set (#302). |
+| `private final AcquisitionsTableModel.AcquisitionEditor` | `onEditAcquisitions` | The client-thread acquisition-edit seam the detail view commits through (#315). |
 | `private final Consumer<Consumer<String>>` | `onExportCsv` | Builds the acquisitions CSV on the client thread and delivers it back on the EDT. |
 | `private final Consumer<Consumer<String>>` | `onExportList` | Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. |
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
@@ -12746,6 +12824,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `static Icon` | `dashboardIcon(Color color)` | Paints a small monochrome "dashboard" glyph in the given colour: a window outline with a title bar and three content columns, echoing the pop-out dashboard's panel layout (#109). |
 | `private static Icon` | `detailIcon(Color color)` | Draws a "view detail" glyph tinted `color`: a document with two text lines and a magnifying glass overlapping its lower-right corner, echoing the detail view's document-and-lens motif (#299). |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
+| `public void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | {@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
 | `private static String` | `escapeHtml(String text)` | Escapes the HTML-significant characters so text renders literally inside an HTML label. |
@@ -13355,6 +13434,12 @@ Adds the item to the compare set, opening or focusing the compare window (#280).
 `private final Consumer<Integer> onCompareVariants`
 
 Adds every variant of the item (dose line or cooking chain) to the compare set (#302).
+
+#### onEditAcquisitions
+
+`private final AcquisitionsTableModel.AcquisitionEditor onEditAcquisitions`
+
+The client-thread acquisition-edit seam the detail view commits through (#315).
 
 #### onExportCsv
 
@@ -14128,6 +14213,12 @@ glass overlapping its lower-right corner, echoing the detail view's document-and
 `private void dragAutoscrollTick()`
 
 One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target.
+
+#### editAcquisitions
+
+`public void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)`
+
+{@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present.
 
 #### encode
 
@@ -15625,6 +15716,7 @@ executor.
 | `private void` | `deleteCategory(String name)` | Deletes a category, moving its items to Uncategorized, then persists and refreshes. |
 | `private void` | `deleteSavedComparison(String name)` | Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. |
 | `private void` | `detectVersionChange()` | Detects a new plugin version by comparing the changelog's current version to the last-seen version in config. |
+| `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies an acquisition-log edit on the client thread, which owns the list, then persists, refreshes, and hands control back to the EDT. |
 | `private void` | `ensureCategory(String name, boolean collapsed)` | Adds a category by name if one with that name doesn't already exist (case-insensitive). |
 | `private void` | `evaluateNotifications()` | Evaluates every item's notification rules and fires the configured notifier for any that are met. |
 | `private Boolean` | `evaluateRule(TrackedItem item, NotificationRule rule)` | Evaluates a single rule against an item. |
@@ -15680,7 +15772,7 @@ executor.
 | `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
 | `private String` | `notificationText(TrackedItem item, NotificationRule rule)` | Builds the user-facing notification message, e.g. |
 | `private OptionalDouble` | `numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)` | Resolves the current numeric reading of a metric for an item over a window (price, volume, profit, HA profit, Δ% vs. |
-| `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
+| `void` | `onAcquisitionsEdited(int itemId)` |  |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
@@ -17072,6 +17164,14 @@ Detects a new plugin version by comparing the changelog's current version to the
 last-seen version in config. On a change, restamps the first-seen time and re-arms
 the "What's New" indicator so late updaters still get their week.
 
+#### editAcquisitions
+
+`void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)`
+
+Applies an acquisition-log edit on the client thread, which owns the list, then persists,
+refreshes, and hands control back to the EDT. See `DetailViewHost#editAcquisitions` for
+why the editor may not touch the list directly (#315).
+
 #### ensureCategory
 
 `private void ensureCategory(String name, boolean collapsed)`
@@ -17526,11 +17626,6 @@ Resolves the current numeric reading of a metric for an item over a window
 #### onAcquisitionsEdited
 
 `void onAcquisitionsEdited(int itemId)`
-
-Callback after the user edits an item's acquisitions: re-derives its held quantity
-from the lots and persists. Open lots also cover suspended units (in-flight GE
-sells, trades, drops, deaths), which `quantity` must exclude — otherwise an
-edit made mid-suspension would double-count the suspended units as held.
 
 #### onActorDeath
 
@@ -19224,6 +19319,7 @@ accessors derive figures from `quantity`, the current prices, and the
 
 | Type | Description |
 |---|---|
+| _class_ [`CostSnapshot`](#comoveduumnakaltrackeditemcostsnapshot) | Derived cost figures for one item, computed together on the client thread. |
 | _class_ [`SuspensionState`](#comoveduumnakaltrackeditemsuspensionstate) | Mutable per-source suspension counter and its (optional) recovery-expiry timestamp. |
 
 ### Field Summary
@@ -19237,6 +19333,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `private String` | `category` |  |
 | `private boolean` | `compact` |  |
 | `private boolean` | `costBasisInitialized` |  |
+| `private volatile CostSnapshot` | `costs` | Derived cost figures snapshotted on the client thread, for the panel to read on the EDT. |
 | `private boolean` | `favorite` |  |
 | `private long` | `geValue` |  |
 | `private boolean` | `hasDeltas` |  |
@@ -19296,6 +19393,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `public boolean` | `hasPrices()` |  |
 | `public int` | `iconStackSize()` |  |
 | `public int` | `reduceSuspended(SuspensionSource source, int qty)` | Restores up to `qty` units from `source`'s suspension, clearing the entry (and its timestamp) once it empties. |
+| `public void` | `refreshCosts()` | Recomputes `#costs` from the current lots at the current average price. |
 | `public void` | `restoreSuspended(SuspensionSource source, int qty, Instant at)` | Seeds `source`'s suspension to `qty` at timestamp `at` when restoring persisted (death/pouch) state on login, so the recovery-expiry clock resumes from where it was saved rather than restarting now. |
 | `public void` | `setSuspended(SuspensionSource source, int qty)` | Sets `source`'s suspended count outright, stamping per policy; drops the entry when 0. |
 | `private Map<SuspensionSource,SuspensionState>` | `suspensions()` |  |
@@ -19329,6 +19427,14 @@ accessors derive figures from `quantity`, the current prices, and the
 #### costBasisInitialized
 
 `private boolean costBasisInitialized`
+
+#### costs
+
+`private volatile CostSnapshot costs`
+
+Derived cost figures snapshotted on the client thread, for the panel to read on the EDT.
+Refreshed by `#refreshCosts()` on every panel refresh, which every mutation path already
+triggers.
 
 #### favorite
 
@@ -19618,6 +19724,13 @@ and 5m points for anything shorter.
 Restores up to `qty` units from `source`'s suspension, clearing the entry (and its
 timestamp) once it empties. Returns the number actually restored.
 
+#### refreshCosts
+
+`public void refreshCosts()`
+
+Recomputes `#costs` from the current lots at the current average price.
+Client thread only &mdash; it streams the live acquisitions list.
+
 #### restoreSuspended
 
 `public void restoreSuspended(SuspensionSource source, int qty, Instant at)`
@@ -19638,6 +19751,63 @@ Sets `source`'s suspended count outright, stamping per policy; drops the entry w
 
 - **Returns:** the suspension map, lazily created. Lazy because Gson deserializes a legacy record
         through `Unsafe` without running field initializers, leaving the field null.
+
+---
+
+## com.oveduumnakal.TrackedItem.CostSnapshot
+
+_class_
+
+`public static class CostSnapshot`
+
+Derived cost figures for one item, computed together on the client thread.
+
+<p>Each of these streams the acquisitions list, which the FIFO cost-basis engine mutates on
+the client thread. Reading them from the panel on the EDT could throw
+`ConcurrentModificationException` mid-rebuild, leaving the panel half-rendered, so the
+panel reads this snapshot instead (#315).
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `public static final CostSnapshot` | `EMPTY` | The zero snapshot an item starts with and an untracked preview keeps. |
+| `long` | `costBasis` | Total gp paid for the lots still held. |
+| `long` | `profitAtAvg` | Realized plus unrealized profit marked at the item's average price. |
+| `long` | `realizedProfit` | Profit already locked in from sold lots. |
+| `int` | `recordQuantitySum` | Total units across the lots still held. |
+
+### Field Detail
+
+#### EMPTY
+
+`public static final CostSnapshot EMPTY`
+
+The zero snapshot an item starts with and an untracked preview keeps.
+
+#### costBasis
+
+`long costBasis`
+
+Total gp paid for the lots still held.
+
+#### profitAtAvg
+
+`long profitAtAvg`
+
+Realized plus unrealized profit marked at the item's average price.
+
+#### realizedProfit
+
+`long realizedProfit`
+
+Profit already locked in from sold lots.
+
+#### recordQuantitySum
+
+`int recordQuantitySum`
+
+Total units across the lots still held.
 
 ---
 

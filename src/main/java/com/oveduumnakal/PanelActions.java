@@ -53,6 +53,17 @@ public interface PanelActions
 	/** Notifies the plugin that {@code itemId}'s acquisition lots were edited and must be persisted. */
 	void acquisitionsEdited(int itemId);
 
+	/**
+	 * Applies {@code mutation} to {@code itemId}'s acquisition lots on the client thread, which owns
+	 * them, then runs {@code onApplied} on the EDT. See {@link DetailViewHost#editAcquisitions} for
+	 * why the panel may not touch the list directly (#315).
+	 *
+	 * @param itemId the item whose log to edit
+	 * @param mutation applied to the live list on the client thread
+	 * @param onApplied run on the EDT once the mutation has been applied
+	 */
+	void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied);
+
 	/** Requests a fresh market/detail data load for {@code itemId}. */
 	void requestDetailData(int itemId);
 

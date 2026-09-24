@@ -136,7 +136,7 @@ public enum SortMode
 	 */
 	private static long profitKey(TrackedItem item)
 	{
-		return item.getProfitAt(item.getAvgPrice());
+		return item.getCosts().getProfitAtAvg();
 	}
 
 	/** @return whether the item has both a current price and a 24h baseline to compute a change from. */
