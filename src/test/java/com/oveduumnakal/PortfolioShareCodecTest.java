@@ -187,4 +187,60 @@ public class PortfolioShareCodecTest
 
 		assertEquals(PortfolioShareCodec.MAX_IMPORT_ITEMS, clean.size());
 	}
+
+	@Test
+	public void hostileOrDamagedCodesDecodeToNull()
+	{
+		String token = codec.encode(sample());
+		java.util.Base64.Encoder encoder = java.util.Base64.getUrlEncoder().withoutPadding();
+
+		assertNull("a future format version", codec.decode("STKPL2:" + token.substring(PortfolioShareCodec.PREFIX
+				.length())));
+		assertNull("a truncated paste", codec.decode(token.substring(0, token.length() / 2)));
+		assertNull("gzipped text that isn't JSON", codec.decode(PortfolioShareCodec.PREFIX
+				+ encoder.encodeToString(gzip("hello"))));
+		assertNull("items explicitly null", codec.decode("{\"v\":1,\"items\":null}"));
+		assertNull("items of the wrong type", codec.decode("{\"v\":1,\"items\":5}"));
+		assertNull("a JSON array", codec.decode("[]"));
+	}
+
+	@Test
+	public void aCodeWithNoItemsKeyDecodesToAnEmptyList()
+	{
+		PortfolioShareCodec.Snapshot snapshot = codec.decode("{\"v\":1}");
+
+		assertEquals(0, snapshot.getItems().size());
+		assertEquals(0, snapshot.getCategories().size());
+	}
+
+	@Test
+	public void importDropsIdsThatCanonicalizeToNothing()
+	{
+		List<PortfolioShareCodec.Entry> clean = PortfolioShareCodec.normalize(Arrays.asList(
+				new PortfolioShareCodec.Entry(7, TrackItemMode.VIEW, null, false),
+				new PortfolioShareCodec.Entry(8, null, "   ", true)), id -> id == 7 ? -1 : id);
+
+		assertEquals(1, clean.size());
+		assertEquals(8, clean.get(0).getId());
+		assertNull("a missing mode stays missing; the plugin defaults it to TRACK", clean.get(0).getMode());
+		assertTrue(clean.get(0).isFavorite());
+	}
+
+	private static byte[] gzip(String text)
+	{
+		try
+		{
+			java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+			try (java.util.zip.GZIPOutputStream out = new java.util.zip.GZIPOutputStream(bytes))
+			{
+				out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			}
+
+			return bytes.toByteArray();
+		}
+		catch (java.io.IOException e)
+		{
+			throw new IllegalStateException(e);
+		}
+	}
 }
