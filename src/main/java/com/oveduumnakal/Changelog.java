@@ -28,8 +28,14 @@ import lombok.Value;
  */
 public final class Changelog
 {
-	/** Resource path of the bundled changelog, relative to the classpath root. */
-	static final String RESOURCE = "/changelog.md";
+	/**
+	 * Resource path of the bundled changelog, relative to this class's package ({@code com/oveduumnakal}).
+	 *
+	 * <p>Deliberately package-relative, like {@code icon.png}: every plugin-hub plugin shares one
+	 * classloader, so a root-level {@code /changelog.md} is not namespaced to Stockpile and another
+	 * plugin's root changelog could resolve in its place, showing the wrong release notes (#351).
+	 */
+	static final String RESOURCE = "changelog.md";
 
 	/**
 	 * A release heading: {@code # 1.4 - July 25 2026}. The {@code (?!#)} keeps it to a single
