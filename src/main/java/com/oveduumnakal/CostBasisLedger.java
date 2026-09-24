@@ -356,10 +356,12 @@ class CostBasisLedger
 				remaining = 0;
 			}
 
-			if (remaining > 0)
+			while (remaining > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, remaining);
-				addOpenAcquisition(tracked, remaining, a.unitPriceOr(fallbackPrice(tracked)), a.source());
+				int chunk = coveredBy(a, remaining);
+				addOpenAcquisition(tracked, chunk, a.unitPriceOr(fallbackPrice(tracked)), a.source());
+				remaining -= chunk;
 			}
 		}
 		else
@@ -369,22 +371,45 @@ class CostBasisLedger
 			mag = consumeSellSuspend(tracked, mag);
 			mag = consumeGroundSuspend(tracked, mag);
 			mag = consumeDeathLoss(tracked, mag);
-			if (mag > 0)
+			while (mag > 0)
 			{
 				SourceAttributionCore.Attribution a = attributeDelta(itemId, mag);
-				boolean unclaimed = a.source() == AcquisitionSource.UNKNOWN && host.sourcePricing();
-				if (unclaimed && isPotionDiscardTick())
-					closeFifo(tracked, mag, 0, AcquisitionSource.GROUND);
-				else if (unclaimed && host.isConsumable(itemId))
-					closeFifo(tracked, mag, 0, AcquisitionSource.CONSUMED);
-				else if (unclaimed && host.isDestroyedAmmo(itemId))
-					closeFifo(tracked, mag, 0, AcquisitionSource.DESTROYED);
-				else if (unclaimed && host.isRecoverableAmmo(itemId))
-					suspendFiredAmmo(tracked, mag);
-				else
-					closeFifo(tracked, mag, a.unitPriceOr(tracked.getAvgPrice()), a.source());
+				int chunk = coveredBy(a, mag);
+				closeRemoval(tracked, chunk, a);
+				mag -= chunk;
 			}
 		}
+	}
+
+	/**
+	 * @return how many of {@code remaining} units an attribution prices: the units its claim covered,
+	 *         or all of them when nothing claimed the change and the fallback prices the rest (#372)
+	 */
+	private static int coveredBy(SourceAttributionCore.Attribution a, int remaining)
+	{
+		return a.source() == AcquisitionSource.UNKNOWN ? remaining : Math.min(a.quantity(), remaining);
+	}
+
+	/**
+	 * Closes {@code qty} removed units under their attribution: at the claim's price when a detector
+	 * claimed them, otherwise by the unclaimed-removal rules - a potion discard or a consumable closes
+	 * at 0, destroyed ammo closes at 0, recoverable ammo suspends on the ground path, and anything else
+	 * closes at the average price as an estimate.
+	 */
+	private void closeRemoval(TrackedItem tracked, int qty, SourceAttributionCore.Attribution a)
+	{
+		int itemId = tracked.getItemId();
+		boolean unclaimed = a.source() == AcquisitionSource.UNKNOWN && host.sourcePricing();
+		if (unclaimed && isPotionDiscardTick())
+			closeFifo(tracked, qty, 0, AcquisitionSource.GROUND);
+		else if (unclaimed && host.isConsumable(itemId))
+			closeFifo(tracked, qty, 0, AcquisitionSource.CONSUMED);
+		else if (unclaimed && host.isDestroyedAmmo(itemId))
+			closeFifo(tracked, qty, 0, AcquisitionSource.DESTROYED);
+		else if (unclaimed && host.isRecoverableAmmo(itemId))
+			suspendFiredAmmo(tracked, qty);
+		else
+			closeFifo(tracked, qty, a.unitPriceOr(tracked.getAvgPrice()), a.source());
 	}
 
 	/**

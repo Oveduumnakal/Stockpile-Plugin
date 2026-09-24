@@ -2626,6 +2626,7 @@ smoke-test — unit-testable in isolation.
 | `void` | `closeAllGroundSuspensions()` | Closes every remaining ground suspension as lost — floor items rarely survive a logout — and drops the pending ground routing maps. |
 | `void` | `closeFifo(TrackedItem tracked, int amount, long soldAtPrice, AcquisitionSource sellSource)` | Closes `amount` units of held inventory at `soldAtPrice`, oldest lot first (FIFO), recording `sellSource` as the sale's provenance — `AcquisitionSource#UNKNOWN` marks the price as an estimate rather than an observed sale. |
 | `boolean` | `closeGroundLost(int itemId, int qty)` | Closes a ground pile's units as lost at 0 (#234): the floor items were never recovered, so their suspended lots close under `AcquisitionSource#GROUND`. |
+| `private void` | `closeRemoval(TrackedItem tracked, int qty, SourceAttributionCore.Attribution a)` | Closes `qty` removed units under their attribution: at the claim's price when a detector claimed them, otherwise by the unclaimed-removal rules - a potion discard or a consumable closes at 0, destroyed ammo closes at 0, recoverable ammo suspends on the ground path, and anything else closes at the average price as an estimate. |
 | `void` | `closeVanishedGraveLosses()` | Once an expired gravestone has been gone for `#GRAVE_RECOVERY_GRACE_TICKS`, closes any death suspension it left standing as lost at 0 (#70). |
 | `private int` | `consumeBuyLedger(TrackedItem tracked, int qty)` | Consumes up to `qty` from the item's GE buy ledger into priced lots, returning the unconsumed remainder. |
 | `int` | `consumeCarriedOutput(TrackedItem tracked, int qty, Map<Integer,Long> carried, AcquisitionSource source)` | Opens `qty` newly-produced units carrying the basis queued in `carried` for this item, tagged with `source`. |
@@ -2644,6 +2645,7 @@ smoke-test — unit-testable in isolation.
 | `private int` | `consumeSellUnsuspend(TrackedItem tracked, int qty)` | Restores up to `qty` cancelled-sell units to held (un-suspends), returning the unconsumed remainder. |
 | `private int` | `consumeTradeSuspend(TrackedItem tracked, int qty)` | Moves up to `qty` of a removal into trade suspension — the units were placed into a player-trade offer, so they left the containers but stay owned with their lots intact until the trade finalizes or is withdrawn. |
 | `private int` | `consumeTradeUnsuspend(TrackedItem tracked, int qty)` | Restores an addition from trade suspension — an offered item withdrawn from the trade returns to the inventory, a net no-op that opens no new lot. |
+| `private static int` | `coveredBy(SourceAttributionCore.Attribution a, int remaining)` |  |
 | `void` | `expireClaims(int currentTick)` | Discards expired detector claims; call once per tick. |
 | `void` | `expireSuspensions()` | Closes every suspension that outlived its source's `SuspensionSource#expiry()` as an unrecovered loss at 0 gp, booked under that source's `SuspensionSource#closeSource()`. |
 | `long` | `fallbackPrice(TrackedItem tracked)` |  |
@@ -2962,6 +2964,15 @@ tick don't each re-serialize the whole item list.
 
 - **Returns:** whether any units were closed
 
+#### closeRemoval
+
+`private void closeRemoval(TrackedItem tracked, int qty, SourceAttributionCore.Attribution a)`
+
+Closes `qty` removed units under their attribution: at the claim's price when a detector
+claimed them, otherwise by the unclaimed-removal rules - a potion discard or a consumable closes
+at 0, destroyed ammo closes at 0, recoverable ammo suspends on the ground path, and anything else
+closes at the average price as an estimate.
+
 #### closeVanishedGraveLosses
 
 `void closeVanishedGraveLosses()`
@@ -3119,6 +3130,13 @@ the trade finalizes or is withdrawn. Returns the unconsumed remainder.
 Restores an addition from trade suspension — an offered item withdrawn from the trade
 returns to the inventory, a net no-op that opens no new lot. Bounded by both the queued
 withdrawal and the units actually suspended. Returns the unconsumed remainder.
+
+#### coveredBy
+
+`private static int coveredBy(SourceAttributionCore.Attribution a, int remaining)`
+
+- **Returns:** how many of `remaining` units an attribution prices: the units its claim covered,
+        or all of them when nothing claimed the change and the fallback prices the rest (#372)
 
 #### expireClaims
 
@@ -11674,7 +11692,7 @@ unit-testable in isolation.
 
 | Type | Description |
 |---|---|
-| _class_ [`Attribution`](#comoveduumnakalsourceattributioncoreattribution) | The outcome of attributing one delta: its source and, when known, a unit price. |
+| _class_ [`Attribution`](#comoveduumnakalsourceattributioncoreattribution) | The outcome of attributing one delta: its source, when known a unit price, and how many of the delta's units that claim actually covered. |
 | _class_ [`Claim`](#comoveduumnakalsourceattributioncoreclaim) | One registered expectation of a quantity change. |
 
 ### Field Summary
@@ -11730,7 +11748,13 @@ Attributes a detected quantity change of `quantity` units (magnitude,
 direction-agnostic) of `itemId`, consuming the oldest live matching
 claim — partially when the claim is larger than the delta.
 
-- **Returns:** the claim's attribution, or `Attribution#UNKNOWN` when nothing matches
+<p>The result carries only the units that claim covers. A claim smaller than the delta used to
+be returned for the whole delta, so a 5-unit shop claim priced a 10-unit gain entirely at the
+shop price (#372); the caller now attributes the uncovered remainder again, against the next
+claim or the fallback.
+
+- **Returns:** the claim's attribution with its covered quantity, or `Attribution#UNKNOWN` when
+        nothing matches
 
 #### attributeDurable
 
@@ -11817,13 +11841,15 @@ _class_
 
 `static final class Attribution`
 
-The outcome of attributing one delta: its source and, when known, a unit price.
+The outcome of attributing one delta: its source, when known a unit price, and how many of the
+delta's units that claim actually covered.
 
 ### Field Summary
 
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `static final Attribution` | `UNKNOWN` |  |
+| `private final int` | `quantity` |  |
 | `private final AcquisitionSource` | `source` |  |
 | `private final Long` | `unitPrice` |  |
 
@@ -11831,12 +11857,13 @@ The outcome of attributing one delta: its source and, when known, a unit price.
 
 | Constructor | Description |
 |---|---|
-| `Attribution(AcquisitionSource source, Long unitPrice)` |  |
+| `Attribution(AcquisitionSource source, Long unitPrice, int quantity)` |  |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `int` | `quantity()` |  |
 | `AcquisitionSource` | `source()` |  |
 | `long` | `unitPriceOr(long fallback)` |  |
 
@@ -11845,6 +11872,10 @@ The outcome of attributing one delta: its source and, when known, a unit price.
 #### UNKNOWN
 
 `static final Attribution UNKNOWN`
+
+#### quantity
+
+`private final int quantity`
 
 #### source
 
@@ -11858,9 +11889,16 @@ The outcome of attributing one delta: its source and, when known, a unit price.
 
 #### Attribution
 
-`Attribution(AcquisitionSource source, Long unitPrice)`
+`Attribution(AcquisitionSource source, Long unitPrice, int quantity)`
 
 ### Method Detail
+
+#### quantity
+
+`int quantity()`
+
+- **Returns:** how many of the attributed delta's units this claim covers - never more than were asked
+        for, and 0 for `#UNKNOWN`
 
 #### source
 

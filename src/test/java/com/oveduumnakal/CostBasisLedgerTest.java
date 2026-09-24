@@ -240,6 +240,37 @@ public class CostBasisLedgerTest
 	}
 
 	@Test
+	public void aPartialClaimPricesOnlyItsUnitsAndTheRestFallsBack()
+	{
+		TrackedItem t = item(0, 100);
+		ledger.claim(AcquisitionSource.SHOP, ITEM, 5, 200, host.tick);
+
+		ledger.applyDelta(t, 10);
+
+		assertEquals("the gain splits into two lots (#372)", 2, openCount(t));
+		for (AcquisitionRecord r : t.getAcquisitions())
+		{
+			assertEquals(5, r.getQuantity());
+			if (r.sourceOrUnknown() == AcquisitionSource.SHOP)
+				assertEquals("the claimed half at the shop price", 200, r.getBoughtAt());
+			else
+				assertEquals("the rest at the avg fallback", 100, r.getBoughtAt());
+		}
+	}
+
+	@Test
+	public void aPartialClaimOnARemovalClosesOnlyItsUnitsAtTheClaimPrice()
+	{
+		TrackedItem t = item(3, 100, new AcquisitionRecord(3, 50, null, AcquisitionSource.GE_TRADE));
+		ledger.claim(AcquisitionSource.ALCHEMY, ITEM, 1, 300, host.tick);
+
+		ledger.applyDelta(t, -3);
+
+		assertEquals(2, closedCount(t));
+		assertEquals("1 unit at the alch value plus 2 at the avg estimate", 250 + 2 * 50, t.getRealizedProfit());
+	}
+
+	@Test
 	public void reAcquireAtAPastBreakEvenPriceKeepsThatSaleInTheLog()
 	{
 		AcquisitionRecord pastSale = new AcquisitionRecord(3, 100, 100L);
