@@ -4932,12 +4932,24 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		});
 	}
 
-	/** Registers the completed trade's claims when the game confirms the exchange (#66). */
+	/**
+	 * Registers the completed trade's claims when the game confirms the exchange (#66), and picks up
+	 * the pouch-deposit and reward-loot signals.
+	 *
+	 * <p>All three lines are server-generated, so all three are filtered by message type. Without
+	 * that filter on the last two, any player in range could type {@code "You found some loot:"} in
+	 * public chat to set {@code rewardContainerTick}, and {@code correlateReward} would then claim
+	 * every tracked inventory gain on that tick as {@link AcquisitionSource#REWARD} at 0 gp - writing
+	 * zero-cost lots into someone else's cost basis (#317).
+	 */
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
 		if (event.getType() == ChatMessageType.TRADE && "Accepted trade.".equals(event.getMessage()))
 			registerTradeClaims();
+
+		if (!isGameMessage(event.getType()))
+			return;
 
 		if (isPouchDepositMessage(event.getMessage()))
 			ledger.signalPouchDeposit();
@@ -4947,12 +4959,22 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
+	 * @return whether {@code type} is one the server itself emits, as opposed to anything a player
+	 *         can type. {@link ChatMessageType#GAMEMESSAGE} and {@link ChatMessageType#SPAM} together
+	 *         cover every server line the detectors below look for.
+	 */
+	static boolean isGameMessage(ChatMessageType type)
+	{
+		return type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM;
+	}
+
+	/**
 	 * @return whether a chat line signals a hunting pouch emptying into the bank — either the
 	 *         per-pouch "Empty" deposit ("You deposit some &lt;fur/meat&gt; into your bank.") or
 	 *         the bank's "Empty containers" button. Only pouch emptying produces these lines; a
 	 *         normal manual bank deposit is silent, so there is no false positive (#214).
 	 */
-	private static boolean isPouchDepositMessage(String message)
+	static boolean isPouchDepositMessage(String message)
 	{
 		if (message == null)
 			return false;
