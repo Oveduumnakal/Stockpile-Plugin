@@ -877,9 +877,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					}
 
 					@Override
-					public String autoCategorize(boolean includeCategorized)
+					public void autoCategorize(boolean includeCategorized, Consumer<String> onResult)
 					{
-						return StockpilePlugin.this.autoCategorize(includeCategorized);
+						StockpilePlugin.this.autoCategorize(includeCategorized, onResult);
 					}
 				},
 				new PanelActions()
@@ -2749,24 +2749,32 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	/**
 	 * Auto-assigns tracked items to wiki-derived categories (see {@link ItemCategoryClassifier}),
 	 * creating any missing categories. Non-destructive unless {@code includeCategorized} is set:
-	 * by default only uncategorized items are touched, so manual assignments are preserved. The
-	 * mutation runs on the client thread; the returned message reports the outcome.
+	 * by default only uncategorized items are touched, so manual assignments are preserved.
 	 *
-	 * @return a user-facing summary of how many items were categorized
+	 * <p>The panel calls this from the EDT, but {@code trackedItems} is client-thread state - the
+	 * same rule {@code buildShareToken} and {@code buildAcquisitionsCsv} already hop for. Counting on
+	 * the EDT could throw {@code ConcurrentModificationException} and, because it ran before the
+	 * deferred mutation, could report a number the mutation never produced. Both now run in one
+	 * client-thread pass and the summary comes back on the EDT (#319).
+	 *
+	 * @param onResult receives a user-facing summary of how many items were categorized, on the EDT
 	 */
-	String autoCategorize(boolean includeCategorized)
+	void autoCategorize(boolean includeCategorized, Consumer<String> onResult)
 	{
-		long willChange = trackedItems.values().stream()
-				.filter(t -> inAutoCategorizeScope(t, includeCategorized))
-				.filter(t -> !ItemCategoryClassifier.classify(t.getName()).equals(t.getCategory()))
-				.count();
+		clientThread.invokeLater(() ->
+		{
+			long willChange = trackedItems.values().stream()
+					.filter(t -> inAutoCategorizeScope(t, includeCategorized))
+					.filter(t -> !ItemCategoryClassifier.classify(t.getName()).equals(t.getCategory()))
+					.count();
 
-		clientThread.invokeLater(() -> applyAutoCategorize(includeCategorized));
+			applyAutoCategorize(includeCategorized);
 
-		if (willChange == 0)
-			return "Nothing to categorize — everything already matches.";
-
-		return "Auto-categorized " + willChange + " item(s).";
+			String message = willChange == 0
+					? "Nothing to categorize — everything already matches."
+					: "Auto-categorized " + willChange + " item(s).";
+			SwingUtilities.invokeLater(() -> onResult.accept(message));
+		});
 	}
 
 	/** @return whether the item is in scope: always when re-categorizing, otherwise only when uncategorized. */
