@@ -4,6 +4,7 @@
  */
 package com.oveduumnakal;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,11 +18,14 @@ import java.util.Set;
 import org.junit.Test;
 
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit net for {@link CostBasisLedger} (#255): the FIFO lot engine, GE buy ledger, sell
@@ -211,6 +215,24 @@ public class CostBasisLedgerTest
 				return r;
 
 		return null;
+	}
+
+	/** A mocked live GE offer slot as the client reports it at login (#385). */
+	private static GrandExchangeOffer offer(GrandExchangeOfferState state, int total, int sold, int spent)
+	{
+		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
+		when(offer.getItemId()).thenReturn(ITEM);
+		when(offer.getState()).thenReturn(state);
+		when(offer.getTotalQuantity()).thenReturn(total);
+		when(offer.getQuantitySold()).thenReturn(sold);
+		when(offer.getSpent()).thenReturn(spent);
+		return offer;
+	}
+
+	/** The instant {@code minutes} ago, for seeding a suspension's age. */
+	private static Instant minutesAgo(long minutes)
+	{
+		return Instant.now().minus(Duration.ofMinutes(minutes));
 	}
 
 	private static AcquisitionRecord firstClosed(TrackedItem t)
@@ -614,5 +636,258 @@ public class CostBasisLedgerTest
 		eager.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
 		assertEquals(1, saved.saves);
 		assertEquals(5, saved.lastLimits.get(ITEM)[1]);
+	}
+
+	@Test
+	public void loginPrimeSeedsExistingFillsSoTheyAreNotReplayed()
+	{
+		TrackedItem t = item(0, 999);
+		host.offers = new GrandExchangeOffer[]{offer(GrandExchangeOfferState.BUYING, 10, 4, 400)};
+
+		ledger.primeGeStateFromLogin();
+		ledger.onGeOffer(0, ITEM, true, false, false, 10, 4, 400);
+		ledger.applyDelta(t, 4);
+
+		assertEquals("a fill from before login is not replayed as a fresh buy", 999, firstOpen(t).getBoughtAt());
+
+		ledger.onGeOffer(0, ITEM, true, false, false, 10, 6, 600);
+		ledger.applyDelta(t, 2);
+
+		assertTrue("the next real fill still prices at the buy price", t.getAcquisitions()
+				.stream()
+				.anyMatch(r -> r.getBoughtAt() == 100 && r.sourceOrUnknown() == AcquisitionSource.GE_TRADE));
+	}
+
+	@Test
+	public void loginPrimeDoesNotReplayAnOpenSellAsAFreshPlacement()
+	{
+		TrackedItem t = item(5, 100, new AcquisitionRecord(15, 100, null, AcquisitionSource.GATHER));
+		host.offers = new GrandExchangeOffer[]{offer(GrandExchangeOfferState.SELLING, 10, 0, 0)};
+
+		ledger.primeGeStateFromLogin();
+		ledger.onGeOffer(0, ITEM, false, false, false, 10, 0, 0);
+		ledger.applyDelta(t, -2);
+
+		assertEquals("the pre-login sell is not suspended a second time", 10, t.getSuspended(SuspensionSource.SELL));
+		assertEquals("an unrelated removal closes normally", 1, closedCount(t));
+	}
+
+	@Test
+	public void loginPrunesDurableBuysThatWereCollectedOffline()
+	{
+		CountingPersistence saved = new CountingPersistence();
+		CostBasisLedger eager = new CostBasisLedger(host, saved);
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+		host.offers = new GrandExchangeOffer[]{null, offer(GrandExchangeOfferState.EMPTY, 0, 0, 0)};
+
+		eager.primeGeStateFromLogin();
+
+		assertEquals("the pruned ledger is written", 2, saved.saves);
+		assertNull("no claim survives for a buy no longer in the GE", saved.lastLedger.get(ITEM));
+	}
+
+	@Test
+	public void loginKeepsDurableBuysStillSittingInTheGe()
+	{
+		CountingPersistence saved = new CountingPersistence();
+		CostBasisLedger eager = new CostBasisLedger(host, saved);
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		eager.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+		host.offers = new GrandExchangeOffer[]{offer(GrandExchangeOfferState.BOUGHT, 5, 5, 500)};
+
+		eager.primeGeStateFromLogin();
+
+		assertEquals("nothing pruned, nothing rewritten", 1, saved.saves);
+		TrackedItem t = item(0, 999);
+		eager.applyDelta(t, 5);
+		assertEquals("collecting after login still prices at the buy price", 100, firstOpen(t).getBoughtAt());
+	}
+
+	@Test
+	public void loginRebuildsSellSuspensionFromOpenSellOffers()
+	{
+		TrackedItem t = item(3, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+		host.offers = new GrandExchangeOffer[]{
+			offer(GrandExchangeOfferState.SELLING, 10, 3, 300),
+			offer(GrandExchangeOfferState.BUYING, 4, 0, 0)
+		};
+
+		ledger.primeGeStateFromLogin();
+
+		assertEquals("only the unsold part of the open sell stays suspended", 7, t.getSuspended(SuspensionSource.SELL));
+	}
+
+	@Test
+	public void cancelledSellAtLoginStaysSuspendedUntilCollected()
+	{
+		TrackedItem t = item(0, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+		host.offers = new GrandExchangeOffer[]{offer(GrandExchangeOfferState.CANCELLED_SELL, 10, 4, 400)};
+
+		ledger.primeGeStateFromLogin();
+
+		assertEquals("the uncollected return is still the player's", 6, t.getSuspended(SuspensionSource.SELL));
+
+		ledger.applyDelta(t, 6);
+
+		assertEquals(0, t.getSuspended(SuspensionSource.SELL));
+		assertEquals("collecting restores the original lot, no fresh acquisition", 1, t.getAcquisitions().size());
+	}
+
+	@Test
+	public void expiredGroundSuspensionClosesAsAZeroGpGroundLoss()
+	{
+		TrackedItem t = item(2, 100, new AcquisitionRecord(5, 100, null, AcquisitionSource.GATHER));
+		t.restoreSuspended(SuspensionSource.GROUND, 3, minutesAgo(11));
+
+		ledger.expireSuspensions();
+
+		AcquisitionRecord lost = firstClosed(t);
+		assertEquals(0, t.getSuspended(SuspensionSource.GROUND));
+		assertEquals(3, lost.getQuantity());
+		assertEquals(0L, (long) lost.getSoldAt());
+		assertEquals(AcquisitionSource.GROUND, lost.sellSourceOrUnknown());
+	}
+
+	@Test
+	public void suspensionsInsideTheirWindowDoNotExpire()
+	{
+		TrackedItem t = item(2, 100, new AcquisitionRecord(5, 100, null, AcquisitionSource.GATHER));
+		t.restoreSuspended(SuspensionSource.GROUND, 3, minutesAgo(9));
+		t.restoreSuspended(SuspensionSource.SELL, 1, minutesAgo(600));
+
+		ledger.expireSuspensions();
+
+		assertEquals(3, t.getSuspended(SuspensionSource.GROUND));
+		assertEquals("a GE sell never times out", 1, t.getSuspended(SuspensionSource.SELL));
+		assertEquals(0, closedCount(t));
+	}
+
+	@Test
+	public void deathSuspensionExpiresAfterItsRecoveryWindow()
+	{
+		TrackedItem t = item(0, 100, new AcquisitionRecord(2, 100, null, AcquisitionSource.GE_TRADE));
+		t.restoreSuspended(SuspensionSource.DEATH, 2, minutesAgo(66));
+
+		ledger.expireSuspensions();
+
+		assertEquals(0, t.getSuspended(SuspensionSource.DEATH));
+		assertEquals(AcquisitionSource.DEATH, firstClosed(t).sellSourceOrUnknown());
+		assertEquals(0L, (long) firstClosed(t).getSoldAt());
+	}
+
+	@Test
+	public void expiredGravestoneClosesDeathLossesOnlyAfterTheGrace()
+	{
+		TrackedItem t = item(4, 100, new AcquisitionRecord(4, 100, null, AcquisitionSource.GE_TRADE));
+		ledger.signalDeath();
+		ledger.applyDelta(t, -4);
+		ledger.onGravestoneVisibility(true, false);
+		host.tick = 200;
+		ledger.onGravestoneVisibility(false, true);
+
+		host.tick = 204;
+		ledger.closeVanishedGraveLosses();
+		assertEquals("still inside the grace for a last-tick collection", 4, t.getSuspended(SuspensionSource.DEATH));
+
+		host.tick = 205;
+		ledger.closeVanishedGraveLosses();
+		assertEquals(0, t.getSuspended(SuspensionSource.DEATH));
+		assertEquals(AcquisitionSource.DEATH, firstClosed(t).sellSourceOrUnknown());
+	}
+
+	@Test
+	public void collectedGravestoneArmsNoLoss()
+	{
+		TrackedItem t = item(4, 100, new AcquisitionRecord(4, 100, null, AcquisitionSource.GE_TRADE));
+		ledger.signalDeath();
+		ledger.applyDelta(t, -4);
+		ledger.onGravestoneVisibility(true, false);
+		ledger.onGravestoneVisibility(false, false);
+
+		host.tick += 50;
+		ledger.closeVanishedGraveLosses();
+
+		assertEquals("a grave that vanished with time left was collected", 4, t.getSuspended(SuspensionSource.DEATH));
+		assertEquals(0, closedCount(t));
+	}
+
+	@Test
+	public void aQueuedDropSuspendsOnlyItsUnitsAndKeepsTheRestQueued()
+	{
+		TrackedItem t = item(10, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+		ledger.queueGroundSuspend(ITEM, 5);
+
+		ledger.applyDelta(t, -3);
+
+		assertEquals(3, t.getSuspended(SuspensionSource.GROUND));
+		assertEquals("the unconsumed drop stays queued", 2, ledger.pendingGroundSuspend(ITEM));
+		assertEquals("dropped units keep their lot open", 0, closedCount(t));
+	}
+
+	@Test
+	public void aRemovalLargerThanTheQueuedDropClosesTheRest()
+	{
+		TrackedItem t = item(10, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+		ledger.queueGroundSuspend(ITEM, 2);
+
+		ledger.applyDelta(t, -5);
+
+		assertEquals(2, t.getSuspended(SuspensionSource.GROUND));
+		assertEquals(0, ledger.pendingGroundSuspend(ITEM));
+		assertEquals("the three unexplained units close", 3, firstClosed(t).getQuantity());
+	}
+
+	@Test
+	public void logoutClosesEveryGroundSuspensionAsLost()
+	{
+		TrackedItem t = item(7, 100, new AcquisitionRecord(10, 100, null, AcquisitionSource.GATHER));
+		t.addSuspended(SuspensionSource.GROUND, 3);
+		ledger.queueGroundSuspend(ITEM, 4);
+
+		ledger.closeAllGroundSuspensions();
+
+		assertEquals(0, t.getSuspended(SuspensionSource.GROUND));
+		assertEquals(0, ledger.pendingGroundSuspend(ITEM));
+		assertEquals(AcquisitionSource.GROUND, firstClosed(t).sellSourceOrUnknown());
+		assertEquals(3, firstClosed(t).getQuantity());
+	}
+
+	@Test
+	public void closeGroundLostIgnoresUntrackedAndUnsuspendedItems()
+	{
+		TrackedItem t = item(5, 100, new AcquisitionRecord(5, 100, null, AcquisitionSource.GATHER));
+
+		assertFalse(ledger.closeGroundLost(ITEM + 1, 3));
+		assertFalse(ledger.closeGroundLost(ITEM, 3));
+		assertEquals(0, closedCount(t));
+	}
+
+	@Test
+	public void loginResetDropsSessionRoutingButKeepsBuyClaims()
+	{
+		TrackedItem t = item(0, 999);
+		ledger.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		ledger.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+		ledger.queueGroundSuspend(ITEM, 3);
+
+		ledger.resetForLogin();
+
+		assertEquals(0, ledger.pendingGroundSuspend(ITEM));
+		ledger.applyDelta(t, 5);
+		assertEquals("a buy filled before the relog still prices the collection", 100, firstOpen(t).getBoughtAt());
+	}
+
+	@Test
+	public void shutdownResetDropsBuyClaims()
+	{
+		TrackedItem t = item(0, 999);
+		ledger.onGeOffer(0, ITEM, true, false, false, 5, 0, 0);
+		ledger.onGeOffer(0, ITEM, true, false, false, 5, 5, 500);
+
+		ledger.resetForShutdown();
+		ledger.applyDelta(t, 5);
+
+		assertEquals("with the claims gone the gain falls back to the average", 999, firstOpen(t).getBoughtAt());
 	}
 }
