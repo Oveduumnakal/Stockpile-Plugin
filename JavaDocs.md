@@ -15596,7 +15596,7 @@ executor.
 | `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
-| `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync, evaluates notifications, and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
+| `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
 | `private void` | `onCompareWindowClosed()` | Drops the singleton reference and clears the set when the compare window is closed. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
 | `private void` | `onDetailWindowClosed(DetailWindow window)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
@@ -17422,9 +17422,17 @@ zero-cost lots into someone else's cost basis (#317).
 
 `public void onClientTick(ClientTick event)`
 
-Per-tick work: flushes any pending quantity sync, evaluates notifications,
-and (when ground highlighting is on) reorders tracked items' "Take" menu
-entries to the bottom so they don't get in the way of normal actions.
+Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders
+tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions.
+
+<p>Notifications are deliberately <em>not</em> evaluated here. `ClientTick` fires once per
+client loop - up to ~50 times a second, on the thread the game loop runs on - while the data the
+rules read only changes on a price refresh, once a minute by default. Each pass walked every
+item and rule, and the categorical metrics are not cheap: `MarketClassifier.volatility`
+boxes up to ~336 samples into an `ArrayList` and streams it twice, and
+`ITM_PROFIT` streams the item's whole acquisitions list twice (#321). It is already called
+once per refresh from `applyGePrices`, and from `syncQuantitiesFromContainers` when
+a quantity actually moved, which is what quantity rules need.
 
 #### onCompareWindowClosed
 
