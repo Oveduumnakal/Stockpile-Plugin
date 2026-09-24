@@ -11296,7 +11296,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `default boolean` | `autoAddItems()` | Automatically add collection-log entries from inventory/bank changes. |
+| `default boolean` | `autoAddItems()` | Automatically record collection-log entries when a tracked item's inventory or bank count changes. |
 | `default PressureWindow` | `buySellPressureWindow()` | Look-back period for the Buy/Sell Pressure bar in the Market Info section. |
 | `default boolean` | `compactView()` | Show tracked items as compact two-row entries. |
 | `default boolean` | `contextMenuCompare()` | Include the Add to Compare option in the Stockpile context-menu section. |
@@ -11825,9 +11825,13 @@ Highlight colors/mode and the glow effect for tracked items.
 
 `default boolean autoAddItems()`
 
-Automatically add collection-log entries from inventory/bank changes. When off, items are only tracked once you
-add them yourself (manual edits still work). The price a change with no observed source buys in at is set
+Automatically record collection-log entries when a tracked item's inventory or bank count changes. Turning it
+off stops new lots being opened and closed for you; the tracked quantity still follows your containers either
+way, and you can still add and edit lots by hand. The price a change with no observed source buys in at is set
 separately by "Fallback Pricing".
+
+<p>The key is still `autoAddItems` so existing profiles keep their setting; only the label and the
+description changed, to say what the flag has always actually done (#316).
 
 #### buySellPressureWindow
 
@@ -15553,7 +15557,7 @@ executor.
 | `private void` | `rebucketScreenOverlays()` | Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. |
 | `private void` | `rebuildCompareWindow(boolean focus)` | Snapshots the compare set into an ordered `CompareView.Entry` list (resolving each id to its live tracked item or its preview) and hands it to the EDT to open or update the window. |
 | `private void` | `recomputeWindowStats(TrackedItem tracked)` | Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series. |
-| `private void` | `reconcileAllQuantities()` | Recounts every tracked item from scratch across all containers plus the rune pouch, and reconciles each item's lots to match the true on-hand total (opening or closing lots as needed). |
+| `private void` | `reconcileAllQuantities()` | Recounts every tracked item from scratch across all containers plus the rune pouch, and - when `StockpileConfig#autoAddItems()` is on - reconciles each item's lots to match the true on-hand total (opening or closing lots as needed). |
 | `private void` | `reconcileContextKeyFromMouse(MouseEvent e)` | Sets `#contextKeyHeld` from a mouse event's live modifier state when the Context Menu Key is a modifier (or modifier combo); leaves the flag untouched for a non-modifier keybind, which mouse events cannot report. |
 | `private void` | `recordPortfolioSnapshot()` | Records a portfolio snapshot into the history (persisting throttled): the running value — owned units (held plus suspended) marked to the current average plus sold lots at their actual sale price — against the invested cost basis of every logged lot, which stays fixed as lots sell. |
 | `private void` | `refreshCompareWindow()` | Re-reads the compare columns from current prices, if a window is open. |
@@ -15598,7 +15602,7 @@ executor.
 | `private void` | `swapConflictingSection(ConfigChanged event)` | Keeps detail-section slots unique: when a section is moved to a slot already occupied by another, the other section is swapped into the vacated slot. |
 | `private void` | `switchWindowItem(DetailWindow window, int newItemId)` | Rebinds a pop-out window to a different item chosen from its search bar (#109). |
 | `private void` | `syncQuantitiesForItem(TrackedItem tracked)` | Recounts a single item across all containers and the rune pouch and sets its quantity. |
-| `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: positive deltas open new lots (auto-add), negative deltas close lots FIFO, and each item's quantity is adjusted. |
+| `private void` | `syncQuantitiesFromContainers()` | Applies the accumulated per-item container deltas to tracked items: each item's quantity follows its containers, and - when `StockpileConfig#autoAddItems()` is on - positive deltas open new lots and negative deltas close lots FIFO. |
 | `private void` | `syncRunePouch()` | Rebuilds `#runePouchCounts` by reading the rune pouch type/quantity varbits. |
 | `private void` | `toggleCompactView()` | Flips the persisted compact-view flag; the resulting `ConfigChanged` rebuilds the panel. |
 | `private void` | `toggleGeTracking()` | Toggles tracking of the open GE offer's item (#139). |
@@ -17647,9 +17651,11 @@ Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and hi
 `private void reconcileAllQuantities()`
 
 Recounts every tracked item from scratch across all containers plus the rune
-pouch, and reconciles each item's lots to match the true on-hand total
-(opening or closing lots as needed). Used to catch up after login when full
-container state first becomes available.
+pouch, and - when `StockpileConfig#autoAddItems()` is on - reconciles each item's lots
+to match the true on-hand total (opening or closing lots as needed). Used to catch up after
+login when full container state first becomes available, and when the setting is switched on.
+
+<p>The recount itself is unconditional: quantities track containers whatever the setting says.
 
 #### reconcileContextKeyFromMouse
 
@@ -18016,10 +18022,16 @@ Recounts a single item across all containers and the rune pouch and sets its qua
 
 `private void syncQuantitiesFromContainers()`
 
-Applies the accumulated per-item container deltas to tracked items: positive
-deltas open new lots (auto-add), negative deltas close lots FIFO, and each
-item's quantity is adjusted. No-op when auto-add is off. Persists/refreshes
-if anything changed.
+Applies the accumulated per-item container deltas to tracked items: each item's quantity
+follows its containers, and - when `StockpileConfig#autoAddItems()` is on - positive
+deltas open new lots and negative deltas close lots FIFO. Persists/refreshes if anything
+changed.
+
+<p>The quantity update used to sit inside the auto-record gate, so turning the setting off
+froze every tracked item's displayed quantity for the rest of the session at whatever it was
+when the item was added or loaded. Values, profit and the portfolio chart all read from that
+quantity, so the whole panel went quietly stale with no error and no visible cause (#316).
+The gate now covers only the lot side, which is what the setting is actually for.
 
 #### syncRunePouch
 

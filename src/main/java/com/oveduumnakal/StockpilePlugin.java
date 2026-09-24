@@ -3394,6 +3394,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			case StockpileConfig.KEY_SCREEN_OVERLAY_ON_TOP:
 				rebucketScreenOverlays();
 				return;
+			case StockpileConfig.KEY_AUTO_ADD_ITEMS:
+				if (config.autoAddItems())
+					clientThread.invokeLater(this::reconcileAllQuantities);
+
+				refreshPanel();
+				return;
 			default:
 				refreshPanel();
 		}
@@ -3708,7 +3714,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		containerCounts.put(containerId, newCounts);
 
-		if (firstSync && containerId == InventoryID.BANK && config.autoAddItems())
+		if (firstSync && containerId == InventoryID.BANK)
 			reconcileAllQuantities();
 
 		refreshPanel();
@@ -5331,10 +5337,16 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	}
 
 	/**
-	 * Applies the accumulated per-item container deltas to tracked items: positive
-	 * deltas open new lots (auto-add), negative deltas close lots FIFO, and each
-	 * item's quantity is adjusted. No-op when auto-add is off. Persists/refreshes
-	 * if anything changed.
+	 * Applies the accumulated per-item container deltas to tracked items: each item's quantity
+	 * follows its containers, and - when {@link StockpileConfig#autoAddItems()} is on - positive
+	 * deltas open new lots and negative deltas close lots FIFO. Persists/refreshes if anything
+	 * changed.
+	 *
+	 * <p>The quantity update used to sit inside the auto-record gate, so turning the setting off
+	 * froze every tracked item's displayed quantity for the rest of the session at whatever it was
+	 * when the item was added or loaded. Values, profit and the portfolio chart all read from that
+	 * quantity, so the whole panel went quietly stale with no error and no visible cause (#316).
+	 * The gate now covers only the lot side, which is what the setting is actually for.
 	 */
 	private void syncQuantitiesFromContainers()
 	{
@@ -5343,9 +5355,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 		Map<Integer, Integer> deltas = new HashMap<>(pendingItemDeltas);
 		pendingItemDeltas.clear();
-		if (!config.autoAddItems() || trackedItems.isEmpty())
+		if (trackedItems.isEmpty())
 			return;
 
+		boolean recordLots = config.autoAddItems();
 		boolean changed = false;
 		for (TrackedItem tracked : trackedItems.values())
 		{
@@ -5356,7 +5369,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			if (delta == null || delta == 0)
 				continue;
 
-			ledger.applyDelta(tracked, delta);
+			if (recordLots)
+				ledger.applyDelta(tracked, delta);
 
 			tracked.setQuantity(tracked.getQuantity() + delta);
 			changed = true;
@@ -5371,9 +5385,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 	/**
 	 * Recounts every tracked item from scratch across all containers plus the rune
-	 * pouch, and reconciles each item's lots to match the true on-hand total
-	 * (opening or closing lots as needed). Used to catch up after login when full
-	 * container state first becomes available.
+	 * pouch, and - when {@link StockpileConfig#autoAddItems()} is on - reconciles each item's lots
+	 * to match the true on-hand total (opening or closing lots as needed). Used to catch up after
+	 * login when full container state first becomes available, and when the setting is switched on.
+	 *
+	 * <p>The recount itself is unconditional: quantities track containers whatever the setting says.
 	 */
 	private void reconcileAllQuantities()
 	{
@@ -5400,6 +5416,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		syncRunePouch();
 		ledger.reconcileSuspendedFromOffers();
 
+		boolean recordLots = config.autoAddItems();
 		boolean changed = false;
 		for (TrackedItem tracked : trackedItems.values())
 		{
@@ -5412,12 +5429,12 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 					.sum();
 			int owned = total + tracked.getTotalSuspendedQuantity();
 			int logDelta = owned - tracked.getRecordQuantitySum();
-			if (logDelta > 0)
+			if (recordLots && logDelta > 0)
 			{
 				ledger.addOpenAcquisition(tracked, logDelta, ledger.fallbackPrice(tracked), AcquisitionSource.UNKNOWN);
 				changed = true;
 			}
-			else if (logDelta < 0)
+			else if (recordLots && logDelta < 0)
 			{
 				ledger.closeFifo(tracked, -logDelta, tracked.getAvgPrice(), AcquisitionSource.UNKNOWN);
 				changed = true;
