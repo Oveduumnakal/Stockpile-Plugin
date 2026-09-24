@@ -185,7 +185,7 @@ class CostBasisLedger
 
 				break;
 			case FILL:
-				realizeSell(e.itemId, e.quantity, e.unitPrice);
+				realizeSell(e.itemId, e.quantity, afterGeTax(e.unitPrice));
 				break;
 			case CANCELLED:
 				pendingSellUnsuspend.merge(e.itemId, e.quantity, Integer::sum);
@@ -195,7 +195,22 @@ class CostBasisLedger
 		}
 	}
 
-	/** Realizes a completed GE sell fill against its SELL suspension, then debounces a GE-state save. */
+	/**
+	 * @return what the seller actually receives per unit of a GE sale at {@code grossUnitPrice}.
+	 *
+	 * <p>{@code GrandExchangeOffer.getSpent()} reports a sell's gross, pre-tax total, not the coins that
+	 * reach the collection box, so realizing a fill at {@code spent / quantity} overstated every GE
+	 * sale by up to 2% (#380). The tax rules - 2% per item rounded down, waived under 50 gp, capped at
+	 * 5M - live in {@link MarketMath#geTax}. The fill's unit price is an average across the fill, so an
+	 * uneven fill is taxed at its average price, which can differ from the game's per-item rounding by
+	 * a gp or so per unit.
+	 */
+	static long afterGeTax(long grossUnitPrice)
+	{
+		return grossUnitPrice - MarketMath.geTax(grossUnitPrice);
+	}
+
+	/** Realizes a completed GE sell fill against its SELL suspension, then persists the GE state. */
 	private void realizeSell(int itemId, int qty, long unitPrice)
 	{
 		realize(SuspensionSource.SELL, itemId, qty, unitPrice);
