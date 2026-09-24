@@ -4003,7 +4003,7 @@ populated detail card and a loading placeholder.
 |---|---|---|
 | `private void` | `acqAddRow(JTable table, AcquisitionsTableModel model)` | Appends a new empty acquisition row to the table and scrolls it into view. |
 | `private void` | `acqClean(AcquisitionsTableModel model)` | Consolidates the acquisitions log, merging like rows and dropping empty ones. |
-| `private void` | `acqClear()` | Clears all acquisitions for the current item after confirmation, via the plugin callback. |
+| `private void` | `acqClear(JTable table)` | Clears all acquisitions for the current item after confirmation, via the plugin callback, first cancelling any cell edit in progress on `table` so it can't write back into a cleared log. |
 | `private void` | `acqRemoveSelected(JTable table, AcquisitionsTableModel model)` | Removes the selected acquisition rows and commits the change. |
 | `private JButton` | `acqTextButton(String text, Color fg)` | Builds a small flat text button used by the acquisitions pop-out toolbar. |
 | `private static String` | `acqTooltipLabel(int col)` |  |
@@ -4629,9 +4629,11 @@ Consolidates the acquisitions log, merging like rows and dropping empty ones.
 
 #### acqClear
 
-`private void acqClear()`
+`private void acqClear(JTable table)`
 
-Clears all acquisitions for the current item after confirmation, via the plugin callback.
+Clears all acquisitions for the current item after confirmation, via the plugin callback, first
+cancelling any cell edit in progress on `table` so it can't write back into a cleared log.
+Shared by the card's and the pop-out's Clear buttons, which used to carry two copies of it.
 
 #### acqRemoveSelected
 
@@ -6525,6 +6527,7 @@ container. The handful of plugin actions it needs come through `GeIntegrationHos
 | Modifier and Type | Method | Description |
 |---|---|---|
 | `void` | `applyGeHighLowLine()` | Swaps the "Actively traded price" text inside the open GE offer's info block (the single `SETUP_DESC`/`DETAILS_DESC` text widget) for one compact market line — High, Low and Avg together — in place, so the line count never changes and nothing else moves (#142). |
+| `private void` | `applyGeLinePrices(int itemId, int canonical, long[] seriesHighLow, String seriesSource)` | Stores the offer screen's high/low line for `itemId` and redraws it, falling back to the item's latest instant prices when the series had none. |
 | `void` | `applyGeTrackLabel()` | Sets the Track/Untrack text, action, and resting colour (green/red) from the offer's tracked state. |
 | `private static String` | `colourGp(long value, String colour)` |  |
 | `int` | `currentGeOfferItem()` |  |
@@ -6670,6 +6673,14 @@ Swaps the "Actively traded price" text inside the open GE offer's info block (th
 and Avg together — in place, so the line count never changes and nothing else moves (#142).
 Re-applied each tick so the game's own redraw does not win; idempotent because once the native
 text is gone the rewrite is skipped. No-op until the shown item's data has been fetched and priced.
+
+#### applyGeLinePrices
+
+`private void applyGeLinePrices(int itemId, int canonical, long[] seriesHighLow, String seriesSource)`
+
+Stores the offer screen's high/low line for `itemId` and redraws it, falling back to the
+item's latest instant prices when the series had none. A no-op when the player has already moved
+on to another item. Client thread only.
 
 #### applyGeTrackLabel
 
@@ -6828,6 +6839,10 @@ info-block line, overwriting it in place once they arrive (#142). Falls back dow
 the latest priced 5m sample, then the latest priced 1h sample, then the item's latest instant
 high/low; whichever lands first sets the row-label prefix (5m / 1h / Latest).
 
+<p>A 5m series some live instance already fetched within its freshness window is used directly,
+without a request: this path used to bypass the #320 staleness gate and issue up to two timeseries
+requests on every GE item change, even for an item whose detail view had just loaded them (#382).
+
 #### scanForCloseAction
 
 `Widget scanForCloseAction(Widget widget)`
@@ -6888,6 +6903,7 @@ the background. Naming them here keeps the widget code free of the plugin's own 
 |---|---|---|
 | `List<WikiRealtimePriceClient.PricePoint>` | `fetchSeries(int canonicalId, String timestep)` | Fetches one wiki timeseries; called on the background executor, never the client thread. |
 | `void` | `focusPanel()` | Brings the Stockpile side panel to the front. |
+| `List<WikiRealtimePriceClient.PricePoint>` | `freshSeries(int canonicalId, SeriesTimestep step)` |  |
 | `boolean` | `isTracked(int canonicalId)` |  |
 | `long[]` | `latestPrices(int canonicalId)` |  |
 | `void` | `openTrackedDetail(int canonicalId)` | Opens the tracked item's detail view in the side panel. |
@@ -6910,6 +6926,15 @@ Fetches one wiki timeseries; called on the background executor, never the client
 `void focusPanel()`
 
 Brings the Stockpile side panel to the front.
+
+#### freshSeries
+
+`List<WikiRealtimePriceClient.PricePoint> freshSeries(int canonicalId, SeriesTimestep step)`
+
+- **Parameter** `canonicalId` — the item to look up
+- **Parameter** `step` — the series granularity
+- **Returns:** the series a live instance of the item already holds for `step`, when it was fetched
+        within that step's freshness window; otherwise `null`. Client thread only.
 
 #### isTracked
 
@@ -17116,7 +17141,7 @@ executor.
 | `private void` | `migrateAutoAddSetting()` | One-time migration for #219: the old combined `autoAddItems` enum (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate `FallbackPricing`. |
 | `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
 | `private String` | `notificationText(TrackedItem item, NotificationRule rule)` | Builds the user-facing notification message, e.g. |
-| `void` | `onAcquisitionsEdited(int itemId)` |  |
+| `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and, when "Left-Click Take Tracked Loot" is on, moves tracked items' "Take" entries to the end of the menu array. |
@@ -18696,6 +18721,11 @@ Builds the user-facing notification message, e.g. `"Stockpile: Coal - High >= 20
 #### onAcquisitionsEdited
 
 `void onAcquisitionsEdited(int itemId)`
+
+Callback after the user edits an item's acquisitions: re-derives its held quantity
+from the lots and persists. Open lots also cover suspended units (in-flight GE
+sells, trades, drops, deaths), which `quantity` must exclude — otherwise an
+edit made mid-suspension would double-count the suspended units as held.
 
 #### onActorDeath
 

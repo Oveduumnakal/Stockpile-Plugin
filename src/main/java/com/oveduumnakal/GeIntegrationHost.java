@@ -40,6 +40,14 @@ interface GeIntegrationHost
 	 */
 	long[] latestPrices(int canonicalId);
 
+	/**
+	 * @param canonicalId the item to look up
+	 * @param step the series granularity
+	 * @return the series a live instance of the item already holds for {@code step}, when it was fetched
+	 *         within that step's freshness window; otherwise {@code null}. Client thread only.
+	 */
+	List<WikiRealtimePriceClient.PricePoint> freshSeries(int canonicalId, SeriesTimestep step);
+
 	/** Fetches one wiki timeseries; called on the background executor, never the client thread. */
 	List<WikiRealtimePriceClient.PricePoint> fetchSeries(int canonicalId, String timestep);
 
