@@ -503,6 +503,15 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 
 	private final Map<TileItem, Tile> groundItems = new HashMap<>();
 
+	/**
+	 * The tracked subset of {@link #groundItems}, so the ground overlay's per-frame work is
+	 * proportional to what it actually draws rather than to everything on the floor (#325).
+	 */
+	private final Map<TileItem, Tile> trackedGroundItems = new HashMap<>();
+
+	/** {@code trackedItems.keySet().hashCode()} when {@link #trackedGroundItems} was last rebuilt. */
+	private int trackedGroundRevision;
+
 	/** This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65). */
 	private final List<ItemSpawned> tickGroundSpawns = new ArrayList<>();
 	private final List<ItemDespawned> tickGroundDespawns = new ArrayList<>();
@@ -1188,6 +1197,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		panel.shutdown();
 		closeAllGroundSuspensions();
 		groundItems.clear();
+		trackedGroundItems.clear();
 		tickGroundSpawns.clear();
 		tickGroundDespawns.clear();
 		tickGroundQuantityChanges.clear();
@@ -3814,6 +3824,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	{
 		ledger.expireSuspensions();
 		ledger.closeVanishedGraveLosses();
+		syncTrackedGroundItems();
 
 		GeIntegrationMode mode = config.geIntegration();
 		boolean wantButton = mode == GeIntegrationMode.BUTTON || mode == GeIntegrationMode.BOTH;
@@ -4343,13 +4354,22 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		return "<col=" + colour + ">" + GpFormat.grouped(value) + " gp</col>";
 	}
 
-	/** Records a ground item and its tile so the ground overlay can outline it, buffering it for #65. */
+	/**
+	 * Records a ground item and its tile so the ground overlay can outline it, buffering it for #65.
+	 *
+	 * <p>Every ground item goes into {@link #groundItems}, since the tracked set can change while an
+	 * item is already on the floor; only the tracked ones go into {@link #trackedGroundItems}, which
+	 * is what the overlay reads.
+	 */
 	@Subscribe
 	public void onItemSpawned(ItemSpawned event)
 	{
 		groundItems.put(event.getItem(), event.getTile());
 		if (isTracked(itemManager.canonicalize(event.getItem().getId())))
+		{
+			trackedGroundItems.put(event.getItem(), event.getTile());
 			tickGroundSpawns.add(event);
+		}
 	}
 
 	/** Forgets a ground item once it despawns, buffering it for #65's pickup/lost-drop correlation. */
@@ -4357,6 +4377,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	public void onItemDespawned(ItemDespawned event)
 	{
 		groundItems.remove(event.getItem());
+		trackedGroundItems.remove(event.getItem());
 		if (myDrops.containsKey(event.getItem()) || isTracked(itemManager.canonicalize(event.getItem().getId())))
 			tickGroundDespawns.add(event);
 	}
@@ -5202,6 +5223,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		{
 			case LOADING:
 				groundItems.clear();
+				trackedGroundItems.clear();
 				myDrops.clear();
 				tickGroundSpawns.clear();
 				tickGroundDespawns.clear();
@@ -5697,10 +5719,38 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		return GLOW_MIN_ALPHA + (GLOW_MAX_ALPHA - GLOW_MIN_ALPHA) * (float) wave;
 	}
 
-	/** @return the live map of on-screen ground items to their tiles (used by the ground overlay). */
-	Map<TileItem, Tile> getGroundItems()
+	/**
+	 * @return the live map of on-screen <em>tracked</em> ground items to their tiles, for the ground
+	 *         overlay. It used to be handed the map of every ground item in the scene, and
+	 *         canonicalized each one on every frame to find the handful that were tracked - thousands
+	 *         of {@code ItemManager} calls a frame at the Grand Exchange or a death pile, to draw
+	 *         maybe two outlines, and the same cost when it drew none (#325).
+	 */
+	Map<TileItem, Tile> getTrackedGroundItems()
 	{
-		return groundItems;
+		return trackedGroundItems;
+	}
+
+	/**
+	 * Re-derives {@link #trackedGroundItems} when the tracked set has changed, so an item already on
+	 * the floor starts (or stops) being outlined the moment it is tracked or untracked. Spawns and
+	 * despawns maintain the map incrementally; only a tracked-set change needs the sweep, and the
+	 * key-set hash makes detecting that cost one pass over the tracked items rather than the floor.
+	 * Runs once per game tick on the client thread.
+	 */
+	private void syncTrackedGroundItems()
+	{
+		int revision = trackedItems.keySet().hashCode();
+		if (revision == trackedGroundRevision)
+			return;
+
+		trackedGroundRevision = revision;
+		trackedGroundItems.clear();
+		for (Map.Entry<TileItem, Tile> entry : groundItems.entrySet())
+		{
+			if (isTracked(itemManager.canonicalize(entry.getKey().getId())))
+				trackedGroundItems.put(entry.getKey(), entry.getValue());
+		}
 	}
 
 	/** Refreshes the panel without flagging a price update (no change indicators). */
