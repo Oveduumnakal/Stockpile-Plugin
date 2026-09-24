@@ -44,6 +44,7 @@
 - [com.oveduumnakal.EstimatesPosition](#comoveduumnakalestimatesposition)
 - [com.oveduumnakal.EstimatesSpacing](#comoveduumnakalestimatesspacing)
 - [com.oveduumnakal.FallbackPricing](#comoveduumnakalfallbackpricing)
+- [com.oveduumnakal.GatedProfileStore](#comoveduumnakalgatedprofilestore)
 - [com.oveduumnakal.GeIntegration](#comoveduumnakalgeintegration)
 - [com.oveduumnakal.GeIntegrationHost](#comoveduumnakalgeintegrationhost)
 - [com.oveduumnakal.GeIntegrationMode](#comoveduumnakalgeintegrationmode)
@@ -6369,6 +6370,93 @@ one item: `#HIGH` → `high`, `#LOW` → `low`, `#ZERO` → `0`,
 Returns the display label shown in the UI.
 
 - **Returns:** the display label
+
+---
+
+## com.oveduumnakal.GatedProfileStore
+
+_class_
+
+`class GatedProfileStore`
+
+A `ProfileConfigStore` whose writes can be switched off, so state loaded for one RS profile is
+never written under another's key (#377).
+
+<p>RuneLite re-keys the RS profile on `AccountHashChanged`, which fires on the next login
+<em>before</em> `LOGGED_IN` reloads Stockpile's state. Between logout and that reload the
+previous account's items, ledger and portfolio history are still in memory, so any persist landing
+in the gap - a throttled portfolio snapshot, a cost-basis-init write, an executor save queued before
+logout - used to write account A's data under account B's key, where the reload then read it back as
+B's. Reads always pass through; writes are dropped while the store is closed.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final ProfileConfigStore` | `delegate` |  |
+| `private volatile boolean` | `writable` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `GatedProfileStore(ProfileConfigStore delegate)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `close()` | Drops writes until the next `#open()`: the in-memory state belongs to a logged-out profile. |
+| `public String` | `get(String group, String key)` |  |
+| `boolean` | `isOpen()` |  |
+| `void` | `open()` | Allows writes: the in-memory state now belongs to the active RS profile. |
+| `public void` | `set(String group, String key, String value)` |  |
+
+### Field Detail
+
+#### delegate
+
+`private final ProfileConfigStore delegate`
+
+#### writable
+
+`private volatile boolean writable`
+
+### Constructor Detail
+
+#### GatedProfileStore
+
+`GatedProfileStore(ProfileConfigStore delegate)`
+
+- **Parameter** `delegate` — the real store; starts closed until `#open()` is called for a loaded profile
+
+### Method Detail
+
+#### close
+
+`void close()`
+
+Drops writes until the next `#open()`: the in-memory state belongs to a logged-out profile.
+
+#### get
+
+`public String get(String group, String key)`
+
+#### isOpen
+
+`boolean isOpen()`
+
+- **Returns:** whether writes currently reach the underlying store
+
+#### open
+
+`void open()`
+
+Allows writes: the in-memory state now belongs to the active RS profile.
+
+#### set
+
+`public void set(String group, String key, String value)`
 
 ---
 
@@ -16325,7 +16413,7 @@ writes go through `ProfileConfigStore` so those fallbacks are testable without a
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private static ProfileConfigStore` | `backedBy(ConfigManager configManager)` | Adapts a live `ConfigManager` to the `ProfileConfigStore` seam. |
+| `static ProfileConfigStore` | `backedBy(ConfigManager configManager)` | Adapts a live `ConfigManager` to the `ProfileConfigStore` seam. |
 | `CategoryData` | `loadCategories()` |  |
 | `List<SavedComparison>` | `loadComparisons()` |  |
 | `Map<Integer,long[]>` | `loadGeBuyLimits()` |  |
@@ -16392,7 +16480,7 @@ writes go through `ProfileConfigStore` so those fallbacks are testable without a
 
 #### backedBy
 
-`private static ProfileConfigStore backedBy(ConfigManager configManager)`
+`static ProfileConfigStore backedBy(ConfigManager configManager)`
 
 Adapts a live `ConfigManager` to the `ProfileConfigStore` seam.
 
@@ -16789,6 +16877,7 @@ executor.
 | `private TrackedItem` | `previewItem` | Transient, non-persisted item backing the read-only detail preview (view-only button); not in `#trackedItems`. |
 | `private ScheduledFuture<?>` | `priceRefreshTask` |  |
 | `private int` | `processingXpTick` | The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs. |
+| `private GatedProfileStore` | `profileStore` | The RS-profile store `#persistence` writes through, closed from logout until the next login has reloaded the new profile's state, so one account's data is never written under another's key (#377). |
 | `private int` | `rewardContainerTick` | The tick a reward/loot container last changed, marking a matching inventory gain as a free reward (#215). |
 | `private final Map<Integer,Integer>` | `runePouchCounts` |  |
 | `private boolean` | `runePouchDirty` | Set when a rune pouch varbit changes; the diff is deferred to `#onClientTick` so every type/quantity varbit for the change has settled before it is read (#237). |
@@ -16867,6 +16956,7 @@ executor.
 | `private String` | `examineFor(int itemId)` |  |
 | `public FallbackPricing` | `fallbackPricing()` | Returns the configured fallback-pricing policy for unknown-source changes. |
 | `private void` | `fetchItemMappings()` | Fetches GE item metadata in the background, keeping the previous map on failure. |
+| `private void` | `flushAndCloseProfileStore()` | At logout, writes what the throttled savers still hold for the account that is leaving - the portfolio history is otherwise saved at most every five minutes and was never flushed here, losing up to five minutes of it on every logout - then closes `#profileStore` until the next login has reloaded (#377). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
 | `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
 | `public int` | `gatherXpTick()` | {@inheritDoc} |
@@ -16936,6 +17026,7 @@ executor.
 | `private void` | `openDetailWindow(TrackedItem item, boolean preview)` | Creates and registers a pop-out window for `item`, or focuses an existing one. |
 | `public GrandExchangeOffer[]` | `openGeOffers()` | Returns the player's current Grand Exchange offers. |
 | `private void` | `openOrFocusCompareWindow(List<CompareView.Entry> entries, List<String> names, List<Integer> ids)` | Opens the compare window with `entries` (an empty list is allowed, showing the prompt) or updates and focuses the already-open one. |
+| `private void` | `openProfileStoreAfterLoad()` | Opens `#profileStore` once the persisted-item replay has run. |
 | `private void` | `orderGeneratedCategories(List<CategoryState> created)` | Orders an auto-categorize run's generated categories alphabetically after any pre-existing (manually ordered) ones, then keeps "Other" at the very end. |
 | `private int` | `overlayItemCount()` |  |
 | `private void` | `persistCategories()` | Serializes the category definitions and group collapsed state to per-profile config. |
@@ -17564,6 +17655,14 @@ button); not in `#trackedItems`.
 
 The tick of the most recent processing-skill XP gain, pairing recipe inputs to outputs.
 
+#### profileStore
+
+`private GatedProfileStore profileStore`
+
+The RS-profile store `#persistence` writes through, closed from logout until the next login
+has reloaded the new profile's state, so one account's data is never written under another's key
+(#377).
+
 #### rewardContainerTick
 
 `private int rewardContainerTick`
@@ -18111,6 +18210,15 @@ Returns the configured fallback-pricing policy for unknown-source changes.
 `private void fetchItemMappings()`
 
 Fetches GE item metadata in the background, keeping the previous map on failure.
+
+#### flushAndCloseProfileStore
+
+`private void flushAndCloseProfileStore()`
+
+At logout, writes what the throttled savers still hold for the account that is leaving - the
+portfolio history is otherwise saved at most every five minutes and was never flushed here, losing
+up to five minutes of it on every logout - then closes `#profileStore` until the next login
+has reloaded (#377).
 
 #### flushRunePouchDelta
 
@@ -18675,6 +18783,14 @@ updates and focuses the already-open one. Runs on the EDT.
 - **Parameter** `entries` — the items to compare, in display order
 - **Parameter** `names` — the current saved-comparison names for the Load menu
 - **Parameter** `ids` — the current compare-set item ids, backing Export
+
+#### openProfileStoreAfterLoad
+
+`private void openProfileStoreAfterLoad()`
+
+Opens `#profileStore` once the persisted-item replay has run. The replay applies each item's
+grouping and suspensions in deferred client-thread tasks, so the store opens in a task queued behind
+them - otherwise a write in between could persist items with those fields still missing.
 
 #### orderGeneratedCategories
 

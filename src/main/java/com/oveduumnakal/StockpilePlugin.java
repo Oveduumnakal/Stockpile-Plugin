@@ -178,6 +178,13 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/** Client-free persistence layer (#111); built in {@link #startUp()} once gson/config are injected. */
 	private StockpilePersistence persistence;
 
+	/**
+	 * The RS-profile store {@link #persistence} writes through, closed from logout until the next login
+	 * has reloaded the new profile's state, so one account's data is never written under another's key
+	 * (#377).
+	 */
+	private GatedProfileStore profileStore;
+
 	@Inject
 	private KeyManager keyManager;
 
@@ -822,7 +829,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	@Override
 	protected void startUp() throws Exception
 	{
-		persistence = new StockpilePersistence(configManager, gson);
+		profileStore = new GatedProfileStore(StockpilePersistence.backedBy(configManager));
+		persistence = new StockpilePersistence(profileStore, gson);
 		ledger = new CostBasisLedger(this, persistence);
 		detectors = new DeltaDetectors(this, ledger);
 		geIntegration = new GeIntegration(client, itemManager, config, geHost());
@@ -1094,6 +1102,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			loadSavedComparisons();
 			ledger.load();
 			loadPortfolioHistory();
+			if (sessionInitialized)
+				openProfileStoreAfterLoad();
 
 			refreshPanel();
 			clientThread.invokeLater(this::hydratePriceCache);
@@ -4571,6 +4581,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 					gatherXpTick = -1;
 					rewardContainerTick = -1;
 					thievingXpTick = -1;
+					openProfileStoreAfterLoad();
 					clientThread.invokeLater(this::hydratePriceCache);
 				}
 
@@ -4582,11 +4593,40 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			case LOGIN_SCREEN:
 				sessionInitialized = false;
 				closeAllGroundSuspensions();
+				flushAndCloseProfileStore();
 				refreshPanel();
 				break;
 			default:
 				break;
 		}
+	}
+
+	/**
+	 * Opens {@link #profileStore} once the persisted-item replay has run. The replay applies each item's
+	 * grouping and suspensions in deferred client-thread tasks, so the store opens in a task queued behind
+	 * them - otherwise a write in between could persist items with those fields still missing.
+	 */
+	private void openProfileStoreAfterLoad()
+	{
+		clientThread.invokeLater(profileStore::open);
+	}
+
+	/**
+	 * At logout, writes what the throttled savers still hold for the account that is leaving - the
+	 * portfolio history is otherwise saved at most every five minutes and was never flushed here, losing
+	 * up to five minutes of it on every logout - then closes {@link #profileStore} until the next login
+	 * has reloaded (#377).
+	 */
+	private void flushAndCloseProfileStore()
+	{
+		if (!profileStore.isOpen())
+			return;
+
+		persistTrackedItems();
+		persistPriceCache();
+		ledger.persist();
+		persistPortfolioHistorySync();
+		profileStore.close();
 	}
 
 	/** Resets the session baseline when the RS profile (account) changes, so stats restart per account. */
