@@ -928,12 +928,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 					}
 
 					@Override
-					public void acquisitionsEdited(int itemId)
-					{
-						onAcquisitionsEdited(itemId);
-					}
-
-					@Override
 					public void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation,
 							Runnable onApplied)
 					{
@@ -1514,14 +1508,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		return compareItems.get(itemId);
 	}
 
-	/** Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications. */
-	private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records,
-			boolean costBasisInitialized)
-	{
-		addTrackedItem(itemId, initialQuantity, records, null, false, costBasisInitialized, true, true,
-				TrackItemMode.TRACK);
-	}
-
 	/**
 	 * Canonical add: creates a {@link TrackedItem} (resolving its name/tradeable
 	 * flag from the item composition), seeds its quantity, acquisitions, and
@@ -1782,12 +1768,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			public void requestDetailData(int id)
 			{
 				StockpilePlugin.this.requestDetailData(id);
-			}
-
-			@Override
-			public void acquisitionsEdited(int id)
-			{
-				onAcquisitionsEdited(id);
 			}
 
 			@Override
@@ -5062,7 +5042,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	/**
 	 * Applies an acquisition-log edit on the client thread, which owns the list, then persists,
 	 * refreshes, and hands control back to the EDT. See {@link DetailViewHost#editAcquisitions} for
-	 * why the editor may not touch the list directly (#315).
+	 * why the editor may not touch the list directly (#315). The held quantity is re-derived from the
+	 * lots minus suspended units (in-flight GE sells, trades, drops, deaths), which open lots also
+	 * cover — otherwise an edit made mid-suspension would double-count them as held.
 	 */
 	void editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)
 	{
@@ -5078,27 +5060,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			persistTrackedItems();
 			refreshPanel();
 			SwingUtilities.invokeLater(onApplied);
-		});
-	}
-
-	/**
-	 * Callback after the user edits an item's acquisitions: re-derives its held quantity
-	 * from the lots and persists. Open lots also cover suspended units (in-flight GE
-	 * sells, trades, drops, deaths), which {@code quantity} must exclude — otherwise an
-	 * edit made mid-suspension would double-count the suspended units as held.
-	 */
-	void onAcquisitionsEdited(int itemId)
-	{
-		clientThread.invokeLater(() ->
-		{
-			TrackedItem tracked = trackedItems.get(itemId);
-			if (tracked == null)
-				return;
-
-			tracked.setCostBasisInitialized(true);
-			tracked.setQuantity(Math.max(0, tracked.getRecordQuantitySum() - tracked.getTotalSuspendedQuantity()));
-			persistTrackedItems();
-			refreshPanel();
 		});
 	}
 

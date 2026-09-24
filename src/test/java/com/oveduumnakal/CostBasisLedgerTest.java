@@ -43,8 +43,6 @@ public class CostBasisLedgerTest
 		private final Set<Integer> consumables = new HashSet<>();
 		private final Set<Integer> recoverableAmmo = new HashSet<>();
 		private GrandExchangeOffer[] offers = null;
-		private int persistCalls;
-		private int refreshCalls;
 
 		@Override
 		public int currentTick()
@@ -79,13 +77,11 @@ public class CostBasisLedgerTest
 		@Override
 		public void persistTrackedItems()
 		{
-			persistCalls++;
 		}
 
 		@Override
 		public void refreshPanel()
 		{
-			refreshCalls++;
 		}
 
 		@Override

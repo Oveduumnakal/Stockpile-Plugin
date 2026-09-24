@@ -30,19 +30,19 @@ import java.time.Duration;
 enum SuspensionSource
 {
 	/** Units placed into a GE sell offer; realize at the fill price as a {@link AcquisitionSource#GE_TRADE} sale. */
-	SELL(StampMode.NONE, null, null, AcquisitionSource.GE_TRADE, false),
+	SELL(StampMode.NONE, null, null, AcquisitionSource.GE_TRADE),
 
 	/** Units placed into a player-trade offer; realize at the apportioned trade price as a player-trade sale. */
-	TRADE(StampMode.NONE, null, null, AcquisitionSource.PLAYER_TRADE, false),
+	TRADE(StampMode.NONE, null, null, AcquisitionSource.PLAYER_TRADE),
 
 	/** Units dropped on the ground (or fired as recoverable ammo); refresh-stamped, expire to a 0-gp loss. */
-	GROUND(StampMode.REFRESH, Duration.ofMinutes(10), AcquisitionSource.GROUND, null, false),
+	GROUND(StampMode.REFRESH, Duration.ofMinutes(10), AcquisitionSource.GROUND, null),
 
 	/** Units lost to a death; stamped once, expire to a 0-gp loss, persisted across a relog. */
-	DEATH(StampMode.STAMP_IF_EMPTY, Duration.ofMinutes(65), AcquisitionSource.DEATH, null, true),
+	DEATH(StampMode.STAMP_IF_EMPTY, Duration.ofMinutes(65), AcquisitionSource.DEATH, null),
 
 	/** Units filled into a fur/meat hunting pouch; never expire, only un-suspend on empty, persisted. */
-	POUCH(StampMode.NONE, null, null, null, true);
+	POUCH(StampMode.NONE, null, null, null);
 
 	/** How a source updates its suspension timestamp when more units are suspended. */
 	enum StampMode
@@ -61,16 +61,14 @@ enum SuspensionSource
 	private final Duration expiry;
 	private final AcquisitionSource closeSource;
 	private final AcquisitionSource realizeSource;
-	private final boolean persisted;
 
 	SuspensionSource(StampMode stampMode, Duration expiry, AcquisitionSource closeSource,
-			AcquisitionSource realizeSource, boolean persisted)
+			AcquisitionSource realizeSource)
 	{
 		this.stampMode = stampMode;
 		this.expiry = expiry;
 		this.closeSource = closeSource;
 		this.realizeSource = realizeSource;
-		this.persisted = persisted;
 	}
 
 	StampMode stampMode()
@@ -103,11 +101,5 @@ enum SuspensionSource
 	AcquisitionSource realizeSource()
 	{
 		return realizeSource;
-	}
-
-	/** @return whether this source's suspension survives a relog and is written through {@code PersistedItem}. */
-	boolean persisted()
-	{
-		return persisted;
 	}
 }

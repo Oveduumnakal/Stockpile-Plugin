@@ -68,7 +68,7 @@ public class TrackedItem
 	 * currently held in that suspension and — for sources that expire — when the newest was taken.
 	 * A unit here has left the held containers but is still owned, its lot kept open at basis until
 	 * it resolves. All transient: sell/trade/ground suspensions are session-only, while death and
-	 * pouch are re-seeded on login from {@code PersistedItem} (see {@link SuspensionSource#persisted()}),
+	 * pouch are re-seeded on login from {@code PersistedItem},
 	 * so Gson never touches this map. Legacy records default to empty — the safe additive default.
 	 */
 	private transient Map<SuspensionSource, SuspensionState> suspensions;

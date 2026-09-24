@@ -40,9 +40,6 @@ public interface DetailViewHost
 	/** Asks the plugin to (re)fetch the detailed price/history data for {@code itemId}. */
 	void requestDetailData(int itemId);
 
-	/** Signals that the acquisitions log for {@code itemId} was edited in-view. */
-	void acquisitionsEdited(int itemId);
-
 	/**
 	 * Applies {@code mutation} to the item's acquisition list on the client thread, then signals the
 	 * edit and runs {@code onApplied} back on the EDT.

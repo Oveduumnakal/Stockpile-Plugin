@@ -227,7 +227,7 @@ public final class PortfolioChartPanel extends JPanel
 				cg.setFont(baseFont);
 				boolean anyCost = points.stream().anyMatch(p -> p[2] > 0);
 
-				drawYAxis(cg, fm, plotLeft, plotRight, plotTop, plotBottom, plotH, axisMin, axisRange, ticks);
+				drawYAxis(cg, fm, plotLeft, plotRight, plotBottom, plotH, axisMin, axisRange, ticks);
 				drawXAxis(cg, fm, plotLeft, plotBottom, plotW, minTime, maxTime);
 				drawLegend(cg, fm, plotLeft, anyCost);
 				drawCostLine(cg, plotLeft, plotTop, plotBottom, plotW, plotH,
@@ -264,8 +264,8 @@ public final class PortfolioChartPanel extends JPanel
 	}
 
 	/** Draws the horizontal gridlines and their right-side value labels for the "nice" value axis. */
-	private void drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom,
-			int plotH, double axisMin, double axisRange, int ticks)
+	private void drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int bottom, int plotH,
+			double axisMin, double axisRange, int ticks)
 	{
 		for (int i = 0; i <= ticks; i++)
 		{

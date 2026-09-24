@@ -50,9 +50,6 @@ public interface PanelActions
 	/** Opens the compare window (#280) or focuses it, showing the empty prompt when nothing is compared yet. */
 	void openCompare();
 
-	/** Notifies the plugin that {@code itemId}'s acquisition lots were edited and must be persisted. */
-	void acquisitionsEdited(int itemId);
-
 	/**
 	 * Applies {@code mutation} to {@code itemId}'s acquisition lots on the client thread, which owns
 	 * them, then runs {@code onApplied} on the EDT. See {@link DetailViewHost#editAcquisitions} for

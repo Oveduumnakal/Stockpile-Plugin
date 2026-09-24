@@ -91,8 +91,6 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import javax.swing.text.DefaultCaret;
 
-import lombok.Value;
-
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -159,7 +157,6 @@ public class DetailView extends JPanel implements Scrollable
 	private final Layout viewLayout;
 	private final StockpileConfig config;
 	private final ItemManager itemManager;
-	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onClearAcquisitions;
 	private final Consumer<Integer> onRequestDetailData;
 	private final BiConsumer<Integer, TrackItemMode> onAddItem;
@@ -241,7 +238,6 @@ public class DetailView extends JPanel implements Scrollable
 	private JButton acqPopoutButton;
 	private AcquisitionsTableModel acqPopoutModel;
 	private JTable acqPopoutTable;
-	private JScrollPane acqPopoutScroll;
 	private JPanel overviewGrid;
 	private PriceGraphPanel priceGraph;
 	private PriceGraphPanel volumeGraph;
@@ -289,7 +285,6 @@ public class DetailView extends JPanel implements Scrollable
 
 		this.config = host.config();
 		this.itemManager = host.itemManager();
-		this.onAcquisitionsEdited = host::acquisitionsEdited;
 		this.onClearAcquisitions = host::clearAcquisitions;
 		this.onRequestDetailData = host::requestDetailData;
 		this.onAddItem = host::addItem;
@@ -2235,7 +2230,6 @@ public class DetailView extends JPanel implements Scrollable
 		scroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		scroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
 		scroll.setPreferredSize(new Dimension(560, 380));
-		acqPopoutScroll = scroll;
 
 		JButton addBtn = acqTextButton("+ Add", Color.WHITE);
 		addBtn.addActionListener(e -> acqAddRow(table, model));
@@ -2294,7 +2288,6 @@ public class DetailView extends JPanel implements Scrollable
 		{
 			acqPopoutModel = null;
 			acqPopoutTable = null;
-			acqPopoutScroll = null;
 			updateAcqPopoutButton();
 		});
 	}

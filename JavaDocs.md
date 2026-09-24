@@ -3894,7 +3894,6 @@ populated detail card and a loading placeholder.
 | `private int` | `acqHoverRow` |  |
 | `private JButton` | `acqPopoutButton` |  |
 | `private AcquisitionsTableModel` | `acqPopoutModel` |  |
-| `private JScrollPane` | `acqPopoutScroll` |  |
 | `private JTable` | `acqPopoutTable` |  |
 | `private AcquisitionsTableModel` | `acquisitionsModel` |  |
 | `private JScrollPane` | `acquisitionsScroll` |  |
@@ -3968,7 +3967,6 @@ populated detail card and a loading placeholder.
 | `private NotificationsTableModel` | `notificationsModel` |  |
 | `private JPanel` | `notificationsSection` |  |
 | `private JTable` | `notificationsTable` |  |
-| `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
 | `private final Consumer<Integer>` | `onRequestDetailData` |  |
@@ -4218,10 +4216,6 @@ Foreground of the detail header's Untrack button (red) — a tracked item can be
 #### acqPopoutModel
 
 `private AcquisitionsTableModel acqPopoutModel`
-
-#### acqPopoutScroll
-
-`private JScrollPane acqPopoutScroll`
 
 #### acqPopoutTable
 
@@ -4514,10 +4508,6 @@ Foreground of the detail header's Untrack button (red) — a tracked item can be
 #### notificationsTable
 
 `private JTable notificationsTable`
-
-#### onAcquisitionsEdited
-
-`private final Consumer<Integer> onAcquisitionsEdited`
 
 #### onAddItem
 
@@ -5482,7 +5472,6 @@ the fields and callbacks it already holds.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `void` | `acquisitionsEdited(int itemId)` | Signals that the acquisitions log for `itemId` was edited in-view. |
 | `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId` from the detail header Track button (#138), honouring the add mode. |
 | `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set, opening or focusing the compare window (#280). |
 | `void` | `clearAcquisitions(int itemId)` | Clears the acquisitions log for `itemId`. |
@@ -5501,12 +5490,6 @@ the fields and callbacks it already holds.
 | `void` | `untrackToPreview(int itemId)` | Untracks `itemId` but keeps it open as a read-only preview (#138). |
 
 ### Method Detail
-
-#### acquisitionsEdited
-
-`void acquisitionsEdited(int itemId)`
-
-Signals that the acquisitions log for `itemId` was edited in-view.
 
 #### addItem
 
@@ -9380,7 +9363,6 @@ lets a new feature add a method rather than another positional lambda.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `void` | `acquisitionsEdited(int itemId)` | Notifies the plugin that `itemId`'s acquisition lots were edited and must be persisted. |
 | `void` | `addItem(int itemId, TrackItemMode mode)` | Tracks `itemId`, honouring how the user asked for it to be added. |
 | `void` | `addToCompare(int itemId)` | Adds `itemId` to the compare set (#280), opening or focusing the compare window. |
 | `void` | `addVariantsToCompare(int itemId)` | Adds every variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set (up to the cap), opening or focusing the compare window. |
@@ -9412,12 +9394,6 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `whatsNewSeen()` | Marks the current release's "What's New" notice as seen so it stops showing. |
 
 ### Method Detail
-
-#### acquisitionsEdited
-
-`void acquisitionsEdited(int itemId)`
-
-Notifies the plugin that `itemId`'s acquisition lots were edited and must be persisted.
 
 #### addItem
 
@@ -9734,7 +9710,7 @@ so an offline gap reads as one connecting segment between the two known values.
 | `private void` | `drawTooltip(Graphics2D g2, FontMetrics fm, List<TipLine> lines, int plotLeft, int plotTop, int plotRight)` | Draws the hover tooltip box, flipping to the cursor's left near the right edge. |
 | `private void` | `drawValueLine(Graphics2D g2, int left, int top, int bottom, int plotW, int plotH, long minTime, long maxTime, double axisMin, double axisRange)` | Draws the value line, colouring each segment by the value's position relative to cost basis — green above (profit), red below (loss), grey when equal or when no cost basis exists — and splitting a segment at the point where the two lines cross. |
 | `private void` | `drawXAxis(Graphics2D g2, FontMetrics fm, int left, int bottom, int plotW, long minTime, long maxTime)` | Draws faint vertical gridlines and rotated date labels at "nice" time ticks along the bottom. |
-| `private void` | `drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom, int plotH, double axisMin, double axisRange, int ticks)` | Draws the horizontal gridlines and their right-side value labels for the "nice" value axis. |
+| `private void` | `drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int bottom, int plotH, double axisMin, double axisRange, int ticks)` | Draws the horizontal gridlines and their right-side value labels for the "nice" value axis. |
 | `protected void` | `paintComponent(Graphics g)` | Paints the chart: the expensive static plot (grid, axes, legend, series) is rasterized once into `#plotCache` and reused, while only the lightweight hover crosshair is redrawn over it on mouse moves. |
 | `private static boolean` | `samePoints(List<long[]> a, List<long[]> b)` |  |
 | `public void` | `setData(List<long[]> data)` | Sets the points to plot (`{epochSeconds, value, costBasis`}) and repaints. |
@@ -9912,7 +9888,7 @@ Draws faint vertical gridlines and rotated date labels at "nice" time ticks alon
 
 #### drawYAxis
 
-`private void drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int top, int bottom, int plotH, double axisMin, double axisRange, int ticks)`
+`private void drawYAxis(Graphics2D g2, FontMetrics fm, int left, int right, int bottom, int plotH, double axisMin, double axisRange, int ticks)`
 
 Draws the horizontal gridlines and their right-side value labels for the "nice" value axis.
 
@@ -14072,7 +14048,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private JPanel` | `loggedOutCard` | The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport while it shows. |
 | `private long` | `natureRunePrice` |  |
 | `private final PanelActions` | `notificationEditor` | The plugin callbacks, held for the client-thread notification-edit seam (#373). |
-| `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
 | `private final Consumer<Integer>` | `onAddToCompare` | Adds the item to the compare set, opening or focusing the compare window (#280). |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
@@ -14153,7 +14128,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `public void` | `acquisitionsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's acquisitions-edited callback when present. |
 | `private void` | `addFormRow(JPanel form, String label, JComponent field)` | Adds a labelled row (label above the field) to a vertical form panel. |
 | `public void` | `addItem(int itemId, TrackItemMode mode)` | {@inheritDoc} Delegates to the panel's add-item callback. |
 | `private void` | `addListenerRecursively(Component c, MouseListener listener)` | Attaches a mouse listener to a component and all its descendants, so a whole row reacts as one. |
@@ -14192,7 +14166,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `buildRowContent(JPanel slot, TrackedItem item, PriceIndicatorMode indicatorMode)` | Fills a row's content slot (#275) with the price grid, compact value line, or loading placeholder for the item's current state, plus the optional per-item profit row. |
 | `private JLabel` | `buildRowDashboardButton(TrackedItem item)` | Builds a row hover button (dashboard icon) that opens this item in its own dashboard window (#109). |
 | `private JLabel` | `buildRowIcon(TrackedItem item)` | Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously on a miss. |
-| `private RowView` | `buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)` | Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty) and the hover buttons, plus an empty content slot filled by `#populateRow`. |
+| `private RowView` | `buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode)` | Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty) and the hover buttons, plus an empty content slot filled by `#populateRow`. |
 | `private JPanel` | `buildSearchResultRow(int itemId, String itemName)` | Builds one clickable row in the search-results dropdown that adds the item when clicked. |
 | `private JPanel` | `buildTotalsRow(JLabel valueLabel, JLabel pulseLabel)` | Builds one estimate row pairing a totals value label with its pulse-indicator label. |
 | `private boolean` | `cacheCovers(List<RowSection> sections)` |  |
@@ -14242,7 +14216,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `installCategoryDragReorder(JList<String> list, DefaultListModel<String> model)` | Enables drag-and-drop reordering on the Manage Categories list (#212): dragging a category and dropping it between two others sets the order in one gesture, committing through the same `CategoryActions#reorder(String, int)` path as the ↑/↓ buttons. |
 | `private void` | `installChangelogNavHover(JLabel label, Color restFg, Color restBg)` | Adds a hover highlight (brighten to white on a lighter row) that restores the given resting colours. |
 | `private void` | `installDragHandle(JLabel handle, int itemId)` | Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging updates the drop indicator and edge autoscroll, and releasing commits the move. |
-| `private void` | `installItemValue(JLabel label, long value, String prefix, Color tint)` | Installs a compact gp value on a label with no tooltip caption. |
 | `private void` | `installItemValue(JLabel label, long value, String prefix, String tooltipLabel, Color tint)` | Installs a prefixed compact gp value on a label via `#installShortValue`. |
 | `private static void` | `installNoData(JLabel label)` | Marks a price cell as having no data, for a window whose history series has not loaded (#333). |
 | `private MouseAdapter` | `installRowHover(JPanel card, TrackedItem item, JButton removeBtn, JLabel favStar, JLabel overlayBtn, JLabel compactBtn, JLabel dashboardBtn, Color removeColor, Color removeHidden)` | Wires the shared row hover behaviour onto a tracked-item card: clicking the row (other than the remove button, favorite star, overlay button, or compact button) opens the detail view, and entering/leaving the card tracks `#hoveredItemId` and reveals/hides the remove button, favorite star, and the (optional) overlay-select and per-item compact buttons. |
@@ -14806,10 +14779,6 @@ The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport w
 
 The plugin callbacks, held for the client-thread notification-edit seam (#373).
 
-#### onAcquisitionsEdited
-
-`private final Consumer<Integer> onAcquisitionsEdited`
-
 #### onAddItem
 
 `private final BiConsumer<Integer,TrackItemMode> onAddItem`
@@ -15183,12 +15152,6 @@ sit on their own right-justified row above the Tracked Items label.
 
 ### Method Detail
 
-#### acquisitionsEdited
-
-`public void acquisitionsEdited(int itemId)`
-
-{@inheritDoc} Delegates to the panel's acquisitions-edited callback when present.
-
 #### addFormRow
 
 `private void addFormRow(JPanel form, String label, JComponent field)`
@@ -15450,7 +15413,7 @@ Builds an 18px item-icon label backed by `#rowIconCache`, loading asynchronously
 
 #### buildRowView
 
-`private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)`
+`private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode)`
 
 Builds the reusable scaffolding for one tracked-item row (#275): the card, identity (icon/name/qty)
 and the hover buttons, plus an empty content slot filled by `#populateRow`. A later value change
@@ -15764,12 +15727,6 @@ Adds a hover highlight (brighten to white on a lighter row) that restores the gi
 
 Wires drag-to-reorder onto a row's drag handle: pressing starts the drag, dragging
 updates the drop indicator and edge autoscroll, and releasing commits the move.
-
-#### installItemValue
-
-`private void installItemValue(JLabel label, long value, String prefix, Color tint)`
-
-Installs a compact gp value on a label with no tooltip caption.
 
 #### installItemValue
 
@@ -16451,7 +16408,6 @@ star built once, plus the `#contentSlot` whose price/compact/loading content is 
 | `private final JLabel` | `favStar` |  |
 | `private final MouseAdapter` | `hoverListener` |  |
 | `private final JLabel` | `iconLabel` |  |
-| `private final int` | `itemId` |  |
 | `private final JLabel` | `nameLabel` |  |
 | `private final JLabel` | `qtyLabel` |  |
 
@@ -16459,7 +16415,7 @@ star built once, plus the `#contentSlot` whose price/compact/loading content is 
 
 | Constructor | Description |
 |---|---|
-| `RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)` |  |
+| `RowView(JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)` |  |
 
 ### Field Detail
 
@@ -16483,10 +16439,6 @@ star built once, plus the `#contentSlot` whose price/compact/loading content is 
 
 `private final JLabel iconLabel`
 
-#### itemId
-
-`private final int itemId`
-
 #### nameLabel
 
 `private final JLabel nameLabel`
@@ -16499,7 +16451,7 @@ star built once, plus the `#contentSlot` whose price/compact/loading content is 
 
 #### RowView
 
-`private RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)`
+`private RowView(JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel, JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)`
 
 ---
 
@@ -17049,7 +17001,6 @@ executor.
 | `private void` | `addTrackedItem(int itemId)` | Tracks an item by id with defaults (full tracking mode, no preset cost basis). |
 | `private void` | `addTrackedItem(int itemId, TrackItemMode mode)` | Tracks an item by id in the given mode, routing `TrackItemMode#VIEW` to a read-only preview instead. |
 | `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, List<NotificationRule> notifications, boolean notificationsInitialized, boolean costBasisInitialized, boolean syncOnAdd, boolean persistOnAdd, TrackItemMode mode)` | Canonical add: creates a `TrackedItem` (resolving its name/tradeable flag from the item composition), seeds its quantity, acquisitions, and notifications, registers it, and persists/refreshes. |
-| `private void` | `addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)` | Tracks an item with a preset quantity and acquisition history (e.g. |
 | `private void` | `addVariantsToCompare(int itemId)` | Adds every resolved variant of `itemId` — its potion dose line or cooking chain (#302) — to the compare set in natural order, up to `#COMPARE_CAP`, then opens/focuses the window. |
 | `private List<TrackedItem>` | `allLiveItems()` |  |
 | `private void` | `applyAutoCategorize(boolean includeCategorized)` | Applies auto-categorization on the client thread: classify each in-scope item, create categories, assign. |
@@ -17141,7 +17092,6 @@ executor.
 | `private void` | `migrateAutoAddSetting()` | One-time migration for #219: the old combined `autoAddItems` enum (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate `FallbackPricing`. |
 | `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
 | `private String` | `notificationText(TrackedItem item, NotificationRule rule)` | Builds the user-facing notification message, e.g. |
-| `void` | `onAcquisitionsEdited(int itemId)` | Callback after the user edits an item's acquisitions: re-derives its held quantity from the lots and persists. |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
 | `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and, when "Left-Click Take Tracked Loot" is on, moves tracked items' "Take" entries to the end of the menu array. |
@@ -17982,12 +17932,6 @@ tracked. Runs on the client thread.
                               callbacks have applied, stripping those fields
 - **Parameter** `mode` — tracking vs. view-only
 
-#### addTrackedItem
-
-`private void addTrackedItem(int itemId, int initialQuantity, List<AcquisitionRecord> records, boolean costBasisInitialized)`
-
-Tracks an item with a preset quantity and acquisition history (e.g. a restore), using default notifications.
-
 #### addVariantsToCompare
 
 `private void addVariantsToCompare(int itemId)`
@@ -18310,7 +18254,9 @@ the "What's New" indicator so late updaters still get their week.
 
 Applies an acquisition-log edit on the client thread, which owns the list, then persists,
 refreshes, and hands control back to the EDT. See `DetailViewHost#editAcquisitions` for
-why the editor may not touch the list directly (#315).
+why the editor may not touch the list directly (#315). The held quantity is re-derived from the
+lots minus suspended units (in-flight GE sells, trades, drops, deaths), which open lots also
+cover — otherwise an edit made mid-suspension would double-count them as held.
 
 #### editNotifications
 
@@ -18717,15 +18663,6 @@ Backs the drag-reorder of the compare columns. Client thread.
 `private String notificationText(TrackedItem item, NotificationRule rule)`
 
 Builds the user-facing notification message, e.g. `"Stockpile: Coal - High >= 200"`.
-
-#### onAcquisitionsEdited
-
-`void onAcquisitionsEdited(int itemId)`
-
-Callback after the user edits an item's acquisitions: re-derives its held quantity
-from the lots and persists. Open lots also cover suspended units (in-flight GE
-sells, trades, drops, deaths), which `quantity` must exclude — otherwise an
-edit made mid-suspension would double-count the suspended units as held.
 
 #### onActorDeath
 
@@ -19988,7 +19925,6 @@ and persist all of them instead of the five hand-cloned pipelines this replaces.
 |---|---|---|
 | `private final AcquisitionSource` | `closeSource` |  |
 | `private final Duration` | `expiry` |  |
-| `private final boolean` | `persisted` |  |
 | `private final AcquisitionSource` | `realizeSource` |  |
 | `private final StampMode` | `stampMode` |  |
 
@@ -19996,7 +19932,7 @@ and persist all of them instead of the five hand-cloned pipelines this replaces.
 
 | Constructor | Description |
 |---|---|
-| `SuspensionSource(StampMode stampMode, Duration expiry, AcquisitionSource closeSource, AcquisitionSource realizeSource, boolean persisted)` |  |
+| `SuspensionSource(StampMode stampMode, Duration expiry, AcquisitionSource closeSource, AcquisitionSource realizeSource)` |  |
 
 ### Method Summary
 
@@ -20004,7 +19940,6 @@ and persist all of them instead of the five hand-cloned pipelines this replaces.
 |---|---|---|
 | `AcquisitionSource` | `closeSource()` |  |
 | `Duration` | `expiry()` |  |
-| `boolean` | `persisted()` |  |
 | `AcquisitionSource` | `realizeSource()` |  |
 | `StampMode` | `stampMode()` |  |
 
@@ -20050,10 +19985,6 @@ Units placed into a player-trade offer; realize at the apportioned trade price a
 
 `private final Duration expiry`
 
-#### persisted
-
-`private final boolean persisted`
-
 #### realizeSource
 
 `private final AcquisitionSource realizeSource`
@@ -20066,7 +19997,7 @@ Units placed into a player-trade offer; realize at the apportioned trade price a
 
 #### SuspensionSource
 
-`SuspensionSource(StampMode stampMode, Duration expiry, AcquisitionSource closeSource, AcquisitionSource realizeSource, boolean persisted)`
+`SuspensionSource(StampMode stampMode, Duration expiry, AcquisitionSource closeSource, AcquisitionSource realizeSource)`
 
 ### Method Detail
 
@@ -20083,12 +20014,6 @@ Units placed into a player-trade offer; realize at the apportioned trade price a
 
 - **Returns:** how long an unrecovered suspension survives before the expiry sweep closes it, or
         `null` when it never expires
-
-#### persisted
-
-`boolean persisted()`
-
-- **Returns:** whether this source's suspension survives a relog and is written through `PersistedItem`.
 
 #### realizeSource
 
@@ -20651,7 +20576,7 @@ Per-source suspension state (#179): for each `SuspensionSource`, this item's uni
 currently held in that suspension and — for sources that expire — when the newest was taken.
 A unit here has left the held containers but is still owned, its lot kept open at basis until
 it resolves. All transient: sell/trade/ground suspensions are session-only, while death and
-pouch are re-seeded on login from `PersistedItem` (see `SuspensionSource#persisted()`),
+pouch are re-seeded on login from `PersistedItem`,
 so Gson never touches this map. Legacy records default to empty — the safe additive default.
 
 #### tradeable

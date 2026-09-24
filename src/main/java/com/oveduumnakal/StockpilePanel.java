@@ -181,7 +181,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	private final Runnable onOpenDashboard;
 
 	private final Runnable onOpenCompare;
-	private final Consumer<Integer> onAcquisitionsEdited;
 
 	/** The client-thread acquisition-edit seam the detail view commits through (#315). */
 	private final AcquisitionsTableModel.AcquisitionEditor onEditAcquisitions;
@@ -525,7 +524,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		this.onCompareVariants = actions::addVariantsToCompare;
 		this.onOpenDashboard = actions::openDashboard;
 		this.onOpenCompare = actions::openCompare;
-		this.onAcquisitionsEdited = actions::acquisitionsEdited;
 		this.onEditAcquisitions = actions::editAcquisitions;
 		this.onRequestDetailData = actions::requestDetailData;
 		this.onClearAcquisitions = actions::clearAcquisitions;
@@ -2644,7 +2642,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 				}
 				else
 				{
-					RowView rv = buildRowView(item, indicatorMode, s.items);
+					RowView rv = buildRowView(item, indicatorMode);
 					rowViews.put(item.getItemId(), rv);
 					trackedItemsPanel.add(rv.card);
 				}
@@ -3829,7 +3827,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	 */
 	private static final class RowView
 	{
-		private final int itemId;
 		private final JPanel card;
 		private final JLabel iconLabel;
 		private final JLabel nameLabel;
@@ -3838,10 +3835,9 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		private final JPanel contentSlot;
 		private final MouseAdapter hoverListener;
 
-		private RowView(int itemId, JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel,
+		private RowView(JPanel card, JLabel iconLabel, JLabel nameLabel, JLabel qtyLabel,
 				JLabel favStar, JPanel contentSlot, MouseAdapter hoverListener)
 		{
-			this.itemId = itemId;
 			this.card = card;
 			this.iconLabel = iconLabel;
 			this.nameLabel = nameLabel;
@@ -3858,7 +3854,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	 * refreshes the row in place against this scaffolding rather than reconstructing it. Returns the
 	 * {@link RowView} the caller caches by item id.
 	 */
-	private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode, List<TrackedItem> groupItems)
+	private RowView buildRowView(TrackedItem item, PriceIndicatorMode indicatorMode)
 	{
 		final boolean hovered = item.getItemId() == hoveredItemId;
 		final boolean showQty = config.showQuantityValue();
@@ -4012,8 +4008,7 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		MouseAdapter hoverListener = installRowHover(card, item, removeBtn, favStar, overlayBtn, compactBtn,
 				dashboardBtn, REMOVE_COLOR, STAR_HIDDEN);
 
-		RowView rv = new RowView(item.getItemId(), card, iconLabel, nameLabel, qtyLabel, favStar,
-				contentSlot, hoverListener);
+		RowView rv = new RowView(card, iconLabel, nameLabel, qtyLabel, favStar, contentSlot, hoverListener);
 		populateRow(rv, item, indicatorMode);
 		return rv;
 	}
@@ -4950,12 +4945,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 		}
 	}
 
-	/** Installs a compact gp value on a label with no tooltip caption. */
-	private void installItemValue(JLabel label, long value, String prefix, Color tint)
-	{
-		installItemValue(label, value, prefix, null, tint);
-	}
-
 	/**
 	 * Marks a price cell as having no data, for a window whose history series has not loaded (#333).
 	 * Clears any hover tint and tooltip so nothing suggests the dash is a real figure.
@@ -5288,14 +5277,6 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 	{
 		if (onRequestDetailData != null)
 			onRequestDetailData.accept(itemId);
-	}
-
-	/** {@inheritDoc} Delegates to the panel's acquisitions-edited callback when present. */
-	@Override
-	public void acquisitionsEdited(int itemId)
-	{
-		if (onAcquisitionsEdited != null)
-			onAcquisitionsEdited.accept(itemId);
 	}
 
 	/** {@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present. */
