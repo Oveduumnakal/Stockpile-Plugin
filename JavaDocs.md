@@ -13428,9 +13428,9 @@ How often to refresh GE prices from the API. Minimum 30 seconds.
 `default boolean prioritizeTrackedLoot()`
 
 Move "Take" for tracked ground items to the top of the right-click menu, making it the left-click
-option. Off by default: it changes what a left-click does - over an NPC standing on tracked loot,
-left-click takes the loot instead of attacking - so it is opt-in rather than riding on the
-highlight setting as it once did (#378).
+option. On by default, matching the old behaviour; turn it off so left-click attacks an NPC standing
+on tracked loot instead of taking the loot. It no longer rides on the highlight setting as it once
+did (#378).
 
 #### promptCategoryOnTrack
 
