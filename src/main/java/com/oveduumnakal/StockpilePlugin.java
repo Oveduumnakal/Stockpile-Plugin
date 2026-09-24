@@ -1675,10 +1675,18 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		detailWindows.put(0, window);
 	}
 
-	/** Drops a closed pop-out window from both the EDT registry and its client-thread instance map. */
-	private void onDetailWindowClosed(int itemId)
+	/**
+	 * Drops a closed pop-out window from both the EDT registry and its client-thread instance map.
+	 *
+	 * <p>Removed by <em>value</em>, not by the window's current item id. The close listener reads
+	 * {@code itemId} at close time, so a window closed mid-switch used to report the id it no longer
+	 * held; the registry entry under the new id then survived as a disposed window and every later
+	 * {@code popOutDetail} for that item silently focused a dead frame (#332).
+	 */
+	private void onDetailWindowClosed(DetailWindow window)
 	{
-		detailWindows.remove(itemId);
+		int itemId = window.itemId();
+		detailWindows.values().remove(window);
 		clientThread.invokeLater(() -> windowItems.remove(itemId));
 	}
 
@@ -1796,6 +1804,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * new item (the live tracked item, or a freshly built read-only preview when untracked), transitions
 	 * the window in place, and kicks off a data fetch. When another window already shows the target item,
 	 * that window is focused instead and this one is left unchanged.
+	 *
+	 * <p>The registry re-key happens on the same EDT hop as {@link DetailWindow#rebind}, not before the
+	 * two thread hops it takes to get there. It used to run first, while {@code window.itemId()} still
+	 * returned the old id, so closing the window inside that gap made the close listener report the old
+	 * id - which was no longer a key - and the disposed window survived in the registry under the new
+	 * one. Every later {@code popOutDetail} for that item then focused a dead frame with no way back
+	 * short of restarting the plugin (#332). The hop also re-checks the window is still registered, so
+	 * a close that lands first is not undone by the pending re-key.
 	 */
 	private void switchWindowItem(DetailWindow window, int newItemId)
 	{
@@ -1809,9 +1825,6 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			existing.focus();
 			return;
 		}
-
-		detailWindows.remove(oldItemId);
-		detailWindows.put(newItemId, window);
 
 		clientThread.invokeLater(() ->
 		{
@@ -1832,7 +1845,15 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 			}
 
 			windowItems.put(newItemId, item);
-			SwingUtilities.invokeLater(() -> window.rebind(newItemId, item, preview));
+			SwingUtilities.invokeLater(() ->
+			{
+				if (!detailWindows.containsValue(window))
+					return;
+
+				detailWindows.values().remove(window);
+				detailWindows.put(newItemId, window);
+				window.rebind(newItemId, item, preview);
+			});
 			requestDetailData(newItemId);
 			if (preview)
 				refreshGePrices();
