@@ -12,9 +12,11 @@ import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.FontManager;
@@ -58,8 +60,28 @@ public class StockpileScreenOverlay extends Overlay
 	private final StockpileConfig config;
 	private final ItemManager itemManager;
 
-	/** Cached 18px scaled icons keyed by item id + rendered stack size, populated asynchronously on first use. */
-	private final Map<Long, BufferedImage> iconCache = new HashMap<>();
+	/** Ceiling on the icon cache, so a long session cannot grow it without bound. */
+	private static final int ICON_CACHE_MAX = 256;
+
+	/**
+	 * Cached 18px scaled icons keyed by item id alone, populated asynchronously on first use.
+	 *
+	 * <p>The key used to fold in {@link TrackedItem#iconStackSize()}, which is the quantity for a
+	 * stackable item - so coins or runes minted a fresh 18x18 ARGB entry for every distinct amount
+	 * ever held, none of them ever evicted (#323). The count is drawn as text beside the name
+	 * anyway, so the sprite does not need to carry it.
+	 */
+	private final Map<Integer, BufferedImage> iconCache = new LinkedHashMap<Integer, BufferedImage>(32, 0.75f, true)
+	{
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<Integer, BufferedImage> eldest)
+		{
+			return size() > ICON_CACHE_MAX;
+		}
+	};
+
+	/** Item ids with an image request already in flight, so a miss issues one load rather than one per frame. */
+	private final Set<Integer> iconRequests = new HashSet<>();
 
 	/** One coloured text segment within a rendered line. */
 	private static final class Seg
@@ -258,17 +280,31 @@ public class StockpileScreenOverlay extends Overlay
 		return max;
 	}
 
-	/** @return an 18px cached quantity-aware icon for the item, requesting an async load on the first miss. */
+	/**
+	 * @return an 18px cached icon for the item, requesting an async load on the first miss.
+	 *
+	 * <p>This runs once per frame from {@code render()}. While the key was quantity-aware, every
+	 * frame at an unseen quantity issued another {@code ItemManager} request, registered another
+	 * {@code onLoaded} callback, and returned {@code null} - so the icon visibly dropped out each
+	 * time the amount changed, and both this cache and RuneLite's shared image cache grew (#323).
+	 * A request in flight is now recorded, so a miss costs one load rather than one per frame.
+	 */
 	private BufferedImage iconFor(TrackedItem item)
 	{
-		long key = ((long) item.getItemId() << 32) | (item.iconStackSize() & 0xffffffffL);
-		BufferedImage cached = iconCache.get(key);
+		int itemId = item.getItemId();
+		BufferedImage cached = iconCache.get(itemId);
 		if (cached != null)
 			return cached;
 
-		AsyncBufferedImage image = itemManager.getImage(item.getItemId(), item.iconStackSize(), item.isStackable());
-		image.onLoaded(() -> iconCache.put(key,
-				toBuffered(image.getScaledInstance(ICON, ICON, Image.SCALE_SMOOTH))));
+		if (!iconRequests.add(itemId))
+			return null;
+
+		AsyncBufferedImage image = itemManager.getImage(itemId);
+		image.onLoaded(() ->
+		{
+			iconCache.put(itemId, toBuffered(image.getScaledInstance(ICON, ICON, Image.SCALE_SMOOTH)));
+			iconRequests.remove(itemId);
+		});
 
 		return null;
 	}

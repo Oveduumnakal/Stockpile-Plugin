@@ -1155,14 +1155,35 @@ public class StockpilePanel extends PluginPanel implements DetailViewHost
 
 	private static final Dimension DELTA_LABEL_SIZE = new Dimension(12, 12);
 
+	/** The stack sizes at which the coin sprite changes; every value in between shares a sprite. */
+	private static final int[] COIN_SPRITE_STEPS = {1, 2, 3, 4, 5, 25, 100, 250, 1000, 10000};
+
+	/** @return the largest {@link #COIN_SPRITE_STEPS} entry at or below {@code value}, so equal sprites share a key. */
+	static int coinSpriteQuantity(long value)
+	{
+		int step = COIN_SPRITE_STEPS[0];
+		for (int candidate : COIN_SPRITE_STEPS)
+		{
+			if (value >= candidate)
+				step = candidate;
+		}
+
+		return step;
+	}
+
 	/**
 	 * Updates the totals coin icon to the stack sprite for the given gp value, loading it
-	 * asynchronously and caching per quantity. A stale async load is discarded if the value
-	 * has moved on by the time the image arrives.
+	 * asynchronously and caching per sprite. A stale async load is discarded if the value has moved
+	 * on by the time the image arrives.
+	 *
+	 * <p>The cache used to be keyed by the raw total, which moves on essentially every price refresh -
+	 * a new {@code ImageIcon} roughly once a minute, forever (#323). The coin sprite only changes at
+	 * the {@link #COIN_SPRITE_STEPS} thresholds, which is all {@code ItemManager} distinguishes here,
+	 * so bucketing to those caps the cache at ten entries.
 	 */
 	private void updateCoinsIcon(long value)
 	{
-		int quantity = (int) Math.max(1, Math.min(value, Integer.MAX_VALUE));
+		int quantity = coinSpriteQuantity(value);
 		if (quantity == lastCoinsIconValue)
 			return;
 
