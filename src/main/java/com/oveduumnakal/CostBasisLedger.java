@@ -1021,11 +1021,14 @@ class CostBasisLedger
 	}
 
 	/**
-	 * Adds {@code qty} units to an item's held lots at {@code boughtAt} gp.
+	 * Adds {@code qty} units to an item's held lots at {@code boughtAt} gp, merging into an existing
+	 * open lot at the same price and source, or appending a new lot.
 	 *
-	 * <p>First it reverses any equal-and-opposite "wash" closes (a prior sell at
-	 * the same price, which a re-acquire should cancel), then merges into an
-	 * existing open lot at the same price, or appends a new lot.
+	 * <p>This used to first delete any closed lot bought and sold at {@code boughtAt} - a "wash" undo
+	 * meant to cancel a sell that a re-buy reversed. Nothing limited it to a recent sell, so buying at a
+	 * price you once broke even at erased that historical sale from the log (#371). Container deltas are
+	 * already netted per tick before they reach the ledger, so a genuine same-tick reversal never
+	 * arrives here as a separate close and re-open.
 	 */
 	void addOpenAcquisition(TrackedItem tracked, int qty, long boughtAt, AcquisitionSource source)
 	{
@@ -1033,24 +1036,6 @@ class CostBasisLedger
 			return;
 
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
-
-		int undoBudget = qty;
-		Iterator<AcquisitionRecord> it = records.iterator();
-		while (it.hasNext() && undoBudget > 0)
-		{
-			AcquisitionRecord r = it.next();
-			Long sold = r.getSoldAt();
-			if (sold != null && r.getBoughtAt() == boughtAt && sold == boughtAt)
-			{
-				int undo = Math.min(r.getQuantity(), undoBudget);
-				r.setQuantity(r.getQuantity() - undo);
-				if (r.getQuantity() == 0)
-					it.remove();
-
-				undoBudget -= undo;
-			}
-		}
-
 		for (AcquisitionRecord r : records)
 		{
 			if (r.getSoldAt() == null && r.getBoughtAt() == boughtAt && r.sourceOrUnknown() == source)
@@ -1092,32 +1077,19 @@ class CostBasisLedger
 	 * provenance — {@link AcquisitionSource#UNKNOWN} marks the price as an
 	 * estimate rather than an observed sale.
 	 *
-	 * <p>It first cancels any just-added open lots bought at the same price (a
-	 * buy immediately followed by a sell nets out), then realizes the remaining
-	 * amount across the oldest open lots, splitting a lot when only part of it is
-	 * sold and merging into matching closed lots where possible.
+	 * <p>Realizes the amount across the oldest open lots, splitting a lot when only part of it is sold
+	 * and merging into matching closed lots where possible.
+	 *
+	 * <p>It used to first delete any open lot bought at {@code soldAtPrice}, as if a buy and a sell at
+	 * the same price simply netted out. That lot could be months old, so selling at a price you had once
+	 * bought at skipped FIFO, left an older lot open at the wrong basis, and dropped the sale from the log
+	 * entirely; every 0-gp loss close (eating, dying, a destroyed product) likewise deleted 0-cost gathered
+	 * lots instead of closing them (#371).
 	 */
 	void closeFifo(TrackedItem tracked, int amount, long soldAtPrice, AcquisitionSource sellSource)
 	{
 		List<AcquisitionRecord> records = tracked.getAcquisitions();
-		int remaining = amount;
-
-		Iterator<AcquisitionRecord> cancelIt = records.iterator();
-		while (cancelIt.hasNext() && remaining > 0)
-		{
-			AcquisitionRecord r = cancelIt.next();
-			if (r.getSoldAt() == null && r.getBoughtAt() == soldAtPrice)
-			{
-				int cancel = Math.min(r.getQuantity(), remaining);
-				r.setQuantity(r.getQuantity() - cancel);
-				if (r.getQuantity() == 0)
-					cancelIt.remove();
-
-				remaining -= cancel;
-			}
-		}
-
-		remaining = realizeOpenLots(records, remaining, soldAtPrice, sellSource, sellSource);
+		int remaining = realizeOpenLots(records, amount, soldAtPrice, sellSource, sellSource);
 		realizeOpenLots(records, remaining, soldAtPrice, sellSource, null);
 	}
 

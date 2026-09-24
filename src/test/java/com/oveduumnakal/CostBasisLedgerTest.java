@@ -240,18 +240,49 @@ public class CostBasisLedgerTest
 	}
 
 	@Test
-	public void reAcquireReversesAnEqualOppositeCloseAndReopensThePosition()
+	public void reAcquireAtAPastBreakEvenPriceKeepsThatSaleInTheLog()
 	{
-		AcquisitionRecord wash = new AcquisitionRecord(3, 100, 100L);
-		TrackedItem t = item(0, 100, wash);
+		AcquisitionRecord pastSale = new AcquisitionRecord(3, 100, 100L);
+		TrackedItem t = item(0, 100, pastSale);
 
 		ledger.addOpenAcquisition(t, 3, 100, AcquisitionSource.GE_TRADE);
 
-		AcquisitionRecord lot = firstOpen(t);
-		assertEquals("the closed wash-sale is undone", 0, closedCount(t));
-		assertEquals("and the 3 units are held open again at their basis", 1, openCount(t));
-		assertEquals(3, lot.getQuantity());
-		assertEquals(100, lot.getBoughtAt());
+		assertEquals("the historical break-even sale is not erased (#371)", 1, closedCount(t));
+		assertEquals(3, firstClosed(t).getQuantity());
+		assertEquals("the re-buy opens its own lot", 1, openCount(t));
+		assertEquals(3, firstOpen(t).getQuantity());
+	}
+
+	@Test
+	public void sellingAtANewerLotsPriceClosesTheOldestLotFirst()
+	{
+		AcquisitionRecord older = new AcquisitionRecord(5, 150, null, AcquisitionSource.GE_TRADE);
+		AcquisitionRecord newer = new AcquisitionRecord(5, 100, null, AcquisitionSource.GE_TRADE);
+		TrackedItem t = item(10, 100, older, newer);
+
+		ledger.closeFifo(t, 5, 100, AcquisitionSource.GE_TRADE);
+
+		AcquisitionRecord closed = firstClosed(t);
+		assertEquals("the sale is recorded, not deleted (#371)", 1, closedCount(t));
+		assertEquals("FIFO closes the older lot", 150, closed.getBoughtAt());
+		assertEquals(Long.valueOf(100), closed.getSoldAt());
+		assertEquals(-250, t.getRealizedProfit());
+		assertEquals("the newer lot stays held at its basis", 500, t.getCostBasis());
+	}
+
+	@Test
+	public void aZeroGpLossClosesTheOldestLotRatherThanDeletingAFreeOne()
+	{
+		AcquisitionRecord bought = new AcquisitionRecord(2, 200, null, AcquisitionSource.GE_TRADE);
+		AcquisitionRecord caught = new AcquisitionRecord(2, 0, null, AcquisitionSource.GATHER);
+		TrackedItem t = item(4, 200, bought, caught);
+
+		ledger.closeFifo(t, 1, 0, AcquisitionSource.CONSUMED);
+
+		assertEquals("eating leaves a closed row (#371)", 1, closedCount(t));
+		assertEquals("the oldest lot is the one consumed", 200, firstClosed(t).getBoughtAt());
+		assertEquals(-200, t.getRealizedProfit());
+		assertEquals("both free lots survive", 2, caught.getQuantity());
 	}
 
 	@Test
