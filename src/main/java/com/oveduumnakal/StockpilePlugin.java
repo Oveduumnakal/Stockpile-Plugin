@@ -1271,7 +1271,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 				return;
 
 			tracked.setFavorite(favorite);
-			tracked.setCategory(category);
+			tracked.setCategory(CategoryState.sanitizeName(category));
 			tracked.setOnOverlay(onOverlay);
 			tracked.setCompact(compact);
 		});
@@ -1333,8 +1333,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 
 		if (data.categories != null)
 			data.categories.stream()
-					.filter(c -> c != null && c.getName() != null && !c.getName().trim().isEmpty())
-					.forEach(categories::add);
+					.filter(c -> c != null && CategoryState.sanitizeName(c.getName()) != null)
+					.forEach(c -> categories.add(new CategoryState(CategoryState.sanitizeName(c.getName()),
+							c.isCollapsed())));
 
 		favoritesCollapsed = data.favoritesCollapsed;
 		uncategorizedCollapsed = data.uncategorizedCollapsed;
@@ -2499,6 +2500,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	 * untouched. Decode, count, and merge all run on the client thread (the counts
 	 * read {@code trackedItems}); the outcome summary is handed to {@code onResult}
 	 * on the EDT.
+	 *
+	 * <p>The code is someone else's, so its contents are normalized first: ids canonicalized,
+	 * de-duplicated and capped, category names sanitized (#375).
 	 */
 	void importTrackedList(String token, Consumer<String> onResult)
 	{
@@ -2516,7 +2520,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		if (snapshot == null || snapshot.getItems() == null)
 			return "Couldn't read that code — make sure you pasted all of it.";
 
-		List<PortfolioShareCodec.Entry> incoming = new ArrayList<>(snapshot.getItems());
+		List<PortfolioShareCodec.Entry> incoming =
+				PortfolioShareCodec.normalize(snapshot.getItems(), itemManager::canonicalize);
 		List<CategoryState> incomingCategories = snapshot.getCategories() != null
 				? new ArrayList<>(snapshot.getCategories())
 				: new ArrayList<>();
@@ -2536,8 +2541,9 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	private void mergeImportedList(List<PortfolioShareCodec.Entry> entries, List<CategoryState> importedCategories)
 	{
 		importedCategories.stream()
-				.filter(c -> c != null && c.getName() != null && !c.getName().trim().isEmpty())
-				.forEach(c -> ensureCategory(c.getName().trim(), c.isCollapsed()));
+				.filter(c -> c != null && CategoryState.sanitizeName(c.getName()) != null)
+				.limit(PortfolioShareCodec.MAX_IMPORT_CATEGORIES)
+				.forEach(c -> ensureCategory(CategoryState.sanitizeName(c.getName()), c.isCollapsed()));
 
 		boolean changed = false;
 		for (PortfolioShareCodec.Entry entry : entries)
@@ -2554,11 +2560,10 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			resolveTradeable(tracked);
 			tracked.setMode(entry.getMode() == null ? TrackItemMode.TRACK : entry.getMode());
 			tracked.setFavorite(entry.isFavorite());
-			if (entry.getCategory() != null && !entry.getCategory().trim().isEmpty())
+			if (entry.getCategory() != null)
 			{
-				String category = entry.getCategory().trim();
-				ensureCategory(category, false);
-				tracked.setCategory(category);
+				ensureCategory(entry.getCategory(), false);
+				tracked.setCategory(entry.getCategory());
 			}
 
 			trackedItems.put(entry.getId(), tracked);
@@ -2757,7 +2762,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 			if (tracked == null)
 				return;
 
-			tracked.setCategory(category == null || category.trim().isEmpty() ? null : category.trim());
+			tracked.setCategory(CategoryState.sanitizeName(category));
 			persistTrackedItems();
 			refreshPanel();
 		});
@@ -2857,8 +2862,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	{
 		clientThread.invokeLater(() ->
 		{
-			String trimmed = name == null ? "" : name.trim();
-			if (trimmed.isEmpty() || categories.stream().anyMatch(c -> c.getName().equalsIgnoreCase(trimmed)))
+			String trimmed = CategoryState.sanitizeName(name);
+			if (trimmed == null || categories.stream().anyMatch(c -> c.getName().equalsIgnoreCase(trimmed)))
 				return;
 
 			categories.add(new CategoryState(trimmed, false));
@@ -2872,8 +2877,8 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	{
 		clientThread.invokeLater(() ->
 		{
-			String trimmed = newName == null ? "" : newName.trim();
-			if (trimmed.isEmpty())
+			String trimmed = CategoryState.sanitizeName(newName);
+			if (trimmed == null)
 				return;
 
 			CategoryState target = null;

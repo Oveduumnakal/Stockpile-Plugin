@@ -158,4 +158,33 @@ public class PortfolioShareCodecTest
 		List<PortfolioShareCodec.Entry> expected = sample().getItems();
 		assertEquals(expected.size(), back.getItems().size());
 	}
+
+	@Test
+	public void importIsCanonicalizedDeduplicatedAndSanitized()
+	{
+		List<PortfolioShareCodec.Entry> raw = Arrays.asList(
+				new PortfolioShareCodec.Entry(1, TrackItemMode.TRACK, "<html><b>Ores", false),
+				null,
+				new PortfolioShareCodec.Entry(-5, TrackItemMode.TRACK, null, false),
+				new PortfolioShareCodec.Entry(2, TrackItemMode.TRACK, null, true),
+				new PortfolioShareCodec.Entry(1, TrackItemMode.TRACK, null, false));
+
+		List<PortfolioShareCodec.Entry> clean = PortfolioShareCodec.normalize(raw, id -> id == 2 ? 1 : id);
+
+		assertEquals("noted id 2 canonicalizes onto 1, so only one entry survives (#375)", 1, clean.size());
+		assertEquals(1, clean.get(0).getId());
+		assertEquals("htmlbOres", clean.get(0).getCategory());
+	}
+
+	@Test
+	public void importIsCappedAtTheItemLimit()
+	{
+		List<PortfolioShareCodec.Entry> raw = new ArrayList<>();
+		for (int id = 1; id <= PortfolioShareCodec.MAX_IMPORT_ITEMS + 250; id++)
+			raw.add(new PortfolioShareCodec.Entry(id, TrackItemMode.TRACK, null, false));
+
+		List<PortfolioShareCodec.Entry> clean = PortfolioShareCodec.normalize(raw, id -> id);
+
+		assertEquals(PortfolioShareCodec.MAX_IMPORT_ITEMS, clean.size());
+	}
 }
