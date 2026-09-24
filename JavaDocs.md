@@ -55,6 +55,7 @@
 - [com.oveduumnakal.GeOfferTracker.Type](#comoveduumnakalgeoffertrackertype)
 - [com.oveduumnakal.GlowSpeed](#comoveduumnakalglowspeed)
 - [com.oveduumnakal.GpFormat](#comoveduumnakalgpformat)
+- [com.oveduumnakal.GroundDetector](#comoveduumnakalgrounddetector)
 - [com.oveduumnakal.HighlightMode](#comoveduumnakalhighlightmode)
 - [com.oveduumnakal.HoverTintListener](#comoveduumnakalhovertintlistener)
 - [com.oveduumnakal.IssueField](#comoveduumnakalissuefield)
@@ -131,6 +132,7 @@
 - [com.oveduumnakal.TrackedItem.SuspensionState](#comoveduumnakaltrackeditemsuspensionstate)
 - [com.oveduumnakal.TradeApportioner](#comoveduumnakaltradeapportioner)
 - [com.oveduumnakal.TradeApportioner.Leg](#comoveduumnakaltradeapportionerleg)
+- [com.oveduumnakal.TradeDetector](#comoveduumnakaltradedetector)
 - [com.oveduumnakal.ValueFormat](#comoveduumnakalvalueformat)
 - [com.oveduumnakal.VariantFamily](#comoveduumnakalvariantfamily)
 - [com.oveduumnakal.WikiRealtimePriceClient](#comoveduumnakalwikirealtimepriceclient)
@@ -3623,6 +3625,7 @@ already queued or claimed, which is what gives the documented precedence
 | `void` | `correlateReward(Map<Integer,Integer> deltas)` | Claims this tick's tracked inventory gains as a free `AcquisitionSource#REWARD` at 0 when a reward-loot signal fired on the same tick (`DetectorHost#rewardContainerTick()`) — a reward/loot container change (`REWARD_CONTAINERS`), a Huntsman's loot-sack open, or a "you found some loot" chat line — i.e. |
 | `void` | `correlateThieving(Map<Integer,Integer> deltas)` | Attributes this tick's unclaimed inventory gains to `AcquisitionSource#THIEVING` at 0 when a Thieving XP drop marks them as stolen at no cost (#217) — pickpocket loot, stall produce, chest hauls. |
 | `private void` | `pairProcessingRecipe(List<int[]> inputs, int outputId, int outputQty, boolean trackedOutput)` | Closes a recipe's consumed inputs under `AcquisitionSource#PROCESSING` at their FIFO open-lot cost and queues the summed basis in `pendingProcessingOutput` so the matching gain opens the produced lot carrying it. |
+| `void` | `registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)` | Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved: the coins paid or received, divided across the quantity, price the item's `AcquisitionSource#SHOP` claim. |
 
 ### Field Detail
 
@@ -3787,6 +3790,17 @@ gain opens the produced lot carrying it. Untracked inputs contribute their fallb
 When the output is untracked there is nothing to carry the basis onto, so the inputs close at
 0 and no output is queued. Shared by the XP-gated `#correlateProcessing(Map)` path and the
 XP-less combine detector `#correlateCombine(Map)` (#231).
+
+#### registerShopClaims
+
+`void registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)`
+
+Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved:
+the coins paid or received, divided across the quantity, price the item's
+`AcquisitionSource#SHOP` claim. A buy must pay coins; a sell must not spend them, and a worthless
+sell the shop pays nothing for is still a shop sale at 0. Anything murkier — multi-item changes,
+specialty-currency shops (tokkul, marks) that move a second item rather than coins — stays unclaimed
+and takes the unknown-source path. The caller runs it only while a shop is open.
 
 ---
 
@@ -5802,14 +5816,17 @@ relevant signal last fired on — so the detectors themselves are pure and testa
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `int` | `canonicalize(int itemId)` |  |
 | `int` | `currentTick()` |  |
 | `int` | `gatherXpTick()` |  |
+| `long` | `guidePrice(int itemId)` |  |
 | `boolean` | `isAmmo(int itemId)` |  |
 | `boolean` | `isDestroyedProduct(int itemId)` |  |
 | `boolean` | `isSpellcastRune(int itemId)` |  |
 | `boolean` | `isTracked(int itemId)` |  |
 | `String` | `itemName(int itemId)` |  |
 | `int` | `magicXpTick()` |  |
+| `WorldPoint` | `playerLocation()` |  |
 | `int` | `processingXpTick()` |  |
 | `int` | `rewardContainerTick()` |  |
 | `boolean` | `sourcePricing()` |  |
@@ -5818,6 +5835,12 @@ relevant signal last fired on — so the detectors themselves are pure and testa
 | `long` | `untrackedInputValue(int itemId)` |  |
 
 ### Method Detail
+
+#### canonicalize
+
+`int canonicalize(int itemId)`
+
+- **Returns:** the canonical id `itemId` is counted under (noted forms map to the unnoted item).
 
 #### currentTick
 
@@ -5830,6 +5853,12 @@ relevant signal last fired on — so the detectors themselves are pure and testa
 `int gatherXpTick()`
 
 - **Returns:** the tick a gathering skill last granted XP.
+
+#### guidePrice
+
+`long guidePrice(int itemId)`
+
+- **Returns:** `itemId`'s guide price, the trade-apportionment weight for an item with no tracked price.
 
 #### isAmmo
 
@@ -5867,6 +5896,12 @@ relevant signal last fired on — so the detectors themselves are pure and testa
 `int magicXpTick()`
 
 - **Returns:** the tick Magic last granted XP, marking a cast rather than a recipe.
+
+#### playerLocation
+
+`WorldPoint playerLocation()`
+
+- **Returns:** the local player's tile, or `null` when there is no local player.
 
 #### processingXpTick
 
@@ -7499,6 +7534,169 @@ convention as `#signedShort`.
 (`+1.2M`, `-350K`, `0`). Negatives already carry their sign
 from `#shortValue`; zero is unsigned. This is the single sign convention
 shared by the session-stats and est-profit labels.
+
+---
+
+## com.oveduumnakal.GroundDetector
+
+_class_
+
+`class GroundDetector`
+
+The ground-item source detector (#65): pairs a tick's ground spawns, despawns and stack changes with
+that tick's inventory deltas to tell the player's own drops (suspended, not sold), re-pickups of them
+(un-suspended), drops that vanished (closed as lost at 0) and loot picked up off the floor (claimed as
+`AcquisitionSource#GROUND` at 0).
+
+<p>The last piece of the #334 detector extraction: it lived in `StockpilePlugin` and needed a live
+client to reach, so it had no direct coverage. Everything the client provides now comes through
+`DetectorHost`; the ground events themselves are plain RuneLite value objects.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `private final DetectorHost` | `host` |  |
+| `private final CostBasisLedger` | `ledger` |  |
+| `private final Map<TileItem,Integer>` | `myDrops` | Ground items this player dropped: the `TileItem` → how many of its units are ours. |
+| `private final List<ItemDespawned>` | `tickDespawns` |  |
+| `private final List<ItemQuantityChanged>` | `tickQuantityChanges` |  |
+| `private final List<ItemSpawned>` | `tickSpawns` | This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas. |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `GroundDetector(DetectorHost host, CostBasisLedger ledger)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `clearTick()` | Drops this tick's buffered ground events (a scene load, or teardown). |
+| `boolean` | `correlate(Map<Integer,Integer> pendingDeltas)` | Correlates this tick's ground-item activity with the pending inventory deltas: a spawn (or stack increase) on the player's tile matching a pending removal is our drop — its units queue for ground suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. |
+| `void` | `forgetDrops()` | Forgets which piles are ours (their suspensions were closed or the scene was reloaded). |
+| `private void` | `gained(TileItem item, Tile tile, int gained, WorldPoint myLocation, Map<Integer,Integer> pendingDeltas)` | Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. |
+| `private boolean` | `isRelevant(TileItem item)` |  |
+| `void` | `onDespawn(ItemDespawned event)` | Buffers a despawn of one of our drops or of a tracked item, for #65's pickup/lost-drop correlation. |
+| `void` | `onQuantityChanged(ItemQuantityChanged event)` | Buffers a ground-stack quantity change so drops onto an existing stack correlate like spawns. |
+| `void` | `onSpawn(ItemSpawned event)` | Buffers a spawn of a tracked item for this tick's correlation. |
+| `int` | `ourUnits(TileItem item)` |  |
+| `private boolean` | `taken(TileItem item, int taken, Map<Integer,Integer> pendingDeltas)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
+
+### Field Detail
+
+#### host
+
+`private final DetectorHost host`
+
+#### ledger
+
+`private final CostBasisLedger ledger`
+
+#### myDrops
+
+`private final Map<TileItem,Integer> myDrops`
+
+Ground items this player dropped: the `TileItem` → how many of its units are ours.
+
+#### tickDespawns
+
+`private final List<ItemDespawned> tickDespawns`
+
+#### tickQuantityChanges
+
+`private final List<ItemQuantityChanged> tickQuantityChanges`
+
+#### tickSpawns
+
+`private final List<ItemSpawned> tickSpawns`
+
+This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas.
+
+### Constructor Detail
+
+#### GroundDetector
+
+`GroundDetector(DetectorHost host, CostBasisLedger ledger)`
+
+### Method Detail
+
+#### clearTick
+
+`void clearTick()`
+
+Drops this tick's buffered ground events (a scene load, or teardown).
+
+#### correlate
+
+`boolean correlate(Map<Integer,Integer> pendingDeltas)`
+
+Correlates this tick's ground-item activity with the pending inventory deltas: a spawn (or stack
+increase) on the player's tile matching a pending removal is our drop — its units queue for ground
+suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching
+pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot
+pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. Runs before the quantity sync
+consumes the deltas, and empties this tick's buffers.
+
+- **Parameter** `pendingDeltas` — this tick's net inventory deltas by canonical id; read, never modified
+- **Returns:** whether any lost drop was closed, so the caller persists and refreshes once
+
+#### forgetDrops
+
+`void forgetDrops()`
+
+Forgets which piles are ours (their suspensions were closed or the scene was reloaded).
+
+#### gained
+
+`private void gained(TileItem item, Tile tile, int gained, WorldPoint myLocation, Map<Integer,Integer> pendingDeltas)`
+
+Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. Gated by
+the Source-Based Pricing toggle — when off, no new ground suspensions are taken, so a drop closes
+classically at the average price; drops suspended while the toggle was on still resolve through the
+un-suspend/lost paths.
+
+#### isRelevant
+
+`private boolean isRelevant(TileItem item)`
+
+- **Returns:** whether a pile is one we dropped or holds a tracked item.
+
+#### onDespawn
+
+`void onDespawn(ItemDespawned event)`
+
+Buffers a despawn of one of our drops or of a tracked item, for #65's pickup/lost-drop correlation.
+
+#### onQuantityChanged
+
+`void onQuantityChanged(ItemQuantityChanged event)`
+
+Buffers a ground-stack quantity change so drops onto an existing stack correlate like spawns.
+
+#### onSpawn
+
+`void onSpawn(ItemSpawned event)`
+
+Buffers a spawn of a tracked item for this tick's correlation.
+
+#### ourUnits
+
+`int ourUnits(TileItem item)`
+
+- **Returns:** how many units of the pile are known to be this player's drop (0 when it isn't ours).
+
+#### taken
+
+`private boolean taken(TileItem item, int taken, Map<Integer,Integer> pendingDeltas)`
+
+Handles a ground pile losing units: a remembered drop with a matching pending addition is a
+re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units
+close as lost at 0. An unfamiliar pile matching a pending addition is a loot pickup, claimed as
+`GROUND` at 0.
+
+- **Returns:** whether a lost drop was closed
 
 ---
 
@@ -16944,7 +17142,6 @@ executor.
 | `private static final String` | `LOOT_SACK_TARGET` |  |
 | `private static final int` | `NATURE_RUNE_ID` |  |
 | `static final int` | `OVERLAY_MAX` | Maximum number of items shown in the on-screen overlay (fixed for now). |
-| `private static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
 | `private static final Duration` | `PORTFOLIO_SAVE_INTERVAL` | How often at most the portfolio history is rewritten to config. |
 | `private static final String` | `POTION_EMPTY_OPTION` | Menu option that discards a potion's liquid, leaving an empty vial — booked as a 0-gp drop (#232). |
 | `private static final String` | `POUCH_DEPOSIT_PREFIX` | Chat lines emitted when a hunting pouch is emptied to the bank — the per-pouch "Empty" deposit (SPAM) and the bank's "Empty containers" button (GAMEMESSAGE). |
@@ -16988,6 +17185,7 @@ executor.
 | `private int` | `gatherXpTick` | The tick of the most recent gathering-skill XP gain, marking a gain as a free gather (#213). |
 | `private GeIntegration` | `geIntegration` | The Grand Exchange offer-screen integration, extracted behind `GeIntegrationHost` (#334). |
 | `private int` | `geLoginTick` |  |
+| `private GroundDetector` | `groundDetector` | The ground drop/pickup detector (#65), extracted behind `DetectorHost` (#334). |
 | `private final Map<TileItem,Tile>` | `groundItems` |  |
 | `private StockpileGroundOverlay` | `groundOverlay` |  |
 | `private Gson` | `gson` |  |
@@ -17006,8 +17204,6 @@ executor.
 | `private int` | `magicXpTick` | The tick of the most recent Magic XP gain, marking removed runes as burned by a spellcast (#235). |
 | `private volatile boolean` | `mappingsLoaded` |  |
 | `private MouseManager` | `mouseManager` |  |
-| `private final Map<TileItem,Integer>` | `myDrops` | Ground items this player dropped: the `TileItem` → how many of its units are ours. |
-| `private final Map<Integer,Integer>` | `myTradeOffer` | Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). |
 | `private NavigationButton` | `navButton` |  |
 | `private final NotificationEvaluator` | `notificationEvaluator` | Evaluates notification rules against an item, extracted so the rule engine is unit-testable (#373). |
 | `private Notifier` | `notifier` |  |
@@ -17033,14 +17229,11 @@ executor.
 | `private final Map<Long,Instant>` | `seriesFetchedAt` | When each `(item, timestep)` series was last fetched, so a fresh one is not refetched (#320). |
 | `private boolean` | `sessionInitialized` | Whether the current logged-in session has been initialised. |
 | `private boolean` | `shopOpen` | Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67). |
-| `private final Map<Integer,Integer>` | `theirTradeOffer` |  |
 | `private int` | `thievingXpTick` | The tick of the most recent Thieving XP gain, marking a gain as free stolen loot (#217). |
-| `private final List<ItemDespawned>` | `tickGroundDespawns` |  |
-| `private final List<ItemQuantityChanged>` | `tickGroundQuantityChanges` |  |
-| `private final List<ItemSpawned>` | `tickGroundSpawns` | This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65). |
 | `private final Map<TileItem,Tile>` | `trackedGroundItems` | The tracked subset of `#groundItems`, so the ground overlay's per-frame work is proportional to what it actually draws rather than to everything on the floor (#325). |
 | `private int` | `trackedGroundRevision` | `trackedItems.keySet().hashCode()` when `#trackedGroundItems` was last rebuilt. |
 | `private final Map<Integer,TrackedItem>` | `trackedItems` |  |
+| `private TradeDetector` | `tradeDetector` | The player-trade detector (#66), extracted behind `DetectorHost` (#334). |
 | `private boolean` | `uncategorizedCollapsed` |  |
 | `private WikiRealtimePriceClient` | `wikiPriceClient` |  |
 | `private final Map<Integer,TrackedItem>` | `windowItems` | The bound item instance backing each open pop-out window, keyed by item id (#109). |
@@ -17071,8 +17264,7 @@ executor.
 | `private TrackedItem` | `buildPreview(int itemId)` | Builds a transient read-only preview item (name, tradeability, GE metadata) for an untracked id. |
 | `void` | `buildShareToken(Consumer<String> onResult)` | Builds a shareable code for the current tracked list (ids, modes, categories, favorites) — "" when empty — and hands it to `onResult` on the EDT. |
 | `private int` | `canonicalCountId(int itemId)` | Resolves a container slot's item id to the canonical (unnoted, non-placeholder) id it should count as, using a single `ItemComposition` lookup instead of a separate placeholder-check + `canonicalize` pair (#185) — a bank event covers ~800 slots. |
-| `private void` | `captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
-| `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
+| `public int` | `canonicalize(int itemId)` | {@inheritDoc} |
 | `private boolean` | `claimSeriesFetch(int itemId, SeriesTimestep step)` | Claims one `(item, timestep)` fetch, marking it as issued now. |
 | `private void` | `clearAcquisitions(int itemId)` | Clears an item's acquisition lots (resetting its cost basis) and persists/refreshes. |
 | `private void` | `clearAllTrackedItems()` | Removes every tracked item, then persists and refreshes. |
@@ -17082,12 +17274,8 @@ executor.
 | `private void` | `closeAllGroundSuspensions()` | Closes every remaining ground suspension as lost (delegating to the ledger) and clears our own drop tracking. |
 | `private void` | `closeCompareWindow()` | Disposes the compare window (its close listener clears the set). |
 | `private void` | `closeDetailWindowFor(int itemId)` | Closes any open pop-out window for `itemId` (e.g. |
-| `private void` | `closeGivenItems(Map<Integer,Integer> side, long gp)` | Closes given items as sells at the apportioned per-unit price, realizing them against the trade suspension taken when they were offered. |
 | `private List<CompareView.Entry>` | `compareEntries()` | Snapshots the compare set into an ordered `CompareView.Entry` list, resolving each id to its live tracked item or its read-only preview. |
 | `private CompareHost` | `compareHost()` | Builds the `CompareHost` for the compare window, routing edits back onto the client thread. |
-| `private void` | `correlateGroundActivity()` | Correlates this tick's ground-item activity with the pending inventory deltas (#65): a spawn (or stack increase) on the player's tile matching a pending removal is our drop — its units queue for ground suspension and the `TileItem` is remembered; a despawn of a remembered drop with no matching pickup closes its units as lost at 0; a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a `AcquisitionSource#GROUND` acquisition at 0. |
-| `private void` | `correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)` | Handles a ground pile gaining units: on our tile against a pending removal, it's our drop. |
-| `private boolean` | `correlateGroundTaken(TileItem item, int taken)` | Handles a ground pile losing units: a remembered drop with a matching pending addition is a re-pickup (the greedy un-suspend consumes it during the sync); with no matching addition its units close as lost at 0. |
 | `private void` | `createCategory(String name)` | Creates a new category (ignoring blanks and case-insensitive duplicates), then persists and refreshes. |
 | `public int` | `currentTick()` | {@inheritDoc} |
 | `private void` | `deleteCategory(String name)` | Deletes a category, moving its items to Uncategorized, then persists and refreshes. |
@@ -17109,6 +17297,7 @@ executor.
 | `private int` | `getItemIdFromMenuEntry(MenuEntry entry)` |  |
 | `List<TrackedItem>` | `getOverlayItems()` |  |
 | `Map<TileItem,Tile>` | `getTrackedGroundItems()` |  |
+| `public long` | `guidePrice(int itemId)` | {@inheritDoc} |
 | `private boolean` | `hasMarketData(int itemId)` |  |
 | `private void` | `hydratePriceCache()` | Hydrates tracked items from the persisted price cache so the panel shows last-known values (dimmed by the existing staleness treatment once their trade times age past the threshold) instead of placeholders. |
 | `private void` | `importComparison(List<Integer> itemIds)` | Replaces the current compare set with the items from an imported shared code (#303): its canonical, de-duplicated ids up to `#COMPARE_CAP`. |
@@ -17127,7 +17316,6 @@ executor.
 | `public boolean` | `isRecoverableAmmo(int itemId)` |  |
 | `public boolean` | `isSpellcastRune(int itemId)` |  |
 | `public boolean` | `isTracked(int itemId)` |  |
-| `private static boolean` | `isTradeCurrency(int itemId)` |  |
 | `private boolean` | `isWhatsNew()` |  |
 | `public String` | `itemName(int itemId)` | {@inheritDoc} |
 | `private List<TrackedItem>` | `itemsFor(int itemId)` |  |
@@ -17140,7 +17328,6 @@ executor.
 | `private TrackedItem` | `lookupItem(int itemId)` |  |
 | `public int` | `magicXpTick()` | {@inheritDoc} |
 | `private void` | `markWhatsNewSeen()` | Persists that the user has seen the current release's "What's New", quieting the indicator. |
-| `private long` | `marketUnitValue(int itemId)` |  |
 | `private void` | `mergeImportedList(List<PortfolioShareCodec.Entry> entries, List<CategoryState> importedCategories)` | Applies a decoded tracked-list import on the client thread: categories first, then new items. |
 | `private void` | `migrateAutoAddSetting()` | One-time migration for #219: the old combined `autoAddItems` enum (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate `FallbackPricing`. |
 | `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
@@ -17178,6 +17365,7 @@ executor.
 | `private void` | `persistPortfolioHistorySync()` | Serializes the portfolio history synchronously (shutdown only), when the executor may not run queued tasks. |
 | `private void` | `persistPriceCache()` | Writes every priced tracked item's current prices to the RS profile config. |
 | `public void` | `persistTrackedItems()` | Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config. |
+| `public WorldPoint` | `playerLocation()` | {@inheritDoc} |
 | `private void` | `popOutDetail(int itemId)` | Pops `itemId` out into its own standalone detail window (#109), or focuses the existing one. |
 | `List<long[]>` | `portfolioHistoryPoints()` |  |
 | `private void` | `previewItem(int itemId)` | Opens a read-only detail preview for an untracked item without adding it to the tracked list or persisting anything. |
@@ -17185,7 +17373,6 @@ executor.
 | `private void` | `promptCategoryForTrackedItem(int itemId)` | After an item is explicitly tracked (#211), asks the panel to prompt for its category. |
 | `StockpileConfig` | `provideConfig(ConfigManager configManager)` |  |
 | `private void` | `pushSavedNames()` | Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open. |
-| `private void` | `queueTradeSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)` | Turns the change in our own offer into pending suspend/un-suspend intents: items added to the offer left our inventory and should suspend, items withdrawn returned and should un-suspend. |
 | `private void` | `rebucketScreenOverlays()` | Removes and re-adds the screen overlays so the manager re-buckets them into their (config-driven) layer. |
 | `private void` | `rebuildCompareWindow(boolean focus)` | Snapshots the compare set into an ordered `CompareView.Entry` list (resolving each id to its live tracked item or its preview) and hands it to the EDT to open or update the window. |
 | `private void` | `recomputeWindowStats(TrackedItem tracked)` | Rebuilds an item's per-window `PriceStats` from its current prices (LIVE) and history series. |
@@ -17198,8 +17385,6 @@ executor.
 | `private void` | `refreshGePricesGuarded()` | Runs one scheduled price refresh, swallowing anything it throws. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
 | `private void` | `refreshPanel(boolean pricesUpdated)` | Pushes the current tracked items and totals to the panel on the Swing thread. |
-| `private void` | `registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)` | Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved: the coins paid or received, divided across the quantity, price the item's `AcquisitionSource#SHOP` claim. |
-| `private void` | `registerTradeClaims()` | Books a completed trade's item movements as `AcquisitionSource#PLAYER_TRADE` (#66): items received buy in at the gp we gave apportioned across them by market value, and items given close at the gp we received apportioned the same way. |
 | `private void` | `releaseSeriesFetch(int itemId, SeriesTimestep step)` | Un-marks a claimed fetch that came back empty, so the next refresh retries rather than waiting out the TTL. |
 | `private void` | `removeFromCompareId(int itemId)` | Removes `itemId` from the compare set, closing the window when the set empties. |
 | `private void` | `removeTrackedItem(int itemId)` | Stops tracking an item, then persists and refreshes. |
@@ -17247,8 +17432,6 @@ executor.
 | `private void` | `trackFromWindow(DetailWindow window, int itemId, TrackItemMode mode)` | Tracks `itemId` from a pop-out window's header (#138), then transitions that window to tracked. |
 | `public TrackedItem` | `trackedItem(int itemId)` | Returns the tracked item with the given id, if tracked. |
 | `public Collection<TrackedItem>` | `trackedItems()` | Returns all currently tracked items. |
-| `private static long` | `tradeGp(Map<Integer,Integer> side)` |  |
-| `private List<TradeApportioner.Leg>` | `tradeLegs(Map<Integer,Integer> side)` | Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. |
 | `private void` | `untrackToPreview(int itemId)` | Stops tracking an item but leaves it open in the detail view as a read-only preview (#138), so untracking from the detail header does not bounce the user back to the main list. |
 | `private void` | `untrackWindowToPreview(DetailWindow window, int itemId)` | Untracks `itemId` from a pop-out window's header (#138) but keeps that window open as a read-only preview. |
 | `public long` | `untrackedInputValue(int itemId)` |  |
@@ -17367,12 +17550,6 @@ reward pool and GOTR reward guardian remain deferred pending their own live capt
 `static final int OVERLAY_MAX`
 
 Maximum number of items shown in the on-screen overlay (fixed for now).
-
-#### PLATINUM_TOKEN_GP
-
-`private static final long PLATINUM_TOKEN_GP`
-
-Gp value of one platinum token, the coin-equivalent currency for trades above max cash.
 
 #### PORTFOLIO_SAVE_INTERVAL
 
@@ -17635,6 +17812,12 @@ The Grand Exchange offer-screen integration, extracted behind `GeIntegrationHost
 
 `private int geLoginTick`
 
+#### groundDetector
+
+`private GroundDetector groundDetector`
+
+The ground drop/pickup detector (#65), extracted behind `DetectorHost` (#334).
+
 #### groundItems
 
 `private final Map<TileItem,Tile> groundItems`
@@ -17721,18 +17904,6 @@ into lava runes) are a genuine recipe input whose basis belongs on the product.
 #### mouseManager
 
 `private MouseManager mouseManager`
-
-#### myDrops
-
-`private final Map<TileItem,Integer> myDrops`
-
-Ground items this player dropped: the `TileItem` → how many of its units are ours.
-
-#### myTradeOffer
-
-`private final Map<Integer,Integer> myTradeOffer`
-
-Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66).
 
 #### navButton
 
@@ -17874,29 +18045,11 @@ same load, so leaving the flag false there let the next region crossing re-clear
 
 Whether an NPC shop interface is open, gating the coin-delta shop pricing (#67).
 
-#### theirTradeOffer
-
-`private final Map<Integer,Integer> theirTradeOffer`
-
 #### thievingXpTick
 
 `private int thievingXpTick`
 
 The tick of the most recent Thieving XP gain, marking a gain as free stolen loot (#217).
-
-#### tickGroundDespawns
-
-`private final List<ItemDespawned> tickGroundDespawns`
-
-#### tickGroundQuantityChanges
-
-`private final List<ItemQuantityChanged> tickGroundQuantityChanges`
-
-#### tickGroundSpawns
-
-`private final List<ItemSpawned> tickGroundSpawns`
-
-This tick's ground spawns/despawns/stack changes, correlated against the inventory deltas (#65).
 
 #### trackedGroundItems
 
@@ -17914,6 +18067,12 @@ proportional to what it actually draws rather than to everything on the floor (#
 #### trackedItems
 
 `private final Map<Integer,TrackedItem> trackedItems`
+
+#### tradeDetector
+
+`private TradeDetector tradeDetector`
+
+The player-trade detector (#66), extracted behind `DetectorHost` (#334).
 
 #### uncategorizedCollapsed
 
@@ -18141,20 +18300,11 @@ as, using a single `ItemComposition` lookup instead of a separate placeholder-ch
 
 - **Returns:** the canonical id to count, or -1 for an empty slot or a placeholder. Client thread only.
 
-#### captureTradeOffer
+#### canonicalize
 
-`private void captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)`
+`public int canonicalize(int itemId)`
 
-Snapshots one side of the trade window (canonical id → quantity) as its container
-changes. For our own side, diffs the new offer against the previous snapshot and
-queues the change so the matching inventory removal suspends (rather than closes) the
-offered lots, and a later withdrawal un-suspends them (#66).
-
-#### claimReceivedItems
-
-`private void claimReceivedItems(Map<Integer,Integer> side, long gp)`
-
-Claims received items as buys at the apportioned per-unit price, matched by their inventory additions.
+{@inheritDoc}
 
 #### claimSeriesFetch
 
@@ -18215,15 +18365,6 @@ Disposes the compare window (its close listener clears the set). Runs on the EDT
 
 Closes any open pop-out window for `itemId` (e.g. when the item is untracked). Runs on the EDT.
 
-#### closeGivenItems
-
-`private void closeGivenItems(Map<Integer,Integer> side, long gp)`
-
-Closes given items as sells at the apportioned per-unit price, realizing them against the trade
-suspension taken when they were offered. Any leg whose suspension has not landed yet — a same-tick
-offer+accept where "Accepted trade." outran the offer's inventory decrease — is parked and retried
-after the container sync, exactly as the GE sell path does, so the sale is never dropped (#175).
-
 #### compareEntries
 
 `private List<CompareView.Entry> compareEntries()`
@@ -18238,36 +18379,6 @@ live tracked item or its read-only preview. Runs on the client thread.
 `private CompareHost compareHost()`
 
 Builds the `CompareHost` for the compare window, routing edits back onto the client thread.
-
-#### correlateGroundActivity
-
-`private void correlateGroundActivity()`
-
-Correlates this tick's ground-item activity with the pending inventory deltas (#65):
-a spawn (or stack increase) on the player's tile matching a pending removal is our
-drop — its units queue for ground suspension and the `TileItem` is remembered;
-a despawn of a remembered drop with no matching pickup closes its units as lost at 0;
-a despawn matching a pending addition that isn't ours is a loot pickup, claimed as a
-`AcquisitionSource#GROUND` acquisition at 0. Runs before the quantity sync
-consumes the deltas.
-
-#### correlateGroundGain
-
-`private void correlateGroundGain(TileItem item, Tile tile, int gained, WorldPoint myLocation)`
-
-Handles a ground pile gaining units: on our tile against a pending removal, it's our
-drop. Gated by the Source-Based Pricing toggle — when off, no new ground suspensions
-are taken, so a drop closes classically at the average price; drops suspended while
-the toggle was on still resolve through the un-suspend/lost paths.
-
-#### correlateGroundTaken
-
-`private boolean correlateGroundTaken(TileItem item, int taken)`
-
-Handles a ground pile losing units: a remembered drop with a matching pending
-addition is a re-pickup (the greedy un-suspend consumes it during the sync);
-with no matching addition its units close as lost at 0. An unfamiliar pile
-matching a pending addition is a loot pickup, claimed as `GROUND` at 0.
 
 #### createCategory
 
@@ -18423,6 +18534,12 @@ Brings the compare window to the front if one is open. Runs on the EDT.
         canonicalized each one on every frame to find the handful that were tracked - thousands
         of `ItemManager` calls a frame at the Grand Exchange or a death pile, to draw
         maybe two outlines, and the same cost when it drew none (#325).
+
+#### guidePrice
+
+`public long guidePrice(int itemId)`
+
+{@inheritDoc}
 
 #### hasMarketData
 
@@ -18586,13 +18703,6 @@ Returns whether the given item id is a known empty-container placeholder.
 
 - **Returns:** whether the given (canonical) item id is currently tracked.
 
-#### isTradeCurrency
-
-`private static boolean isTradeCurrency(int itemId)`
-
-- **Returns:** whether the item is trade currency — coins or platinum tokens — which
-        forms the trade's gp numerator rather than a lot-bearing item leg
-
 #### isWhatsNew
 
 `private boolean isWhatsNew()`
@@ -18675,12 +18785,6 @@ Loads the persisted saved comparisons into memory at startup (#303). Client thre
 `private void markWhatsNewSeen()`
 
 Persists that the user has seen the current release's "What's New", quieting the indicator.
-
-#### marketUnitValue
-
-`private long marketUnitValue(int itemId)`
-
-- **Returns:** an item's unit market value for apportionment weights: the tracked avg, or the wiki price.
 
 #### mergeImportedList
 
@@ -18997,6 +19101,12 @@ Called throttled from refreshes and unconditionally at shutdown.
 
 Serializes the current tracked items (quantity, cost basis, notifications, grouping) to per-profile config.
 
+#### playerLocation
+
+`public WorldPoint playerLocation()`
+
+{@inheritDoc}
+
 #### popOutDetail
 
 `private void popOutDetail(int itemId)`
@@ -19044,16 +19154,6 @@ is confirmed present. Only reached from explicit tracking — never from load, i
 `private void pushSavedNames()`
 
 Pushes the current saved-comparison names to the open window's Load menu (#303), if one is open.
-
-#### queueTradeSuspension
-
-`private void queueTradeSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)`
-
-Turns the change in our own offer into pending suspend/un-suspend intents: items added to
-the offer left our inventory and should suspend, items withdrawn returned and should
-un-suspend. Only tracked, non-currency items queue — coins and platinum tokens are the
-trade's numerator, not a lot, and untracked items never flow through `CostBasisLedger#applyDelta`
-to consume the intent.
 
 #### rebucketScreenOverlays
 
@@ -19168,33 +19268,6 @@ which scans the pending queue per removed child — live-locks the EDT (#120).
 
 - **Parameter** `pricesUpdated` — whether this refresh follows a price change, enabling
                      the per-row change indicators
-
-#### registerShopClaims
-
-`private void registerShopClaims(Map<Integer,Integer> oldCounts, Map<Integer,Integer> newCounts)`
-
-Claims an inventory change as a shop transaction (#67) when exactly one tracked
-non-coin item moved: the coins paid or received, divided across the quantity,
-price the item's `AcquisitionSource#SHOP` claim. A buy must pay coins; a
-sell must not spend them, and a worthless sell the shop pays nothing for is still
-a shop sale at 0. Anything murkier — multi-item changes, specialty-currency shops
-(tokkul, marks) that move a second item rather than coins — stays unclaimed and
-takes the unknown-source path.
-
-#### registerTradeClaims
-
-`private void registerTradeClaims()`
-
-Books a completed trade's item movements as `AcquisitionSource#PLAYER_TRADE` (#66):
-items received buy in at the gp we gave apportioned across them by market value, and
-items given close at the gp we received apportioned the same way. Pure item-for-item
-legs price at 0; coins and platinum tokens (valued at 1,000 gp each) are the
-numerator, never an apportionment target.
-
-<p>The two sides settle differently. Received items only enter our inventory now, so they
-are registered as claims for the imminent additions to match. Given items already left our
-inventory when they were offered (suspended, not closed), so there is no delta to match —
-they are closed here directly against their trade suspension.
 
 #### releaseSeriesFetch
 
@@ -19574,18 +19647,6 @@ Returns the tracked item with the given id, if tracked.
 Returns all currently tracked items.
 
 - **Returns:** the tracked items
-
-#### tradeGp
-
-`private static long tradeGp(Map<Integer,Integer> side)`
-
-- **Returns:** one trade side's money in gp: coins plus platinum tokens at 1,000 gp each.
-
-#### tradeLegs
-
-`private List<TradeApportioner.Leg> tradeLegs(Map<Integer,Integer> side)`
-
-Builds one trade side's non-currency apportionment legs, each weighted by its unit market value.
 
 #### untrackToPreview
 
@@ -20992,6 +21053,167 @@ One non-coin item leg of a trade side: the item, how many, and its unit market v
 #### Leg
 
 `Leg(int itemId, int quantity, long unitValue)`
+
+---
+
+## com.oveduumnakal.TradeDetector
+
+_class_
+
+`class TradeDetector`
+
+The player-trade source detector (#66): snapshots both sides of the trade window as they change,
+suspends the items we offer while the trade is open, and books the completed exchange as
+`AcquisitionSource#PLAYER_TRADE` - received items buy in, and given items close, at the gp on the
+other side apportioned across them by market value.
+
+<p>The last piece of the #334 detector extraction, moved out of `StockpilePlugin` behind
+`DetectorHost` so it can be tested without a client.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
+| `private final DetectorHost` | `host` |  |
+| `private final CostBasisLedger` | `ledger` |  |
+| `private final Map<Integer,Integer>` | `myOffer` | Latest captured trade-offer sides (canonical id → qty), read when the trade completes. |
+| `private final Map<Integer,Integer>` | `theirOffer` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `TradeDetector(DetectorHost host, CostBasisLedger ledger)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
+| `private void` | `closeGivenItems(Map<Integer,Integer> side, long gp)` | Closes given items as sells at the apportioned per-unit price, realizing them against the trade suspension taken when they were offered. |
+| `static boolean` | `isTradeCurrency(int itemId)` |  |
+| `private List<TradeApportioner.Leg>` | `legs(Map<Integer,Integer> side)` | Builds one trade side's non-currency apportionment legs, each weighted by its unit market value. |
+| `private long` | `marketUnitValue(int itemId)` |  |
+| `void` | `onOfferChanged(ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
+| `void` | `onTradeAccepted()` | Books the completed trade's item movements: items received buy in at the gp we gave apportioned across them by market value, and items given close at the gp we received apportioned the same way. |
+| `private void` | `queueSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)` | Turns the change in our own offer into pending suspend/un-suspend intents: items added to the offer left our inventory and should suspend, items withdrawn returned and should un-suspend. |
+| `void` | `reset()` | Forgets both captured sides (a completed trade, or a fresh login). |
+| `static long` | `tradeGp(Map<Integer,Integer> side)` |  |
+
+### Field Detail
+
+#### PLATINUM_TOKEN_GP
+
+`static final long PLATINUM_TOKEN_GP`
+
+Gp value of one platinum token, the coin-equivalent currency for trades above max cash.
+
+#### host
+
+`private final DetectorHost host`
+
+#### ledger
+
+`private final CostBasisLedger ledger`
+
+#### myOffer
+
+`private final Map<Integer,Integer> myOffer`
+
+Latest captured trade-offer sides (canonical id → qty), read when the trade completes.
+
+#### theirOffer
+
+`private final Map<Integer,Integer> theirOffer`
+
+### Constructor Detail
+
+#### TradeDetector
+
+`TradeDetector(DetectorHost host, CostBasisLedger ledger)`
+
+### Method Detail
+
+#### claimReceivedItems
+
+`private void claimReceivedItems(Map<Integer,Integer> side, long gp)`
+
+Claims received items as buys at the apportioned per-unit price, matched by their inventory additions.
+
+#### closeGivenItems
+
+`private void closeGivenItems(Map<Integer,Integer> side, long gp)`
+
+Closes given items as sells at the apportioned per-unit price, realizing them against the trade
+suspension taken when they were offered. Any leg whose suspension has not landed yet — a same-tick
+offer+accept where "Accepted trade." outran the offer's inventory decrease — is parked by the ledger
+and retried after the container sync, exactly as the GE sell path does, so the sale is never dropped
+(#175).
+
+#### isTradeCurrency
+
+`static boolean isTradeCurrency(int itemId)`
+
+- **Returns:** whether the item is trade currency — coins or platinum tokens — rather than a lot-bearing leg.
+
+#### legs
+
+`private List<TradeApportioner.Leg> legs(Map<Integer,Integer> side)`
+
+Builds one trade side's non-currency apportionment legs, each weighted by its unit market value.
+
+#### marketUnitValue
+
+`private long marketUnitValue(int itemId)`
+
+- **Returns:** an item's unit market value for apportionment weights: the tracked avg, or the guide price.
+
+#### onOfferChanged
+
+`void onOfferChanged(ItemContainer container, boolean mine)`
+
+Snapshots one side of the trade window (canonical id → quantity) as its container changes. For our
+own side, diffs the new offer against the previous snapshot and queues the change so the matching
+inventory removal suspends (rather than closes) the offered lots, and a later withdrawal
+un-suspends them.
+
+- **Parameter** `mine` — whether this is our side of the trade rather than the partner's
+
+#### onTradeAccepted
+
+`void onTradeAccepted()`
+
+Books the completed trade's item movements: items received buy in at the gp we gave apportioned
+across them by market value, and items given close at the gp we received apportioned the same way.
+Pure item-for-item legs price at 0; coins and platinum tokens are the numerator, never an
+apportionment target.
+
+<p>The two sides settle differently. Received items only enter our inventory now, so they are
+registered as claims for the imminent additions to match. Given items already left our inventory
+when they were offered (suspended, not closed), so there is no delta to match — they are closed
+here directly against their trade suspension.
+
+#### queueSuspension
+
+`private void queueSuspension(Map<Integer,Integer> before, Map<Integer,Integer> after)`
+
+Turns the change in our own offer into pending suspend/un-suspend intents: items added to the offer
+left our inventory and should suspend, items withdrawn returned and should un-suspend. Only tracked,
+non-currency items queue — coins and platinum tokens are the trade's numerator, not a lot, and
+untracked items never flow through `CostBasisLedger#applyDelta` to consume the intent.
+
+#### reset
+
+`void reset()`
+
+Forgets both captured sides (a completed trade, or a fresh login).
+
+#### tradeGp
+
+`static long tradeGp(Map<Integer,Integer> side)`
+
+- **Returns:** one trade side's money in gp: coins plus platinum tokens at 1,000 gp each.
 
 ---
 

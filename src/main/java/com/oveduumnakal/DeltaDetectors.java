@@ -439,4 +439,48 @@ class DeltaDetectors
 				ledger.claim(AcquisitionSource.THIEVING, itemId, delta, 0, host.currentTick());
 		}
 	}
+
+	/**
+	 * Claims an inventory change as a shop transaction (#67) when exactly one tracked non-coin item moved:
+	 * the coins paid or received, divided across the quantity, price the item's
+	 * {@link AcquisitionSource#SHOP} claim. A buy must pay coins; a sell must not spend them, and a worthless
+	 * sell the shop pays nothing for is still a shop sale at 0. Anything murkier — multi-item changes,
+	 * specialty-currency shops (tokkul, marks) that move a second item rather than coins — stays unclaimed
+	 * and takes the unknown-source path. The caller runs it only while a shop is open.
+	 */
+	void registerShopClaims(Map<Integer, Integer> oldCounts, Map<Integer, Integer> newCounts)
+	{
+		long coinDelta = 0;
+		int changedItem = 0;
+		int itemDelta = 0;
+		int changedCount = 0;
+
+		for (int itemId : ItemDeltas.keyUnion(oldCounts, newCounts))
+		{
+			int delta = newCounts.getOrDefault(itemId, 0) - oldCounts.getOrDefault(itemId, 0);
+			if (delta == 0)
+				continue;
+
+			if (itemId == ItemID.COINS)
+			{
+				coinDelta = delta;
+			}
+			else
+			{
+				changedCount++;
+				changedItem = itemId;
+				itemDelta = delta;
+			}
+		}
+
+		if (changedCount != 1 || itemDelta == 0 || !host.isTracked(changedItem))
+			return;
+
+		boolean sell = itemDelta < 0;
+		if (sell ? coinDelta < 0 : coinDelta >= 0)
+			return;
+
+		long unitPrice = Math.abs(coinDelta) / Math.abs(itemDelta);
+		ledger.claim(AcquisitionSource.SHOP, changedItem, Math.abs(itemDelta), unitPrice, host.currentTick());
+	}
 }
