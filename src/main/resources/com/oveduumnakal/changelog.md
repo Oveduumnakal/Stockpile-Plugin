@@ -9,6 +9,64 @@ Bug Fixes lists only bugs that shipped in a previous release; bugs introduced an
 fixed within the same release cycle are omitted, since users never saw them.
 -->
 
+# 1.7 - September 24 2026
+
+## Quick Overview
+
+Stockpile 1.7 is about trust: the numbers you see should match what really happened in game. Grand Exchange sales now take the tax off, so the profit you see is the money that actually landed in your coffer, and a handful of rare moments that could lose, double-count or misprice a sale, trade or pickup have been put right. Editing your collection log or alert rules while offers are filling is now safe, and swapping between accounts can no longer mix one account's list into another's. The plugin also asks the price service for far less and draws its panel, charts and overlays more efficiently, so it should feel lighter, especially with a long list. Finally, whether "Take" is your left-click on tracked loot is now a setting of its own.
+
+## Detailed Breakdown
+
+### Accurate Pricing & Profit
+
+#### Sales count the Grand Exchange tax
+When you sell on the Grand Exchange, the sale is now logged at what you actually receive after the GE tax, so your profit matches the coins that arrive.
+[#380](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/380)
+
+#### The overlay shows the same profit as the panel
+The on-screen overlay's profit figure now comes from the same calculation as the panel's, so the two always agree.
+[#379](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/379)
+
+### Performance
+
+#### Far fewer price downloads
+Prices are fetched once per refresh and shared, rather than downloaded again for every item you add, preview, import or compare, and chart history is only re-fetched when it is actually out of date.
+[#320](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/320), [#381](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/381)
+
+#### A smoother panel, charts and overlays
+The panel, charts and overlays do much less work each frame: alerts are checked when prices change instead of dozens of times a second, sorting by profit is quicker, and item icons and ground highlights are no longer recalculated over and over.
+[#321](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/321), [#322](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/322), [#323](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/323), [#325](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/325), [#327](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/327)
+
+### On-screen Overlay
+
+#### Left-click Take on tracked loot is its own setting
+Making "Take" the left-click option on tracked ground items used to ride along with ground highlighting. It is now a separate setting, Left-Click Take Tracked Loot, which is on by default so nothing changes unless you turn it off; switch it off if you'd rather left-click reach a monster standing on your loot.
+[#378](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/378)
+
+## Bug Fixes
+
+[#371](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/371) - Selling at exactly the price you paid for an older batch no longer wipes that sale from your collection log
+[#377](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/377) - Switching accounts can no longer save part of one account's list or chart history into the other's
+[#328](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/328) - Grand Exchange purchases made just before logging out are no longer forgotten on the next login
+[#316](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/316) - Turning off "Auto Add Items" no longer freezes the quantities shown for your tracked items
+[#318](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/318) - A blank reply from the price service no longer stops prices updating for the rest of the session
+[#317](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/317) - Other players can no longer add free items to your log by typing loot or pouch messages in public chat
+[#372](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/372) - When only part of a gain can be explained (say, a shop buy while picking something up), only that part takes the explained price
+[#331](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/331) - Hopping worlds while a cancelled sale waits in the Grand Exchange no longer counts the returned items twice
+[#315](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/315) - Editing your collection log while offers fill can no longer scramble your lots
+[#374](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/374) - An edit to your collection log always lands on the row you changed, even if the log shifted underneath it
+[#373](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/373) - Editing alert rules while prices refresh can no longer lose or scramble a rule
+[#333](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/333) - Month, 3-month, 6-month and year views no longer show a single day's data while their longer history loads
+[#376](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/376) - Turning the plugin off during Grand Exchange activity no longer risks damaging your saved list
+[#319](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/319) - Auto-categorize no longer risks errors when your list changes while it runs
+[#329](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/329) - A damaged save no longer stops your list from loading at login
+[#375](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/375) - Imported list codes can no longer add formatting tricks to category names or track an unlimited number of items
+[#330](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/330) - An oversized or malicious list code is rejected instead of freezing the client
+[#324](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/324) - Browsing items on the Grand Exchange no longer slowly clutters the offer screen with hidden buttons
+[#332](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/332) - Switching the item in a pop-out window no longer leaves a broken window behind
+[#326](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/326) - Gold amounts can no longer occasionally show garbled numbers
+[#351](https://github.com/Oveduumnakal/Stockpile-Plugin/issues/351) - The What's New window can no longer show another plugin's release notes
+
 # 1.6 - August 28 2026
 
 ## Quick Overview
