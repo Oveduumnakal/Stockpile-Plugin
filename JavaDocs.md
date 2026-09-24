@@ -12679,6 +12679,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `String` | `KEY_PRICE_CHANGE_INDICATOR` | Persisted config key `"priceChangeIndicator"`. |
 | `String` | `KEY_PRICE_OVERVIEW_ROWS` | Persisted config key `"priceOverviewPreset"`. |
 | `String` | `KEY_PRICE_REFRESH_SECONDS` | Persisted config key `"priceRefreshSeconds"`. |
+| `String` | `KEY_PRIORITIZE_TRACKED_LOOT` | Persisted config key `"prioritizeTrackedLoot"`. |
 | `String` | `KEY_PROMPT_CATEGORY_ON_TRACK` | Persisted config key `"promptCategoryOnTrack"`. |
 | `String` | `KEY_QUICK_ACTION_DELIVERY` | Persisted config key `"quickActionDelivery"`. |
 | `String` | `KEY_ROW_1_DATA` | Persisted config key `"row1Data"`. |
@@ -12754,6 +12755,7 @@ group. Each accessor's behavior is described by its annotation; the per-item
 | `default PriceIndicatorMode` | `priceChangeIndicator()` | How to display the pulse indicator for price changes. |
 | `default OverviewPreset` | `priceOverviewRows()` | How many time-window rows the Price Overview shows. |
 | `default int` | `priceRefreshSeconds()` | How often to refresh GE prices from the API. |
+| `default boolean` | `prioritizeTrackedLoot()` | Move "Take" for tracked ground items to the top of the right-click menu, making it the left-click option. |
 | `default boolean` | `promptCategoryOnTrack()` | When you track an item, ask which category to put it in (choose an existing one, create a new one, or skip to Uncategorized). |
 | `default QuickActionDelivery` | `quickActionDelivery()` | How each tracked-item row surfaces its quick actions (remove, favorite, overlay, compact, dashboard, view detail): as hover buttons, in the row's right-click menu, or both. |
 | `default TimeWindow` | `row1Data()` | Price data shown on the first row. |
@@ -12976,6 +12978,12 @@ Persisted config key `"priceOverviewPreset"`.
 `String KEY_PRICE_REFRESH_SECONDS`
 
 Persisted config key `"priceRefreshSeconds"`.
+
+#### KEY_PRIORITIZE_TRACKED_LOOT
+
+`String KEY_PRIORITIZE_TRACKED_LOOT`
+
+Persisted config key `"prioritizeTrackedLoot"`.
 
 #### KEY_PROMPT_CATEGORY_ON_TRACK
 
@@ -13414,6 +13422,15 @@ Detailed: all windows.
 `default int priceRefreshSeconds()`
 
 How often to refresh GE prices from the API. Minimum 30 seconds.
+
+#### prioritizeTrackedLoot
+
+`default boolean prioritizeTrackedLoot()`
+
+Move "Take" for tracked ground items to the top of the right-click menu, making it the left-click
+option. Off by default: it changes what a left-click does - over an NPC standing on tracked loot,
+left-click takes the loot instead of attacking - so it is opt-in rather than riding on the
+highlight setting as it once did (#378).
 
 #### promptCategoryOnTrack
 
@@ -17003,7 +17020,7 @@ executor.
 | `void` | `onAcquisitionsEdited(int itemId)` |  |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
-| `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions. |
+| `public void` | `onClientTick(ClientTick event)` | Per-tick work: flushes any pending quantity sync and, when "Left-Click Take Tracked Loot" is on, moves tracked items' "Take" entries to the end of the menu array. |
 | `private void` | `onCompareWindowClosed()` | Drops the singleton reference and clears the set when the compare window is closed. |
 | `public void` | `onConfigChanged(ConfigChanged event)` | Reacts to this plugin's config changes: resolves detail-section slot conflicts, reschedules the refresh when the interval changes, and otherwise just repaints the panel. |
 | `private void` | `onDetailWindowClosed(DetailWindow window)` | Drops a closed pop-out window from both the EDT registry and its client-thread instance map. |
@@ -18590,8 +18607,14 @@ zero-cost lots into someone else's cost basis (#317).
 
 `public void onClientTick(ClientTick event)`
 
-Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders
-tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions.
+Per-tick work: flushes any pending quantity sync and, when "Left-Click Take Tracked Loot" is on,
+moves tracked items' "Take" entries to the end of the menu array. RuneLite's last menu entry is the
+top of the menu - the left-click option - so this makes taking tracked loot the default click.
+
+<p>That used to run whenever ground highlighting was on (the default), under a comment claiming it
+moved the entries "to the bottom so they don't get in the way". It did the opposite, silently
+changing left-click - over an NPC standing on tracked loot, left-click took the loot instead of
+attacking. It is now its own opt-in setting (#378).
 
 <p>Notifications are deliberately <em>not</em> evaluated here. `ClientTick` fires once per
 client loop - up to ~50 times a second, on the thread the game loop runs on - while the data the

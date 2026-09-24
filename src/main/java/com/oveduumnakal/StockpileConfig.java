@@ -183,6 +183,8 @@ public interface StockpileConfig extends Config
 	String KEY_PROMPT_CATEGORY_ON_TRACK = "promptCategoryOnTrack";
 	/** Persisted config key {@code "highlightTrackedItems"}. */
 	String KEY_HIGHLIGHT_TRACKED_ITEMS = "highlightTrackedItems";
+	/** Persisted config key {@code "prioritizeTrackedLoot"}. */
+	String KEY_PRIORITIZE_TRACKED_LOOT = "prioritizeTrackedLoot";
 	/** Persisted config key {@code "highlightColor"}. */
 	String KEY_HIGHLIGHT_COLOR = "highlightColor";
 	/** Persisted config key {@code "glowEffect"}. */
@@ -1066,6 +1068,24 @@ public interface StockpileConfig extends Config
 	default GlowSpeed glowEffect()
 	{
 		return GlowSpeed.MEDIUM;
+	}
+
+	/**
+	 * Move "Take" for tracked ground items to the top of the right-click menu, making it the left-click
+	 * option. Off by default: it changes what a left-click does - over an NPC standing on tracked loot,
+	 * left-click takes the loot instead of attacking - so it is opt-in rather than riding on the
+	 * highlight setting as it once did (#378).
+	 */
+	@ConfigItem(
+			keyName = KEY_PRIORITIZE_TRACKED_LOOT,
+			name = "Left-Click Take Tracked Loot",
+			description = "Make \"Take\" the left-click option on tracked ground items",
+			section = trackingSection,
+			position = 5
+	)
+	default boolean prioritizeTrackedLoot()
+	{
+		return false;
 	}
 
 	/**

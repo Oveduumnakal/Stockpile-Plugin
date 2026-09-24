@@ -3907,8 +3907,14 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	}
 
 	/**
-	 * Per-tick work: flushes any pending quantity sync and (when ground highlighting is on) reorders
-	 * tracked items' "Take" menu entries to the bottom so they don't get in the way of normal actions.
+	 * Per-tick work: flushes any pending quantity sync and, when "Left-Click Take Tracked Loot" is on,
+	 * moves tracked items' "Take" entries to the end of the menu array. RuneLite's last menu entry is the
+	 * top of the menu - the left-click option - so this makes taking tracked loot the default click.
+	 *
+	 * <p>That used to run whenever ground highlighting was on (the default), under a comment claiming it
+	 * moved the entries "to the bottom so they don't get in the way". It did the opposite, silently
+	 * changing left-click - over an NPC standing on tracked loot, left-click took the loot instead of
+	 * attacking. It is now its own opt-in setting (#378).
 	 *
 	 * <p>Notifications are deliberately <em>not</em> evaluated here. {@code ClientTick} fires once per
 	 * client loop - up to ~50 times a second, on the thread the game loop runs on - while the data the
@@ -3944,7 +3950,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 
 		ledger.flushPendingRealize();
 
-		if (!config.highlightTrackedItems().ground() || client.isMenuOpen())
+		if (!config.prioritizeTrackedLoot() || client.isMenuOpen())
 			return;
 
 		final MenuEntry[] entries = client.getMenu().getMenuEntries();
