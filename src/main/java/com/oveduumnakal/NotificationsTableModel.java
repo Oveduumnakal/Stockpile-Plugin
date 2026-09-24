@@ -4,24 +4,27 @@
  */
 package com.oveduumnakal;
 
+import java.util.List;
 import java.util.OptionalDouble;
+import java.util.function.Consumer;
 import javax.swing.table.AbstractTableModel;
 
 /**
  * Swing table model backing the notification rules: one row per
  * {@link NotificationRule} with metric, timeframe, operator, and value columns.
- * Editing a cell mutates the rule and notifies the plugin to persist it.
+ * Editing a cell commits through a client-thread {@link RuleEditor}, which owns the list, rather than
+ * mutating the rule from the EDT (#373).
  */
 class NotificationsTableModel extends AbstractTableModel
 {
 	private static final String[] COLS = {"Metric", "Time", "Op", "Value", "↻"};
 
-	private final Runnable notifyEdited;
+	private final RuleEditor editor;
 	private TrackedItem item;
 
-	NotificationsTableModel(Runnable notifyEdited)
+	NotificationsTableModel(RuleEditor editor)
 	{
-		this.notifyEdited = notifyEdited;
+		this.editor = editor;
 	}
 
 	void setItem(TrackedItem item)
@@ -58,12 +61,11 @@ class NotificationsTableModel extends AbstractTableModel
 	@Override
 	public boolean isCellEditable(int r, int c)
 	{
-		if (item == null || r < 0 || r >= item.getNotifications().size())
+		NotificationRule rule = ruleAt(r);
+		if (rule == null)
 			return false;
 
-		NotificationMetric m = item.getNotifications()
-				.get(r)
-				.getMetric();
+		NotificationMetric m = rule.getMetric();
 		switch (c)
 		{
 			case 1: return m == null || (!m.isTimeframeDisabled() && !m.locksTimeframeToMonth());
@@ -72,10 +74,34 @@ class NotificationsTableModel extends AbstractTableModel
 		}
 	}
 
+	/**
+	 * @return the rule at row {@code r}, or {@code null} when that row no longer exists. The list is
+	 *         client-thread state and a fired one-shot rule is removed from there, so a row the table
+	 *         counted a moment ago can be gone by the time it is read.
+	 */
+	private NotificationRule ruleAt(int r)
+	{
+		if (item == null || r < 0)
+			return null;
+
+		List<NotificationRule> rules = item.getNotifications();
+		try
+		{
+			return r < rules.size() ? rules.get(r) : null;
+		}
+		catch (IndexOutOfBoundsException e)
+		{
+			return null;
+		}
+	}
+
 	@Override
 	public Object getValueAt(int r, int c)
 	{
-		NotificationRule rule = item.getNotifications().get(r);
+		NotificationRule rule = ruleAt(r);
+		if (rule == null)
+			return c == 4 ? Boolean.FALSE : "";
+
 		NotificationMetric m = rule.getMetric();
 		switch (c)
 		{
@@ -88,64 +114,88 @@ class NotificationsTableModel extends AbstractTableModel
 		}
 	}
 
+	/**
+	 * Commits a cell edit.
+	 *
+	 * <p>The new value is validated here on the EDT, but the rule is only written on the client thread
+	 * through {@link #editor}, which owns the list (#373). The rule is captured by identity, so an edit
+	 * that lands after a one-shot rule above it fired and was removed still reaches the rule the user
+	 * edited, or nothing.
+	 */
 	@Override
 	public void setValueAt(Object value, int r, int c)
 	{
-		if (item == null || r < 0 || r >= item.getNotifications().size())
+		NotificationRule target = ruleAt(r);
+		if (target == null)
 			return;
 
-		NotificationRule rule = item.getNotifications().get(r);
+		Consumer<NotificationRule> change = changeFor(value, c);
+		if (change == null)
+			return;
+
+		editor.edit(rules ->
+		{
+			if (rules.stream().anyMatch(rule -> rule == target))
+				change.accept(target);
+		}, () ->
+		{
+			int row = item == null ? -1 : item.getNotifications().indexOf(target);
+			if (row >= 0)
+				fireTableRowsUpdated(row, row);
+		});
+	}
+
+	/**
+	 * @return the write a cell edit makes to its rule, or {@code null} when {@code value} is not valid
+	 *         for column {@code c}
+	 */
+	private Consumer<NotificationRule> changeFor(Object value, int c)
+	{
 		switch (c)
 		{
 			case 0:
-				if (!(value instanceof NotificationMetric) || value == rule.getMetric())
-					return;
-
-				NotificationMetric m = (NotificationMetric) value;
-				rule.setMetric(m);
-
-				if (m.locksTimeframeToMonth())
-					rule.setTimeWindow(TimeWindow.MONTH);
-				else if (m.isTimeframeDisabled())
-					rule.setTimeWindow(null);
-				else if (rule.getTimeWindow() == null)
-					rule.setTimeWindow(TimeWindow.LIVE);
-
-				if (m.locksOperationToEquals())
-					rule.setOperation(NotificationOperation.EQ);
-				else if (rule.getOperation() == null)
-					rule.setOperation(NotificationOperation.GTE);
-
-				rule.setValue(m.isCategorical() ? m.getOptions().get(0) : "");
-				fireTableRowsUpdated(r, r);
-				break;
+				return value instanceof NotificationMetric
+						? rule -> applyMetric(rule, (NotificationMetric) value)
+						: null;
 			case 1:
-				if (!(value instanceof TimeWindow))
-					return;
-
-				rule.setTimeWindow((TimeWindow) value);
-				break;
+				return value instanceof TimeWindow ? rule -> rule.setTimeWindow((TimeWindow) value) : null;
 			case 2:
-				if (!(value instanceof NotificationOperation))
-					return;
-
-				rule.setOperation((NotificationOperation) value);
-				break;
+				return value instanceof NotificationOperation
+						? rule -> rule.setOperation((NotificationOperation) value)
+						: null;
 			case 3:
-				applyValueEdit(rule, value == null ? "" : value.toString());
-				fireTableRowsUpdated(r, r);
-				break;
+				return rule -> applyValueEdit(rule, value == null ? "" : value.toString());
 			case 4:
-				if (!(value instanceof Boolean))
-					return;
-
-				rule.setRepeat((Boolean) value);
-				break;
+				return value instanceof Boolean ? rule -> rule.setRepeat((Boolean) value) : null;
 			default:
-				return;
+				return null;
 		}
+	}
 
-		notifyEdited.run();
+	/**
+	 * Switches a rule to metric {@code m}, snapping the timeframe, operator and value to what that
+	 * metric allows. A no-op when the rule already uses {@code m}.
+	 */
+	private static void applyMetric(NotificationRule rule, NotificationMetric m)
+	{
+		if (m == rule.getMetric())
+			return;
+
+		rule.setMetric(m);
+
+		if (m.locksTimeframeToMonth())
+			rule.setTimeWindow(TimeWindow.MONTH);
+		else if (m.isTimeframeDisabled())
+			rule.setTimeWindow(null);
+		else if (rule.getTimeWindow() == null)
+			rule.setTimeWindow(TimeWindow.LIVE);
+
+		if (m.locksOperationToEquals())
+			rule.setOperation(NotificationOperation.EQ);
+		else if (rule.getOperation() == null)
+			rule.setOperation(NotificationOperation.GTE);
+
+		rule.setValue(m.isCategorical() ? m.getOptions().get(0) : "");
 	}
 
 	/**
@@ -153,7 +203,7 @@ class NotificationsTableModel extends AbstractTableModel
 	 * typed, while percent and numeric inputs are parsed and reformatted
 	 * (e.g. {@code "5000000"} &rarr; {@code "5m"}), ignored when unparseable.
 	 */
-	private void applyValueEdit(NotificationRule rule, String raw)
+	private static void applyValueEdit(NotificationRule rule, String raw)
 	{
 		NotificationMetric m = rule.getMetric();
 
@@ -175,5 +225,17 @@ class NotificationsTableModel extends AbstractTableModel
 		OptionalDouble v = NotificationRule.parseNumeric(raw);
 		if (v.isPresent())
 			rule.setValue(GpFormat.shortValue((long) v.getAsDouble()));
+	}
+
+	/** The client-thread edit seam the model commits through; see {@link DetailViewHost#editNotifications}. */
+	interface RuleEditor
+	{
+		/**
+		 * Applies {@code mutation} to the bound item's rule list on the client thread.
+		 *
+		 * @param mutation applied to the live list on the client thread
+		 * @param onApplied run on the EDT once the mutation has been applied
+		 */
+		void edit(Consumer<List<NotificationRule>> mutation, Runnable onApplied);
 	}
 }

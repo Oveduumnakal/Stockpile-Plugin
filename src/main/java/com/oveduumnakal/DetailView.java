@@ -40,9 +40,11 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -134,7 +136,6 @@ public class DetailView extends JPanel implements Scrollable
 	/** Right dashboard column section indices (the graphs); see {@link #DASHBOARD_LEFT}. */
 	private static final int[] DASHBOARD_RIGHT = {4, 5};
 	private static final Color OVERVIEW_ROW_DIVIDER = new Color(45, 45, 45);
-	private static final int DEFAULT_NOTIFICATION_ROWS = 5;
 	private static final int PRESSURE_BALANCED_LOW = 45;
 	private static final int PRESSURE_BALANCED_HIGH = 55;
 	private static final String WIKI_BASE = "https://oldschool.runescape.wiki/w/";
@@ -161,7 +162,6 @@ public class DetailView extends JPanel implements Scrollable
 	private final ItemManager itemManager;
 	private final Consumer<Integer> onAcquisitionsEdited;
 	private final Consumer<Integer> onClearAcquisitions;
-	private final Consumer<Integer> onNotificationsEdited;
 	private final Consumer<Integer> onRequestDetailData;
 	private final BiConsumer<Integer, TrackItemMode> onAddItem;
 	private final Consumer<Integer> onUntrackToPreview;
@@ -292,7 +292,6 @@ public class DetailView extends JPanel implements Scrollable
 		this.itemManager = host.itemManager();
 		this.onAcquisitionsEdited = host::acquisitionsEdited;
 		this.onClearAcquisitions = host::clearAcquisitions;
-		this.onNotificationsEdited = host::notificationsEdited;
 		this.onRequestDetailData = host::requestDetailData;
 		this.onAddItem = host::addItem;
 		this.onUntrackToPreview = host::untrackToPreview;
@@ -948,14 +947,14 @@ public class DetailView extends JPanel implements Scrollable
 	/** Builds the notifications section: the rules table and its add/remove/edit controls. */
 	private void buildNotificationsSection()
 	{
-		notificationsModel = new NotificationsTableModel(this::notifyNotificationsEdited);
+		notificationsModel = new NotificationsTableModel(this::editNotifications);
 		notificationsTable = new JTable(notificationsModel)
 		{
 			@Override
 			public Dimension getPreferredScrollableViewportSize()
 			{
 				return new Dimension(getPreferredSize().width,
-						Math.min(getPreferredSize().height, getRowHeight() * DEFAULT_NOTIFICATION_ROWS + 2));
+						Math.min(getPreferredSize().height, getRowHeight() * NotificationRule.DEFAULT_ROWS + 2));
 			}
 		};
 		notificationsTable.setFillsViewportHeight(true);
@@ -977,21 +976,17 @@ public class DetailView extends JPanel implements Scrollable
 		JScrollPane tableScroll = new JScrollPane(notificationsTable);
 		tableScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		tableScroll.setBorder(BorderFactory.createLineBorder(StockpileColors.TABLE_GRID));
-		int notifMinHeight = notificationsTable.getRowHeight() * DEFAULT_NOTIFICATION_ROWS + 26;
+		int notifMinHeight = notificationsTable.getRowHeight() * NotificationRule.DEFAULT_ROWS + 26;
 		tableScroll.setMinimumSize(new Dimension(0, notifMinHeight));
 
 		JButton addRowBtn = new JButton("+ Add");
 		styleNotifButton(addRowBtn, Color.WHITE);
 		addRowBtn.addActionListener(e ->
 		{
-			TrackedItem t = host.trackedItem(boundItemId);
-			if (t == null)
+			if (host.trackedItem(boundItemId) == null)
 				return;
 
-			t.getNotifications().add(new NotificationRule());
-			notificationsModel.fireTableDataChanged();
-			notificationsTable.revalidate();
-			notifyNotificationsEdited();
+			editNotifications(rules -> rules.add(new NotificationRule()), this::onNotificationsApplied);
 		});
 
 		JButton removeRowBtn = new JButton("− Remove");
@@ -1004,28 +999,25 @@ public class DetailView extends JPanel implements Scrollable
 				return;
 
 			if (notificationsTable.isEditing())
-
 				notificationsTable.getCellEditor().stopCellEditing();
 
 			int[] selected = notificationsTable.getSelectedRows();
 			if (selected.length == 0)
 				return;
 
-			List<NotificationRule> rules = t.getNotifications();
-			Arrays.sort(selected);
-			for (int i = selected.length - 1; i >= 0; i--)
+			List<NotificationRule> live = t.getNotifications();
+			Set<NotificationRule> doomed = Collections.newSetFromMap(new IdentityHashMap<>());
+			for (int idx : selected)
 			{
-				int idx = selected[i];
-				if (idx >= 0 && idx < rules.size())
-					rules.remove(idx);
+				if (idx >= 0 && idx < live.size())
+					doomed.add(live.get(idx));
 			}
 
-			while (rules.size() < DEFAULT_NOTIFICATION_ROWS)
-				rules.add(new NotificationRule());
-
-			notificationsModel.fireTableDataChanged();
-			notificationsTable.revalidate();
-			notifyNotificationsEdited();
+			editNotifications(rules ->
+			{
+				rules.removeIf(doomed::contains);
+				NotificationRule.ensureDefaultRows(rules);
+			}, this::onNotificationsApplied);
 		};
 		removeRowBtn.addActionListener(e -> removeSelected.run());
 		notificationsTable.getSelectionModel().addListSelectionListener(e ->
@@ -1056,14 +1048,11 @@ public class DetailView extends JPanel implements Scrollable
 			if (choice != JOptionPane.YES_OPTION)
 				return;
 
-			t.getNotifications().clear();
-
-			for (int i = 0; i < DEFAULT_NOTIFICATION_ROWS; i++)
-				t.getNotifications().add(new NotificationRule());
-
-			notificationsModel.fireTableDataChanged();
-			notificationsTable.revalidate();
-			notifyNotificationsEdited();
+			editNotifications(rules ->
+			{
+				rules.clear();
+				NotificationRule.ensureDefaultRows(rules);
+			}, this::onNotificationsApplied);
 		});
 
 		JPanel tableButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -1093,13 +1082,20 @@ public class DetailView extends JPanel implements Scrollable
 	}
 
 	/**
-	 * Notifies the plugin (via callback) that the current item's notification rules
-	 * changed, so it can persist them.
+	 * Hands an edit of the current item's notification rules to the plugin, which applies it on the
+	 * client thread and persists it (#373).
 	 */
-	private void notifyNotificationsEdited()
+	private void editNotifications(Consumer<List<NotificationRule>> mutation, Runnable onApplied)
 	{
-		if (onNotificationsEdited != null && boundItemId > 0)
-			onNotificationsEdited.accept(boundItemId);
+		if (boundItemId > 0)
+			host.editNotifications(boundItemId, mutation, onApplied);
+	}
+
+	/** Re-reads the rules table once a client-thread edit has landed. */
+	private void onNotificationsApplied()
+	{
+		notificationsModel.fireTableDataChanged();
+		notificationsTable.revalidate();
 	}
 
 	/** Builds a titled detail-view section containing the given components. */
@@ -3114,15 +3110,6 @@ public class DetailView extends JPanel implements Scrollable
 			alchEstProfit.setToolTipText("<html>High alch profit (" + StockpilePanel.signedGp(haP)
 					+ ") × " + GpFormat.grouped(colQty) + " in collection log"
 					+ "<br>= " + StockpilePanel.signedGp(estProfit) + "</html>");
-		}
-
-		if (!viewOnly && item.getNotifications().isEmpty())
-		{
-			for (int i = 0; i < DEFAULT_NOTIFICATION_ROWS; i++)
-				item.getNotifications().add(new NotificationRule());
-
-			item.setNotificationsInitialized(true);
-			notifyNotificationsEdited();
 		}
 
 		if (!viewOnly && !notificationsTable.isEditing())

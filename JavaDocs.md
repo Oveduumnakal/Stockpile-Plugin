@@ -64,12 +64,14 @@
 - [com.oveduumnakal.MarketClassifier](#comoveduumnakalmarketclassifier)
 - [com.oveduumnakal.MarketMath](#comoveduumnakalmarketmath)
 - [com.oveduumnakal.NotifCellRenderer](#comoveduumnakalnotifcellrenderer)
+- [com.oveduumnakal.NotificationEvaluator](#comoveduumnakalnotificationevaluator)
 - [com.oveduumnakal.NotificationMetric](#comoveduumnakalnotificationmetric)
 - [com.oveduumnakal.NotificationMetric.Kind](#comoveduumnakalnotificationmetrickind)
 - [com.oveduumnakal.NotificationOperation](#comoveduumnakalnotificationoperation)
 - [com.oveduumnakal.NotificationRule](#comoveduumnakalnotificationrule)
 - [com.oveduumnakal.NotificationValueEditor](#comoveduumnakalnotificationvalueeditor)
 - [com.oveduumnakal.NotificationsTableModel](#comoveduumnakalnotificationstablemodel)
+- [com.oveduumnakal.NotificationsTableModel.RuleEditor](#comoveduumnakalnotificationstablemodelruleeditor)
 - [com.oveduumnakal.OverlayLayout](#comoveduumnakaloverlaylayout)
 - [com.oveduumnakal.OverviewPreset](#comoveduumnakaloverviewpreset)
 - [com.oveduumnakal.PanelActions](#comoveduumnakalpanelactions)
@@ -3832,7 +3834,6 @@ populated detail card and a loading placeholder.
 | `private static final int[]` | `DASHBOARD_LEFT` | Fixed dashboard column assignments (#109), indexing the section array built in `#applyDetailSectionLayout()`: left = item values, market info, alch, notifications; middle = collection values, price overview, collection log; right = price and volume graphs. |
 | `private static final int[]` | `DASHBOARD_MIDDLE` | Middle dashboard column section indices; see `#DASHBOARD_LEFT`. |
 | `private static final int[]` | `DASHBOARD_RIGHT` | Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`. |
-| `private static final int` | `DEFAULT_NOTIFICATION_ROWS` |  |
 | `private static final Color` | `DESCRIPTION_COLOR` |  |
 | `private static final Color` | `OVERVIEW_ROW_DIVIDER` |  |
 | `private static final TimeWindow[]` | `OVERVIEW_WINDOWS` |  |
@@ -3926,7 +3927,6 @@ populated detail card and a loading placeholder.
 | `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
 | `private final Consumer<Integer>` | `onClearAcquisitions` |  |
-| `private final Consumer<Integer>` | `onNotificationsEdited` |  |
 | `private final Consumer<Integer>` | `onRequestDetailData` |  |
 | `private final Consumer<Integer>` | `onUntrackToPreview` |  |
 | `private final List<PopoutHandle>` | `openPopouts` |  |
@@ -4010,6 +4010,7 @@ populated detail card and a loading placeholder.
 | `private void` | `closePopouts()` | Disposes all open pop-out windows (e.g. |
 | `private JPanel` | `createOverviewGrid(Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, int sepGap)` | Creates an overview grid panel that custom-paints its own dividers: a vertical rule after the window-label column and a horizontal rule between consecutive rows, both derived from the live label positions so they track layout changes. |
 | `private TrackedItem` | `currentDetailItem()` |  |
+| `private void` | `editNotifications(Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | Hands an edit of the current item's notification rules to the plugin, which applies it on the client thread and persists it (#373). |
 | `private static String` | `expandedAcqHeader(String compact)` |  |
 | `private void` | `fillDashboardColumn(JPanel column, int[] indices, JPanel[] sections, SectionSlot[] slots)` | Adds the sections named by `indices` (in that fixed order) to a dashboard column, skipping any the config has hidden. |
 | `private void` | `fillOverviewGrid(JPanel grid, Map<TimeWindow,JLabel[]> labels, List<JLabel> windowLabels, Set<TimeWindow> rows, Font font, boolean expanded)` | Lays out the overview grid's header and one row of price/volume labels per selected time window. |
@@ -4027,9 +4028,9 @@ populated detail card and a loading placeholder.
 | `public boolean` | `isLoadingVisible()` |  |
 | `public boolean` | `isPreview()` |  |
 | `private JPanel` | `newSectionWrapper()` |  |
-| `private void` | `notifyNotificationsEdited()` | Notifies the plugin (via callback) that the current item's notification rules changed, so it can persist them. |
 | `private void` | `onDashboardSearch(String query)` | Filters the floating dashboard search popup to OSRS items matching `query` (min two characters). |
 | `public void` | `onLeaveDetail()` | Clears the bound item and stops any in-flight loading/pop-outs when the host leaves the detail view. |
+| `private void` | `onNotificationsApplied()` | Re-reads the rules table once a client-thread edit has landed. |
 | `public boolean` | `onRebuild()` | Refreshes the bound item from the host's current tracked state on a list rebuild: clears a stale preview once the item is tracked, repopulates in place, and reports whether an item is still shown so the host can fall back to the main list when it has gone. |
 | `private void` | `openCollectionLogPopout()` | Opens the editable acquisitions (collection log) table in a standalone pop-out window. |
 | `private void` | `openGraphPopout(String title, PriceGraphPanel.Mode mode, PriceGraphPanel source)` | Opens an expanded chart pop-out mirroring (and kept in sync with) the in-panel graph. |
@@ -4104,10 +4105,6 @@ Middle dashboard column section indices; see `#DASHBOARD_LEFT`.
 `private static final int[] DASHBOARD_RIGHT`
 
 Right dashboard column section indices (the graphs); see `#DASHBOARD_LEFT`.
-
-#### DEFAULT_NOTIFICATION_ROWS
-
-`private static final int DEFAULT_NOTIFICATION_ROWS`
 
 #### DESCRIPTION_COLOR
 
@@ -4484,10 +4481,6 @@ Foreground of the detail header's Untrack button (red) — a tracked item can be
 #### onClearAcquisitions
 
 `private final Consumer<Integer> onClearAcquisitions`
-
-#### onNotificationsEdited
-
-`private final Consumer<Integer> onNotificationsEdited`
 
 #### onRequestDetailData
 
@@ -4925,6 +4918,13 @@ derived from the live label positions so they track layout changes.
 
 - **Returns:** the item currently shown in the detail view (a tracked item or the transient preview), or null.
 
+#### editNotifications
+
+`private void editNotifications(Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+Hands an edit of the current item's notification rules to the plugin, which applies it on the
+client thread and persists it (#373).
+
 #### expandedAcqHeader
 
 `private static String expandedAcqHeader(String compact)`
@@ -5033,13 +5033,6 @@ Sets a volume cell's compact/full text with a full-number tooltip and hover tint
 
 - **Returns:** an empty vertical wrapper panel used to stack a detail section's rows.
 
-#### notifyNotificationsEdited
-
-`private void notifyNotificationsEdited()`
-
-Notifies the plugin (via callback) that the current item's notification rules
-changed, so it can persist them.
-
 #### onDashboardSearch
 
 `private void onDashboardSearch(String query)`
@@ -5051,6 +5044,12 @@ Filters the floating dashboard search popup to OSRS items matching `query` (min 
 `public void onLeaveDetail()`
 
 Clears the bound item and stops any in-flight loading/pop-outs when the host leaves the detail view.
+
+#### onNotificationsApplied
+
+`private void onNotificationsApplied()`
+
+Re-reads the rules table once a client-thread edit has landed.
 
 #### onRebuild
 
@@ -5434,11 +5433,11 @@ the fields and callbacks it already holds.
 | `void` | `clearAcquisitions(int itemId)` | Clears the acquisitions log for `itemId`. |
 | `StockpileConfig` | `config()` |  |
 | `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies `mutation` to the item's acquisition list on the client thread, then signals the edit and runs `onApplied` back on the EDT. |
+| `void` | `editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | Applies `mutation` to `itemId`'s notification rules on the client thread, persists the edit and runs `onApplied` back on the EDT. |
 | `String` | `examine(int itemId)` |  |
 | `long` | `fireRunePrice()` |  |
 | `ItemManager` | `itemManager()` |  |
 | `long` | `natureRunePrice()` |  |
-| `void` | `notificationsEdited(int itemId)` | Signals that the notifications for `itemId` were edited in-view. |
 | `void` | `onBack()` | Invoked by the detail view's Back control. |
 | `void` | `popOut(int itemId)` | Pops `itemId` out into its own standalone detail window, focusing an existing one (#109). |
 | `void` | `requestDetailData(int itemId)` | Asks the plugin to (re)fetch the detailed price/history data for `itemId`. |
@@ -5497,6 +5496,22 @@ for this reason and say so; the editor never got the same treatment.
 - **Parameter** `mutation` — applied to the live list on the client thread
 - **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
+#### editNotifications
+
+`void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+Applies `mutation` to `itemId`'s notification rules on the client thread, persists the
+edit and runs `onApplied` back on the EDT.
+
+<p>The rule list is client-thread state: `evaluateNotifications` walks it and removes fired
+one-shot rules there, and `persistTrackedItems` serializes it on every quantity change. The
+detail view used to add, remove, clear and seed rules - and edit their fields - from the EDT, the
+same unsynchronised structural sharing #315 removed from the acquisitions list (#373).
+
+- **Parameter** `itemId` — the item whose rules to edit; a no-op when it is not tracked
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
+
 #### examine
 
 `String examine(int itemId)`
@@ -5520,12 +5535,6 @@ for this reason and say so; the editor never got the same treatment.
 `long natureRunePrice()`
 
 - **Returns:** the current nature-rune price used for high-alch profit figures.
-
-#### notificationsEdited
-
-`void notificationsEdited(int itemId)`
-
-Signals that the notifications for `itemId` were edited in-view.
 
 #### onBack
 
@@ -8082,6 +8091,97 @@ truncates stays readable.
 
 ---
 
+## com.oveduumnakal.NotificationEvaluator
+
+_class_
+
+`class NotificationEvaluator`
+
+Evaluates one `NotificationRule` against a `TrackedItem`: resolves the rule's metric to
+a current reading (a window price, volume, profit, Δ%, quantity, or a categorical rating) and tests
+it against the rule's threshold. Extracted from `StockpilePlugin` so the rule engine can be
+unit-tested without a client (#373). Client thread only: `ITM_PROFIT` streams the item's lots.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `static final double` | `MAX_DELTA_PCT` | Maximum plausible Δ% for a notification: changes beyond this magnitude indicate a sparse/stale window average (a near-zero denominator) rather than a real move, and are ignored so a one-shot rule isn't fired on noise. |
+| `private final LongSupplier` | `fireRunePrice` |  |
+| `private final LongSupplier` | `natureRunePrice` |  |
+
+### Constructor Summary
+
+| Constructor | Description |
+|---|---|
+| `NotificationEvaluator(LongSupplier natureRunePrice, LongSupplier fireRunePrice)` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `private String` | `categoryValue(TrackedItem item, NotificationMetric metric)` | Resolves the current categorical rating of a metric for an item (volatility, liquidity, or 30-day range position) via `MarketClassifier`. |
+| `Boolean` | `evaluate(TrackedItem item, NotificationRule rule)` | Evaluates a single rule against an item. |
+| `private OptionalDouble` | `numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)` | Resolves the current numeric reading of a metric for an item over a window (price, volume, profit, HA profit, Δ% vs. |
+
+### Field Detail
+
+#### MAX_DELTA_PCT
+
+`static final double MAX_DELTA_PCT`
+
+Maximum plausible Δ% for a notification: changes beyond this magnitude
+indicate a sparse/stale window average (a near-zero denominator) rather than
+a real move, and are ignored so a one-shot rule isn't fired on noise.
+
+#### fireRunePrice
+
+`private final LongSupplier fireRunePrice`
+
+#### natureRunePrice
+
+`private final LongSupplier natureRunePrice`
+
+### Constructor Detail
+
+#### NotificationEvaluator
+
+`NotificationEvaluator(LongSupplier natureRunePrice, LongSupplier fireRunePrice)`
+
+- **Parameter** `natureRunePrice` — the current nature rune price, for the high-alch profit metric
+- **Parameter** `fireRunePrice` — the current fire rune price, for the high-alch profit metric
+
+### Method Detail
+
+#### categoryValue
+
+`private String categoryValue(TrackedItem item, NotificationMetric metric)`
+
+Resolves the current categorical rating of a metric for an item
+(volatility, liquidity, or 30-day range position) via `MarketClassifier`.
+
+- **Returns:** the rating label, or `null` when it can't be classified
+
+#### evaluate
+
+`Boolean evaluate(TrackedItem item, NotificationRule rule)`
+
+Evaluates a single rule against an item.
+
+- **Returns:** `TRUE`/`FALSE` for the condition, or `null` when it
+        can't be evaluated yet (incomplete rule or missing/unparseable data)
+
+#### numericValue
+
+`private OptionalDouble numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)`
+
+Resolves the current numeric reading of a metric for an item over a window
+(price, volume, profit, HA profit, Δ% vs. the window average, or quantity).
+
+- **Returns:** the value, or empty when the underlying data is missing or unreliable
+
+---
+
 ## com.oveduumnakal.NotificationMetric
 
 _enum_
@@ -8502,6 +8602,7 @@ for display.
 
 | Modifier and Type | Field | Description |
 |---|---|---|
+| `static final int` | `DEFAULT_ROWS` | How many (blank) rule rows every tracked item keeps, so the table always offers room to add one. |
 | `private transient Boolean` | `lastCondition` | The condition's result at the previous evaluation, used for edge-triggered re-arming of repeat rules; `null` until first evaluated after a (re)load, so a standing-true condition doesn't re-fire on every login. |
 | `private NotificationMetric` | `metric` |  |
 | `private NotificationOperation` | `operation` |  |
@@ -8513,11 +8614,18 @@ for display.
 
 | Modifier and Type | Method | Description |
 |---|---|---|
+| `static void` | `ensureDefaultRows(List<NotificationRule> rules)` | Pads `rules` with blank rules up to `#DEFAULT_ROWS`. |
 | `public static String` | `formatPercent(double value)` | Formats a percent as `NN%` when whole, otherwise `NN.N%`. |
 | `public static OptionalDouble` | `parseNumeric(String text)` | Parses a numeric threshold, accepting commas and a k/m/b suffix (e.g. |
 | `public static OptionalDouble` | `parsePercent(String text)` | Parses a percent threshold. |
 
 ### Field Detail
+
+#### DEFAULT_ROWS
+
+`static final int DEFAULT_ROWS`
+
+How many (blank) rule rows every tracked item keeps, so the table always offers room to add one.
 
 #### lastCondition
 
@@ -8551,6 +8659,15 @@ Whether the rule re-arms after firing (repeat) instead of being removed (once).
 `private String value`
 
 ### Method Detail
+
+#### ensureDefaultRows
+
+`static void ensureDefaultRows(List<NotificationRule> rules)`
+
+Pads `rules` with blank rules up to `#DEFAULT_ROWS`. Runs on the client thread, which
+owns the list; the detail view used to seed these rows from the EDT while rendering (#373).
+
+- **Parameter** `rules` — an item's live rule list
 
 #### formatPercent
 
@@ -8661,35 +8778,45 @@ _class_
 
 Swing table model backing the notification rules: one row per
 `NotificationRule` with metric, timeframe, operator, and value columns.
-Editing a cell mutates the rule and notifies the plugin to persist it.
+Editing a cell commits through a client-thread `RuleEditor`, which owns the list, rather than
+mutating the rule from the EDT (#373).
+
+### Nested Type Summary
+
+| Type | Description |
+|---|---|
+| _interface_ [`RuleEditor`](#comoveduumnakalnotificationstablemodelruleeditor) | The client-thread edit seam the model commits through; see `DetailViewHost#editNotifications`. |
 
 ### Field Summary
 
 | Modifier and Type | Field | Description |
 |---|---|---|
 | `private static final String[]` | `COLS` |  |
+| `private final RuleEditor` | `editor` |  |
 | `private TrackedItem` | `item` |  |
-| `private final Runnable` | `notifyEdited` |  |
 
 ### Constructor Summary
 
 | Constructor | Description |
 |---|---|
-| `NotificationsTableModel(Runnable notifyEdited)` |  |
+| `NotificationsTableModel(RuleEditor editor)` |  |
 
 ### Method Summary
 
 | Modifier and Type | Method | Description |
 |---|---|---|
-| `private void` | `applyValueEdit(NotificationRule rule, String raw)` | Normalises an edited value into the rule: categorical values are stored as typed, while percent and numeric inputs are parsed and reformatted (e.g. |
+| `private static void` | `applyMetric(NotificationRule rule, NotificationMetric m)` | Switches a rule to metric `m`, snapping the timeframe, operator and value to what that metric allows. |
+| `private static void` | `applyValueEdit(NotificationRule rule, String raw)` | Normalises an edited value into the rule: categorical values are stored as typed, while percent and numeric inputs are parsed and reformatted (e.g. |
+| `private Consumer<NotificationRule>` | `changeFor(Object value, int c)` |  |
 | `public Class<?>` | `getColumnClass(int c)` |  |
 | `public int` | `getColumnCount()` |  |
 | `public String` | `getColumnName(int c)` |  |
 | `public int` | `getRowCount()` |  |
 | `public Object` | `getValueAt(int r, int c)` |  |
 | `public boolean` | `isCellEditable(int r, int c)` |  |
+| `private NotificationRule` | `ruleAt(int r)` |  |
 | `void` | `setItem(TrackedItem item)` |  |
-| `public void` | `setValueAt(Object value, int r, int c)` |  |
+| `public void` | `setValueAt(Object value, int r, int c)` | Commits a cell edit. |
 
 ### Field Detail
 
@@ -8697,29 +8824,43 @@ Editing a cell mutates the rule and notifies the plugin to persist it.
 
 `private static final String[] COLS`
 
+#### editor
+
+`private final RuleEditor editor`
+
 #### item
 
 `private TrackedItem item`
-
-#### notifyEdited
-
-`private final Runnable notifyEdited`
 
 ### Constructor Detail
 
 #### NotificationsTableModel
 
-`NotificationsTableModel(Runnable notifyEdited)`
+`NotificationsTableModel(RuleEditor editor)`
 
 ### Method Detail
 
+#### applyMetric
+
+`private static void applyMetric(NotificationRule rule, NotificationMetric m)`
+
+Switches a rule to metric `m`, snapping the timeframe, operator and value to what that
+metric allows. A no-op when the rule already uses `m`.
+
 #### applyValueEdit
 
-`private void applyValueEdit(NotificationRule rule, String raw)`
+`private static void applyValueEdit(NotificationRule rule, String raw)`
 
 Normalises an edited value into the rule: categorical values are stored as
 typed, while percent and numeric inputs are parsed and reformatted
 (e.g. `"5000000"` &rarr; `"5m"`), ignored when unparseable.
+
+#### changeFor
+
+`private Consumer<NotificationRule> changeFor(Object value, int c)`
+
+- **Returns:** the write a cell edit makes to its rule, or `null` when `value` is not valid
+        for column `c`
 
 #### getColumnClass
 
@@ -8747,6 +8888,14 @@ typed, while percent and numeric inputs are parsed and reformatted
 
 `public boolean isCellEditable(int r, int c)`
 
+#### ruleAt
+
+`private NotificationRule ruleAt(int r)`
+
+- **Returns:** the rule at row `r`, or `null` when that row no longer exists. The list is
+        client-thread state and a fired one-shot rule is removed from there, so a row the table
+        counted a moment ago can be gone by the time it is read.
+
 #### setItem
 
 `void setItem(TrackedItem item)`
@@ -8754,6 +8903,40 @@ typed, while percent and numeric inputs are parsed and reformatted
 #### setValueAt
 
 `public void setValueAt(Object value, int r, int c)`
+
+Commits a cell edit.
+
+<p>The new value is validated here on the EDT, but the rule is only written on the client thread
+through `#editor`, which owns the list (#373). The rule is captured by identity, so an edit
+that lands after a one-shot rule above it fired and was removed still reaches the rule the user
+edited, or nothing.
+
+---
+
+## com.oveduumnakal.NotificationsTableModel.RuleEditor
+
+_interface_
+
+`interface RuleEditor`
+
+The client-thread edit seam the model commits through; see `DetailViewHost#editNotifications`.
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `edit(Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | Applies `mutation` to the bound item's rule list on the client thread. |
+
+### Method Detail
+
+#### edit
+
+`void edit(Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+Applies `mutation` to the bound item's rule list on the client thread.
+
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
 ---
 
@@ -8949,11 +9132,11 @@ lets a new feature add a method rather than another positional lambda.
 | `void` | `clearAcquisitions(int itemId)` | Clears all acquisition lots recorded for `itemId`. |
 | `void` | `clearAll()` | Stops tracking every item and clears all tracked state. |
 | `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies `mutation` to `itemId`'s acquisition lots on the client thread, which owns them, then runs `onApplied` on the EDT. |
+| `void` | `editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | Applies `mutation` to `itemId`'s notification rules on the client thread, which owns them, persists, then runs `onApplied` on the EDT. |
 | `String` | `examineLookup(int itemId)` |  |
 | `void` | `exportCsv(Consumer<String> callback)` | Builds the acquisitions CSV and hands it back through `callback`. |
 | `void` | `exportList(Consumer<String> callback)` | Builds the share token for the tracked list and hands it back through `callback`. |
 | `void` | `importList(String data, Consumer<String> callback)` | Imports the tracked list encoded in `data`, reporting the outcome through `callback`. |
-| `void` | `notificationsEdited(int itemId)` | Notifies the plugin that `itemId`'s notification rules were edited and must be persisted. |
 | `void` | `openCompare()` | Opens the compare window (#280) or focuses it, showing the empty prompt when nothing is compared yet. |
 | `void` | `openDashboard()` | Opens the item-less Stockpile dashboard window (#109), or focuses it if already open. |
 | `void` | `popOut(int itemId)` | Pops `itemId` out into its own standalone, resizable detail window (#109), or focuses the existing window if one is already open for it. |
@@ -9024,6 +9207,18 @@ why the panel may not touch the list directly (#315).
 - **Parameter** `mutation` — applied to the live list on the client thread
 - **Parameter** `onApplied` — run on the EDT once the mutation has been applied
 
+#### editNotifications
+
+`void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+Applies `mutation` to `itemId`'s notification rules on the client thread, which owns
+them, persists, then runs `onApplied` on the EDT. See `DetailViewHost#editNotifications`
+for why the panel may not touch the list directly (#373).
+
+- **Parameter** `itemId` — the item whose rules to edit
+- **Parameter** `mutation` — applied to the live list on the client thread
+- **Parameter** `onApplied` — run on the EDT once the mutation has been applied
+
 #### examineLookup
 
 `String examineLookup(int itemId)`
@@ -9047,12 +9242,6 @@ Builds the share token for the tracked list and hands it back through `callback`
 `void importList(String data, Consumer<String> callback)`
 
 Imports the tracked list encoded in `data`, reporting the outcome through `callback`.
-
-#### notificationsEdited
-
-`void notificationsEdited(int itemId)`
-
-Notifies the plugin that `itemId`'s notification rules were edited and must be persisted.
 
 #### openCompare
 
@@ -13610,6 +13799,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final List<JLabel>` | `loadingLabels` |  |
 | `private JPanel` | `loggedOutCard` | The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport while it shows. |
 | `private long` | `natureRunePrice` |  |
+| `private final PanelActions` | `notificationEditor` | The plugin callbacks, held for the client-thread notification-edit seam (#373). |
 | `private final Consumer<Integer>` | `onAcquisitionsEdited` |  |
 | `private final BiConsumer<Integer,TrackItemMode>` | `onAddItem` |  |
 | `private final Consumer<Integer>` | `onAddToCompare` | Adds the item to the compare set, opening or focusing the compare window (#280). |
@@ -13620,7 +13810,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private final Consumer<Consumer<String>>` | `onExportCsv` | Builds the acquisitions CSV on the client thread and delivers it back on the EDT. |
 | `private final Consumer<Consumer<String>>` | `onExportList` | Builds the shareable tracked-list token on the client thread and delivers it back on the EDT. |
 | `private final BiConsumer<String,Consumer<String>>` | `onImportList` | Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT. |
-| `private final Consumer<Integer>` | `onNotificationsEdited` |  |
 | `private final Runnable` | `onOpenCompare` |  |
 | `private final Runnable` | `onOpenDashboard` | Opens the item-less Stockpile dashboard window (#109). |
 | `private final Consumer<Integer>` | `onPopOut` | Pops the shown item out into its own standalone detail window (#109). |
@@ -13757,6 +13946,7 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private static Icon` | `detailIcon(Color color)` | Draws a "view detail" glyph tinted `color`: a document with two text lines and a magnifying glass overlapping its lower-right corner, echoing the detail view's document-and-lens motif (#299). |
 | `private void` | `dragAutoscrollTick()` | One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the drop target. |
 | `public void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | {@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present. |
+| `public void` | `editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | {@inheritDoc} Delegates to the plugin's client-thread notification-edit seam. |
 | `private static String` | `encode(String value)` | URL-encodes a value for a query parameter (spaces as %20, not +). |
 | `private void` | `equalizeTotalsLabelWidths()` | Fixes the three totals value labels to the widest one's width so the columns stay aligned. |
 | `private static String` | `escapeHtml(String text)` | Escapes the HTML-significant characters so text renders literally inside an HTML label. |
@@ -13795,7 +13985,6 @@ constructor, and the plugin pushes data back via `#rebuild` and
 | `private void` | `maybeShowRowMenu(MouseEvent e, int itemId)` | Shows the tracked-row right-click menu (#280) when `e` is a popup trigger. |
 | `private void` | `moveCategoryInDialog(JList<String> list, DefaultListModel<String> model, int delta)` | Moves the selected dialog category by `delta` and forwards the new index to the plugin. |
 | `public long` | `natureRunePrice()` | {@inheritDoc} Returns the nature-rune price the panel currently holds. |
-| `public void` | `notificationsEdited(int itemId)` | {@inheritDoc} Delegates to the panel's notifications-edited callback when present. |
 | `public void` | `onBack()` | {@inheritDoc} Returns the sidebar panel to the main tracked-item list. |
 | `private void` | `onSearch(String query)` | Filters the add-item search to items matching the typed query and lists the matches in a floating popup below the search field (#279), overlaying the panel rather than pushing the list down &mdash; matching the pop-out Dashboard search. |
 | `private void` | `onTrackedFilterChanged()` | Re-renders the rows against the updated tracked-list filter text. |
@@ -14339,6 +14528,12 @@ The logged-out placeholder card; tracked so `#cardsHost` can fill the viewport w
 
 `private long natureRunePrice`
 
+#### notificationEditor
+
+`private final PanelActions notificationEditor`
+
+The plugin callbacks, held for the client-thread notification-edit seam (#373).
+
 #### onAcquisitionsEdited
 
 `private final Consumer<Integer> onAcquisitionsEdited`
@@ -14390,10 +14585,6 @@ Builds the shareable tracked-list token on the client thread and delivers it bac
 `private final BiConsumer<String,Consumer<String>> onImportList`
 
 Imports a tracked-list token (merge, non-destructive); delivers a user-facing result message on the EDT.
-
-#### onNotificationsEdited
-
-`private final Consumer<Integer> onNotificationsEdited`
 
 #### onOpenCompare
 
@@ -15152,6 +15343,12 @@ One autoscroll step: nudges the viewport in `#dragScrollDir` and recomputes the 
 
 {@inheritDoc} Delegates to the panel's client-thread acquisition-edit seam when present.
 
+#### editNotifications
+
+`public void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+{@inheritDoc} Delegates to the plugin's client-thread notification-edit seam.
+
 #### encode
 
 `private static String encode(String value)`
@@ -15405,12 +15602,6 @@ Moves the selected dialog category by `delta` and forwards the new index to the 
 `public long natureRunePrice()`
 
 {@inheritDoc} Returns the nature-rune price the panel currently holds.
-
-#### notificationsEdited
-
-`public void notificationsEdited(int itemId)`
-
-{@inheritDoc} Delegates to the panel's notifications-edited callback when present.
 
 #### onBack
 
@@ -16474,7 +16665,6 @@ executor.
 | `private static final long` | `GLOW_PERIOD_SLOW_MS` |  |
 | `private static final String` | `LOOT_SACK_OPTION` | Menu option and target substring for the Huntsman's loot sack, whose contents land in the inventory with no reward `ItemContainer` to observe. |
 | `private static final String` | `LOOT_SACK_TARGET` |  |
-| `private static final double` | `MAX_DELTA_PCT` | Maximum plausible Δ% for a notification: changes beyond this magnitude indicate a sparse/stale window average (a near-zero denominator) rather than a real move, and are ignored so a one-shot rule isn't fired on noise. |
 | `private static final int` | `NATURE_RUNE_ID` |  |
 | `static final int` | `OVERLAY_MAX` | Maximum number of items shown in the on-screen overlay (fixed for now). |
 | `private static final long` | `PLATINUM_TOKEN_GP` | Gp value of one platinum token, the coin-equivalent currency for trades above max cash. |
@@ -16540,6 +16730,7 @@ executor.
 | `private final Map<TileItem,Integer>` | `myDrops` | Ground items this player dropped: the `TileItem` → how many of its units are ours. |
 | `private final Map<Integer,Integer>` | `myTradeOffer` | Latest captured trade-offer sides (canonical id → qty), read when the trade completes (#66). |
 | `private NavigationButton` | `navButton` |  |
+| `private final NotificationEvaluator` | `notificationEvaluator` | Evaluates notification rules against an item, extracted so the rule engine is unit-testable (#373). |
 | `private Notifier` | `notifier` |  |
 | `private OverlayManager` | `overlayManager` |  |
 | `private StockpilePanel` | `panel` |  |
@@ -16602,7 +16793,6 @@ executor.
 | `void` | `buildShareToken(Consumer<String> onResult)` | Builds a shareable code for the current tracked list (ids, modes, categories, favorites) — "" when empty — and hands it to `onResult` on the EDT. |
 | `private int` | `canonicalCountId(int itemId)` | Resolves a container slot's item id to the canonical (unnoted, non-placeholder) id it should count as, using a single `ItemComposition` lookup instead of a separate placeholder-check + `canonicalize` pair (#185) — a bank event covers ~800 slots. |
 | `private void` | `captureTradeOffer(Map<Integer,Integer> side, ItemContainer container, boolean mine)` | Snapshots one side of the trade window (canonical id → quantity) as its container changes. |
-| `private String` | `categoryValue(TrackedItem item, NotificationMetric metric)` | Resolves the current categorical rating of a metric for an item (volatility, liquidity, or 30-day range position) via `MarketClassifier`. |
 | `private void` | `claimReceivedItems(Map<Integer,Integer> side, long gp)` | Claims received items as buys at the apportioned per-unit price, matched by their inventory additions. |
 | `private boolean` | `claimSeriesFetch(int itemId, SeriesTimestep step)` | Claims one `(item, timestep)` fetch, marking it as issued now. |
 | `private void` | `clearAcquisitions(int itemId)` | Clears an item's acquisition lots (resetting its cost basis) and persists/refreshes. |
@@ -16625,9 +16815,9 @@ executor.
 | `private void` | `deleteSavedComparison(String name)` | Deletes the saved comparison named `name` (#303), persists, and refreshes the Load menu. |
 | `private void` | `detectVersionChange()` | Detects a new plugin version by comparing the changelog's current version to the last-seen version in config. |
 | `void` | `editAcquisitions(int itemId, Consumer<List<AcquisitionRecord>> mutation, Runnable onApplied)` | Applies an acquisition-log edit on the client thread, which owns the list, then persists, refreshes, and hands control back to the EDT. |
+| `void` | `editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)` | Applies a notification-rule edit on the client thread, which owns the list, then persists and hands control back to the EDT. |
 | `private void` | `ensureCategory(String name, boolean collapsed)` | Adds a category by name if one with that name doesn't already exist (case-insensitive). |
 | `private void` | `evaluateNotifications()` | Evaluates every item's notification rules and fires the configured notifier for any that are met. |
-| `private Boolean` | `evaluateRule(TrackedItem item, NotificationRule rule)` | Evaluates a single rule against an item. |
 | `private String` | `examineFor(int itemId)` |  |
 | `public FallbackPricing` | `fallbackPricing()` | Returns the configured fallback-pricing policy for unknown-source changes. |
 | `private void` | `fetchItemMappings()` | Fetches GE item metadata in the background, keeping the previous map on failure. |
@@ -16674,7 +16864,6 @@ executor.
 | `private void` | `migrateAutoAddSetting()` | One-time migration for #219: the old combined `autoAddItems` enum (High/Low/Avg/Zero/Off) split into a boolean auto-add gate plus a separate `FallbackPricing`. |
 | `private void` | `moveCompareId(int itemId, int toIndex)` | Reorders the compare set so `itemId` sits at `toIndex`, then refreshes the window. |
 | `private String` | `notificationText(TrackedItem item, NotificationRule rule)` | Builds the user-facing notification message, e.g. |
-| `private OptionalDouble` | `numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)` | Resolves the current numeric reading of a metric for an item over a window (price, volume, profit, HA profit, Δ% vs. |
 | `void` | `onAcquisitionsEdited(int itemId)` |  |
 | `public void` | `onActorDeath(ActorDeath event)` | Marks the local player's death, opening the death-loss suspension window (#70). |
 | `public void` | `onChatMessage(ChatMessage event)` | Registers the completed trade's claims when the game confirms the exchange (#66), and picks up the pouch-deposit and reward-loot signals. |
@@ -16691,7 +16880,6 @@ executor.
 | `public void` | `onItemSpawned(ItemSpawned event)` | Records a ground item and its tile so the ground overlay can outline it, buffering it for #65. |
 | `public void` | `onMenuOpened(MenuOpened event)` | Adds Stockpile right-click options to item menu entries, when enabled (#285). |
 | `public void` | `onMenuOptionClicked(MenuOptionClicked event)` | Claims an upcoming High/Low Alchemy disposal (#68): casting either spell on a tracked item registers an `AcquisitionSource#ALCHEMY` claim for one unit at the coins the cast actually yields — the item's cached high/low alch value — so the lot closes at the real proceeds instead of the current average. |
-| `private void` | `onNotificationsEdited(int itemId)` | Callback after the user edits an item's notification rules: just persists the change. |
 | `public void` | `onRuneScapeProfileChanged(RuneScapeProfileChanged event)` | Resets the session baseline when the RS profile (account) changes, so stats restart per account. |
 | `public void` | `onStatChanged(StatChanged event)` | Marks the tick of processing-skill XP gains (recipe actions, #69), gathering-skill XP gains (#213), and Thieving XP gains (#217). |
 | `public void` | `onVarbitChanged(VarbitChanged event)` | Mirrors rune pouch contents (held in varbits, not a normal container) into the quantity counts, accumulating deltas like a container change. |
@@ -16749,6 +16937,7 @@ executor.
 | `private List<String>` | `savedComparisonNames()` |  |
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
 | `private Integer` | `searchItemIdByExactName(String lowerName)` | Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable item whose name equals `lowerName` (case-insensitive). |
+| `private static void` | `seedDefaultNotifications(TrackedItem tracked)` | Gives a newly tracked item its blank rule rows, which the detail view used to seed from the EDT while rendering (#373). |
 | `private static long` | `seriesKey(int itemId, SeriesTimestep step)` |  |
 | `private static List<WikiRealtimePriceClient.PricePoint>` | `seriesOf(TrackedItem item, SeriesTimestep step)` |  |
 | `private void` | `setFavorite(int itemId, boolean favorite)` | Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes. |
@@ -16886,14 +17075,6 @@ reward pool and GOTR reward guardian remain deferred pending their own live capt
 #### LOOT_SACK_TARGET
 
 `private static final String LOOT_SACK_TARGET`
-
-#### MAX_DELTA_PCT
-
-`private static final double MAX_DELTA_PCT`
-
-Maximum plausible Δ% for a notification: changes beyond this magnitude
-indicate a sparse/stale window average (a near-zero denominator) rather than
-a real move, and are ignored so a one-shot rule isn't fired on noise.
 
 #### NATURE_RUNE_ID
 
@@ -17262,6 +17443,12 @@ Latest captured trade-offer sides (canonical id → qty), read when the trade co
 #### navButton
 
 `private NavigationButton navButton`
+
+#### notificationEvaluator
+
+`private final NotificationEvaluator notificationEvaluator`
+
+Evaluates notification rules against an item, extracted so the rule engine is unit-testable (#373).
 
 #### notifier
 
@@ -17667,15 +17854,6 @@ changes. For our own side, diffs the new offer against the previous snapshot and
 queues the change so the matching inventory removal suspends (rather than closes) the
 offered lots, and a later withdrawal un-suspends them (#66).
 
-#### categoryValue
-
-`private String categoryValue(TrackedItem item, NotificationMetric metric)`
-
-Resolves the current categorical rating of a metric for an item
-(volatility, liquidity, or 30-day range position) via `MarketClassifier`.
-
-- **Returns:** the rating label, or `null` when it can't be classified
-
 #### claimReceivedItems
 
 `private void claimReceivedItems(Map<Integer,Integer> side, long gp)`
@@ -17835,6 +18013,14 @@ Applies an acquisition-log edit on the client thread, which owns the list, then 
 refreshes, and hands control back to the EDT. See `DetailViewHost#editAcquisitions` for
 why the editor may not touch the list directly (#315).
 
+#### editNotifications
+
+`void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied)`
+
+Applies a notification-rule edit on the client thread, which owns the list, then persists and
+hands control back to the EDT. See `DetailViewHost#editNotifications` for why the view may
+not touch the list directly (#373).
+
 #### ensureCategory
 
 `private void ensureCategory(String name, boolean collapsed)`
@@ -17850,15 +18036,6 @@ for any that are met. A once rule is removed after firing; a repeat rule stays
 and re-arms edge-triggered — it fires again only after its condition has gone
 false and come back true, and the first evaluation after a (re)load primes it
 without firing. Skipped when notifications are disabled or being edited.
-
-#### evaluateRule
-
-`private Boolean evaluateRule(TrackedItem item, NotificationRule rule)`
-
-Evaluates a single rule against an item.
-
-- **Returns:** `TRUE`/`FALSE` for the condition, or `null` when it
-        can't be evaluated yet (incomplete rule or missing/unparseable data)
 
 #### examineFor
 
@@ -18225,15 +18402,6 @@ Backs the drag-reorder of the compare columns. Client thread.
 
 Builds the user-facing notification message, e.g. `"Stockpile: Coal - High >= 200"`.
 
-#### numericValue
-
-`private OptionalDouble numericValue(TrackedItem item, NotificationMetric metric, TimeWindow window)`
-
-Resolves the current numeric reading of a metric for an item over a window
-(price, volume, profit, HA profit, Δ% vs. the window average, or quantity).
-
-- **Returns:** the value, or empty when the underlying data is missing or unreliable
-
 #### onAcquisitionsEdited
 
 `void onAcquisitionsEdited(int itemId)`
@@ -18382,12 +18550,6 @@ tracked item registers an `AcquisitionSource#ALCHEMY` claim for one unit
 at the coins the cast actually yields — the item's cached high/low alch value —
 so the lot closes at the real proceeds instead of the current average. Casts on
 items with no cached alch value stay unclaimed and take the unknown-source path.
-
-#### onNotificationsEdited
-
-`private void onNotificationsEdited(int itemId)`
-
-Callback after the user edits an item's notification rules: just persists the change.
 
 #### onRuneScapeProfileChanged
 
@@ -18855,6 +19017,13 @@ Offline fallback for `#resolveVariantIds`: searches the client's item index for 
 item whose name equals `lowerName` (case-insensitive).
 
 - **Returns:** the matching item id, or `null` when none matches
+
+#### seedDefaultNotifications
+
+`private static void seedDefaultNotifications(TrackedItem tracked)`
+
+Gives a newly tracked item its blank rule rows, which the detail view used to seed from the EDT
+while rendering (#373). Client thread only.
 
 #### seriesKey
 

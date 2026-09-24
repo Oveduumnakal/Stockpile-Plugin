@@ -64,8 +64,20 @@ public interface DetailViewHost
 	/** Clears the acquisitions log for {@code itemId}. */
 	void clearAcquisitions(int itemId);
 
-	/** Signals that the notifications for {@code itemId} were edited in-view. */
-	void notificationsEdited(int itemId);
+	/**
+	 * Applies {@code mutation} to {@code itemId}'s notification rules on the client thread, persists the
+	 * edit and runs {@code onApplied} back on the EDT.
+	 *
+	 * <p>The rule list is client-thread state: {@code evaluateNotifications} walks it and removes fired
+	 * one-shot rules there, and {@code persistTrackedItems} serializes it on every quantity change. The
+	 * detail view used to add, remove, clear and seed rules - and edit their fields - from the EDT, the
+	 * same unsynchronised structural sharing #315 removed from the acquisitions list (#373).
+	 *
+	 * @param itemId the item whose rules to edit; a no-op when it is not tracked
+	 * @param mutation applied to the live list on the client thread
+	 * @param onApplied run on the EDT once the mutation has been applied
+	 */
+	void editNotifications(int itemId, Consumer<List<NotificationRule>> mutation, Runnable onApplied);
 
 	/** Tracks {@code itemId} from the detail header Track button (#138), honouring the add mode. */
 	void addItem(int itemId, TrackItemMode mode);
