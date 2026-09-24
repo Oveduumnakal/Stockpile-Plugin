@@ -638,7 +638,10 @@ profit columns. Edits are parsed here and committed through
 | `boolean` | `isSellEstimated(int row)` |  |
 | `private boolean` | `isSourceColumn(int c)` |  |
 | `boolean` | `isSymbolColumn(int c)` |  |
+| `AcquisitionRecord` | `recordAt(int row)` |  |
+| `int` | `rowOf(AcquisitionRecord rec)` |  |
 | `long` | `rowProfit(AcquisitionRecord rec)` |  |
+| `private List<AcquisitionRecord>` | `rows()` |  |
 | `void` | `setItem(TrackedItem item)` | Swaps the backing item, announcing a full structure reset only when the column set actually changed — a plain data change keeps the table's layout, column widths, and renderers, so refresh-in-place doesn't collapse the detail card. |
 | `public void` | `setValueAt(Object value, int r, int c)` | Commits a cell edit. |
 | `String` | `sourceLabelAt(int row)` |  |
@@ -751,11 +754,32 @@ The column set last announced via `fireTableStructureChanged`, to skip redundant
 
 - **Returns:** whether column `c` is the compact view's read-only source-symbol column.
 
+#### recordAt
+
+`AcquisitionRecord recordAt(int row)`
+
+- **Returns:** the lot shown in `row`, or `null` when there is no such row.
+
+#### rowOf
+
+`int rowOf(AcquisitionRecord rec)`
+
+- **Returns:** the row showing exactly `rec`, or -1. By identity: `AcquisitionRecord` compares
+        by value, so two lots with the same quantity and prices would otherwise be confused.
+
 #### rowProfit
 
 `long rowProfit(AcquisitionRecord rec)`
 
 - **Returns:** a lot's realised profit, or its unrealised profit at the current low price while unsold.
+
+#### rows
+
+`private List<AcquisitionRecord> rows()`
+
+- **Returns:** the rows the table shows: the item's lots as of the last client-thread refresh. The live
+        list belongs to the client thread, where the FIFO engine adds, closes and merges lots as
+        offers fill, so the table reads a snapshot instead of racing it (#374).
 
 #### setItem
 
@@ -773,8 +797,12 @@ Commits a cell edit.
 
 <p>The parse and validation happen here on the EDT, but the record is only written on the
 client thread, which owns the list - the FIFO engine adds, removes and re-prices lots from
-there while offers fill (#315). The row index is re-checked inside the mutation, since the
-engine may have closed or removed a lot between the edit and its application.
+there while offers fill (#315).
+
+<p>The lot is captured by identity, not row index. The index was re-checked only against the
+list's size, so if the engine removed or merged an earlier lot between the edit and its
+application, row `r` pointed at a different lot and the edit landed there (#374). Now the
+edit reaches the lot the user edited, or nothing if that lot is gone.
 
 #### sourceLabelAt
 
@@ -4047,6 +4075,7 @@ populated detail card and a loading placeholder.
 | `private void` | `refreshPopouts(TrackedItem item)` | Pushes fresh data for `item` into every open pop-out window. |
 | `private void` | `scrollAcquisitionsToBottom()` | Scrolls the acquisitions log to its newest (bottom) entry once layout has settled. |
 | `private void` | `selectDashboardSearch(int itemId)` | Clears the dashboard search field and asks the host to switch this window to `itemId`. |
+| `private static Set<AcquisitionRecord>` | `selectedLots(JTable table, AcquisitionsTableModel model)` |  |
 | `private void` | `setOverviewPlaceholder(JLabel label)` | Resets an overview cell to the `"-"` placeholder. |
 | `private void` | `setPriceCell(JLabel label, long value, Color color, String tooltipLabel, Color tint, boolean full)` | Sets a price cell's text (full or abbreviated), color, tooltip, and hover tint, or a placeholder if unset. |
 | `public void` | `show(int itemId)` | Switches to the detail card for an item, requesting its full data and populating the view. |
@@ -5160,6 +5189,14 @@ Scrolls the acquisitions log to its newest (bottom) entry once layout has settle
 `private void selectDashboardSearch(int itemId)`
 
 Clears the dashboard search field and asks the host to switch this window to `itemId`.
+
+#### selectedLots
+
+`private static Set<AcquisitionRecord> selectedLots(JTable table, AcquisitionsTableModel model)`
+
+- **Returns:** the lots behind a table's selected rows, compared by identity. Removal used to delete by
+        row index on the client thread, which deleted the wrong lot whenever the engine had removed
+        or merged an earlier one in the meantime (#374).
 
 #### setOverviewPlaceholder
 
@@ -8814,6 +8851,7 @@ mutating the rule from the EDT (#373).
 | `public int` | `getRowCount()` |  |
 | `public Object` | `getValueAt(int r, int c)` |  |
 | `public boolean` | `isCellEditable(int r, int c)` |  |
+| `private int` | `rowOf(NotificationRule rule)` |  |
 | `private NotificationRule` | `ruleAt(int r)` |  |
 | `void` | `setItem(TrackedItem item)` |  |
 | `public void` | `setValueAt(Object value, int r, int c)` | Commits a cell edit. |
@@ -8887,6 +8925,13 @@ typed, while percent and numeric inputs are parsed and reformatted
 #### isCellEditable
 
 `public boolean isCellEditable(int r, int c)`
+
+#### rowOf
+
+`private int rowOf(NotificationRule rule)`
+
+- **Returns:** the row showing exactly `rule`, or -1. By identity: `NotificationRule` compares
+        by value, and every blank default row equals every other.
 
 #### ruleAt
 
@@ -20057,6 +20102,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `private long` | `latestLowTime` |  |
 | `private transient int` | `limitBought` | Units bought toward the GE buy limit in the current 4-hour window (transient; set from the plugin). |
 | `private transient long` | `limitResetEpoch` | Epoch-second when the current GE buy-limit window resets, or 0 when none (transient). |
+| `private volatile List<AcquisitionRecord>` | `lotsSnapshot` | The acquisition lots as of the last client-thread refresh, for the EDT's collection-log table. |
 | `private long` | `lowAlch` |  |
 | `private int` | `lowDelta` |  |
 | `private long` | `lowPrice` |  |
@@ -20105,7 +20151,7 @@ accessors derive figures from `quantity`, the current prices, and the
 | `public boolean` | `hasPrices()` |  |
 | `public int` | `iconStackSize()` |  |
 | `public int` | `reduceSuspended(SuspensionSource source, int qty)` | Restores up to `qty` units from `source`'s suspension, clearing the entry (and its timestamp) once it empties. |
-| `public void` | `refreshCosts()` | Recomputes `#costs` from the current lots at the current average price. |
+| `public void` | `refreshCosts()` | Recomputes `#costs` and `#lotsSnapshot` from the current lots at the current average price. |
 | `public void` | `restoreSuspended(SuspensionSource source, int qty, Instant at)` | Seeds `source`'s suspension to `qty` at timestamp `at` when restoring persisted (death/pouch) state on login, so the recovery-expiry clock resumes from where it was saved rather than restarting now. |
 | `public void` | `setSuspended(SuspensionSource source, int qty)` | Sets `source`'s suspended count outright, stamping per policy; drops the entry when 0. |
 | `private Map<SuspensionSource,SuspensionState>` | `suspensions()` |  |
@@ -20195,6 +20241,14 @@ Units bought toward the GE buy limit in the current 4-hour window (transient; se
 `private transient long limitResetEpoch`
 
 Epoch-second when the current GE buy-limit window resets, or 0 when none (transient).
+
+#### lotsSnapshot
+
+`private volatile List<AcquisitionRecord> lotsSnapshot`
+
+The acquisition lots as of the last client-thread refresh, for the EDT's collection-log table.
+A shallow, unmodifiable copy: the same record instances - so an edit can find its lot by
+identity - in a list the FIFO engine never resizes under the table's feet (#374).
 
 #### lowAlch
 
@@ -20440,7 +20494,7 @@ timestamp) once it empties. Returns the number actually restored.
 
 `public void refreshCosts()`
 
-Recomputes `#costs` from the current lots at the current average price.
+Recomputes `#costs` and `#lotsSnapshot` from the current lots at the current average price.
 Client thread only &mdash; it streams the live acquisitions list.
 
 #### restoreSuspended
