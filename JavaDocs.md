@@ -61,6 +61,7 @@
 - [com.oveduumnakal.ItemCategoryClassifier](#comoveduumnakalitemcategoryclassifier)
 - [com.oveduumnakal.ItemDeltas](#comoveduumnakalitemdeltas)
 - [com.oveduumnakal.ItemDeltas.DeltaAction](#comoveduumnakalitemdeltasdeltaaction)
+- [com.oveduumnakal.LatestPriceCache](#comoveduumnakallatestpricecache)
 - [com.oveduumnakal.LedgerHost](#comoveduumnakalledgerhost)
 - [com.oveduumnakal.MarketClassifier](#comoveduumnakalmarketclassifier)
 - [com.oveduumnakal.MarketMath](#comoveduumnakalmarketmath)
@@ -7875,6 +7876,88 @@ Receives one item id and its signed `after − before` change.
 #### accept
 
 `void accept(int itemId, int delta)`
+
+---
+
+## com.oveduumnakal.LatestPriceCache
+
+_class_
+
+`class LatestPriceCache`
+
+Holds the last wiki `/latest` price map and coalesces fetches of it (#381).
+
+<p>`/latest` is the full all-items dump - hundreds of KB - and it used to be downloaded on
+every preview, add, pop-out, compare and import as well as by the scheduled refresh, so tracking ten
+items in a row meant ten full downloads. Ad-hoc callers now reuse a map younger than
+`#REUSE_WINDOW`, and skip fetching while one is already in flight, since that fetch's result is
+applied to every live item - including the one just added - when it lands. Thread-safe: fetches
+finish on the executor, reads happen on the client thread.
+
+### Field Summary
+
+| Modifier and Type | Field | Description |
+|---|---|---|
+| `static final Duration` | `REUSE_WINDOW` | How old a cached `/latest` map may be and still serve an ad-hoc refresh. |
+| `private volatile long` | `fetchedAtMillis` |  |
+| `private final AtomicBoolean` | `inFlight` |  |
+| `private volatile Map<Integer,WikiRealtimePriceClient.ItemPrices>` | `prices` |  |
+
+### Method Summary
+
+| Modifier and Type | Method | Description |
+|---|---|---|
+| `void` | `finishFetch(Map<Integer,WikiRealtimePriceClient.ItemPrices> result, long nowMillis)` | Records a finished fetch. |
+| `Map<Integer,WikiRealtimePriceClient.ItemPrices>` | `fresh(long nowMillis)` |  |
+| `boolean` | `startFetch(boolean force)` | Claims the right to fetch. |
+
+### Field Detail
+
+#### REUSE_WINDOW
+
+`static final Duration REUSE_WINDOW`
+
+How old a cached `/latest` map may be and still serve an ad-hoc refresh.
+
+#### fetchedAtMillis
+
+`private volatile long fetchedAtMillis`
+
+#### inFlight
+
+`private final AtomicBoolean inFlight`
+
+#### prices
+
+`private volatile Map<Integer,WikiRealtimePriceClient.ItemPrices> prices`
+
+### Method Detail
+
+#### finishFetch
+
+`void finishFetch(Map<Integer,WikiRealtimePriceClient.ItemPrices> result, long nowMillis)`
+
+Records a finished fetch. An empty (failed) result is not cached, so the next ad-hoc refresh
+tries the network again.
+
+- **Parameter** `result` — the fetched map, empty on failure
+- **Parameter** `nowMillis` — the time the fetch finished
+
+#### fresh
+
+`Map<Integer,WikiRealtimePriceClient.ItemPrices> fresh(long nowMillis)`
+
+- **Parameter** `nowMillis` — the current time
+- **Returns:** the cached map when it is non-empty and within `#REUSE_WINDOW`, else `null`
+
+#### startFetch
+
+`boolean startFetch(boolean force)`
+
+Claims the right to fetch.
+
+- **Parameter** `force` — whether to fetch even if another fetch is in flight (the scheduled refresh)
+- **Returns:** whether the caller should fetch
 
 ---
 
@@ -16888,6 +16971,7 @@ executor.
 | `private Instant` | `lastPriceCacheSave` | When the price cache was last written, to throttle per-refresh saves. |
 | `private Instant` | `lastPriceRefresh` |  |
 | `private final Map<Skill,Integer>` | `lastSkillXp` | Per-skill XP as last seen, so a StatChanged can be classified as a real XP gain. |
+| `private final LatestPriceCache` | `latestPriceCache` | The last `/latest` price map, reused by ad-hoc refreshes and coalescing their fetches (#381). |
 | `private CostBasisLedger` | `ledger` | The cost-basis / GE trade ledger (#255); this plugin is its `LedgerHost` seam. |
 | `private int` | `magicXpTick` | The tick of the most recent Magic XP gain, marking removed runes as burned by a spellcast (#235). |
 | `private volatile boolean` | `mappingsLoaded` |  |
@@ -16987,6 +17071,7 @@ executor.
 | `private String` | `examineFor(int itemId)` |  |
 | `public FallbackPricing` | `fallbackPricing()` | Returns the configured fallback-pricing policy for unknown-source changes. |
 | `private void` | `fetchItemMappings()` | Fetches GE item metadata in the background, keeping the previous map on failure. |
+| `private void` | `fetchLatestPrices(boolean force)` | Fetches `/latest` in the background, caches it, and applies it on the client thread. |
 | `private void` | `flushAndCloseProfileStore()` | At logout, writes what the throttled savers still hold for the account that is leaving - the portfolio history is otherwise saved at most every five minutes and was never flushed here, losing up to five minutes of it on every logout - then closes `#profileStore` until the next login has reloaded (#377). |
 | `private void` | `flushRunePouchDelta()` | Diffs settled rune pouch contents once per tick. |
 | `private void` | `focusCompareWindow()` | Brings the compare window to the front if one is open. |
@@ -17081,7 +17166,7 @@ executor.
 | `private void` | `recordPortfolioSnapshot()` | Records a portfolio snapshot into the history (persisting throttled): the running value — owned units (held plus suspended) marked to the current average plus sold lots at their actual sale price — against the invested cost basis of every logged lot, which stays fixed as lots sell. |
 | `private void` | `refreshCompareWindow()` | Re-reads the compare columns from current prices, if a window is open. |
 | `private void` | `refreshDetailWindows()` | Re-populates every open pop-out window with fresh data. |
-| `private void` | `refreshGePrices()` | Fetches the latest prices for all items in the background, then applies them on the client thread. |
+| `private void` | `refreshGePrices()` | Refreshes prices for an ad-hoc caller - a preview, add, pop-out, compare or import. |
 | `private void` | `refreshGePricesGuarded()` | Runs one scheduled price refresh, swallowing anything it throws. |
 | `public void` | `refreshPanel()` | Refreshes the panel without flagging a price update (no change indicators). |
 | `private void` | `refreshPanel(boolean pricesUpdated)` | Pushes the current tracked items and totals to the panel on the Swing thread. |
@@ -17579,6 +17664,12 @@ When the price cache was last written, to throttle per-refresh saves.
 `private final Map<Skill,Integer> lastSkillXp`
 
 Per-skill XP as last seen, so a StatChanged can be classified as a real XP gain.
+
+#### latestPriceCache
+
+`private final LatestPriceCache latestPriceCache`
+
+The last `/latest` price map, reused by ad-hoc refreshes and coalescing their fetches (#381).
 
 #### ledger
 
@@ -18241,6 +18332,14 @@ Returns the configured fallback-pricing policy for unknown-source changes.
 `private void fetchItemMappings()`
 
 Fetches GE item metadata in the background, keeping the previous map on failure.
+
+#### fetchLatestPrices
+
+`private void fetchLatestPrices(boolean force)`
+
+Fetches `/latest` in the background, caches it, and applies it on the client thread.
+
+- **Parameter** `force` — fetch even when another fetch is in flight (the scheduled refresh)
 
 #### flushAndCloseProfileStore
 
@@ -19013,7 +19112,10 @@ Re-populates every open pop-out window with fresh data. Runs on the EDT.
 
 `private void refreshGePrices()`
 
-Fetches the latest prices for all items in the background, then applies them on the client thread.
+Refreshes prices for an ad-hoc caller - a preview, add, pop-out, compare or import. Applies the
+cached `/latest` map when it is under `LatestPriceCache#REUSE_WINDOW` old; otherwise
+starts a fetch, unless one is already in flight, whose result will cover this caller's item too
+(#381). Only the scheduled refresh always goes to the network.
 
 #### refreshGePricesGuarded
 

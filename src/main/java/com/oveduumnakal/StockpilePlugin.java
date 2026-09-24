@@ -1281,7 +1281,7 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 	{
 		try
 		{
-			refreshGePrices();
+			fetchLatestPrices(true);
 		}
 		catch (RuntimeException e)
 		{
@@ -3373,14 +3373,51 @@ public class StockpilePlugin extends Plugin implements LedgerHost, DetectorHost
 		});
 	}
 
-	/** Fetches the latest prices for all items in the background, then applies them on the client thread. */
+	/** The last {@code /latest} price map, reused by ad-hoc refreshes and coalescing their fetches (#381). */
+	private final LatestPriceCache latestPriceCache = new LatestPriceCache();
+
+	/**
+	 * Refreshes prices for an ad-hoc caller - a preview, add, pop-out, compare or import. Applies the
+	 * cached {@code /latest} map when it is under {@link LatestPriceCache#REUSE_WINDOW} old; otherwise
+	 * starts a fetch, unless one is already in flight, whose result will cover this caller's item too
+	 * (#381). Only the scheduled refresh always goes to the network.
+	 */
 	private void refreshGePrices()
 	{
+		Map<Integer, WikiRealtimePriceClient.ItemPrices> cached = latestPriceCache.fresh(System.currentTimeMillis());
+		if (cached != null)
+		{
+			clientThread.invokeLater(() -> applyGePrices(cached));
+			return;
+		}
+
+		fetchLatestPrices(false);
+	}
+
+	/**
+	 * Fetches {@code /latest} in the background, caches it, and applies it on the client thread.
+	 *
+	 * @param force fetch even when another fetch is in flight (the scheduled refresh)
+	 */
+	private void fetchLatestPrices(boolean force)
+	{
+		if (!latestPriceCache.startFetch(force))
+			return;
+
 		executor.execute(() ->
 		{
-			Map<Integer, WikiRealtimePriceClient.ItemPrices> all = wikiPriceClient.fetchAll();
+			Map<Integer, WikiRealtimePriceClient.ItemPrices> all = Collections.emptyMap();
+			try
+			{
+				all = wikiPriceClient.fetchAll();
+			}
+			finally
+			{
+				latestPriceCache.finishFetch(all, System.currentTimeMillis());
+			}
 
-			clientThread.invokeLater(() -> applyGePrices(all));
+			Map<Integer, WikiRealtimePriceClient.ItemPrices> result = all;
+			clientThread.invokeLater(() -> applyGePrices(result));
 		});
 	}
 
