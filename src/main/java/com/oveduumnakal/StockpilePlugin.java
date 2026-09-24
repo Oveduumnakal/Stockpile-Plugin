@@ -3818,6 +3818,16 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 	 * Grand Exchange integration: each tick, detects the item on the open offer setup/details
 	 * screen and, per {@link StockpileConfig#geIntegration()}, either auto-opens it in Stockpile
 	 * or injects a "View in Stockpile" button. Only acts when the shown item changes.
+	 *
+	 * <p>The injected widgets are <em>reused</em> across item changes rather than torn down and
+	 * rebuilt. They used to be hidden and re-injected on every change, and hiding a widget leaves it
+	 * a child of the container - so browsing N items left up to 3N orphaned children on a live
+	 * interface, each still walked by the client's widget tree (#324). Neither widget depends on the
+	 * item: the Stockpile button's sprite is fixed and its handler reads {@code currentGeItem} at
+	 * click time, and the Track/Untrack button only needs its label refreshed, which
+	 * {@link #applyGeTrackLabel()} does in place. Not re-injecting also drops
+	 * {@code injectGeTrackButton}'s full recursive scan of the GE toplevel from every item change to
+	 * once per interface load.
 	 */
 	@Subscribe
 	public void onGameTick(GameTick event)
@@ -3846,12 +3856,11 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (item != currentGeItem)
 		{
 			currentGeItem = item;
-			hideGeButton();
-			hideGeTrackButton();
 			geLineItem = -1;
 			geLineHigh = 0;
 			geLineLow = 0;
 			geLineSource = null;
+			applyGeTrackLabel();
 
 			if (item > 0 && wantPrices)
 				requestGeLinePrices(item);
@@ -3866,11 +3875,36 @@ public class StockpilePlugin extends Plugin implements LedgerHost
 		if (wantTrack && item > 0 && geTrackButton == null)
 			injectGeTrackButton();
 
+		setGeWidgetsVisible(item > 0);
+
 		if (wantPrices && item > 0)
 			applyGeHighLowLine();
 	}
 
-	/** Hides and forgets the injected GE button, if one is currently on the offer interface. */
+	/**
+	 * Shows or hides the injected GE widgets without destroying them, for when the interface is on a
+	 * screen with no item (the offer list). Reusing them this way is what keeps a browsing session
+	 * from stacking orphaned children on the container (#324).
+	 */
+	private void setGeWidgetsVisible(boolean visible)
+	{
+		for (Widget widget : new Widget[]{geButton, geTrackButton, geTrackLabel})
+		{
+			if (widget == null || widget.isHidden() == !visible)
+				continue;
+
+			widget.setHidden(!visible);
+			widget.revalidate();
+		}
+	}
+
+	/**
+	 * Hides and forgets the injected GE button, if one is currently on the offer interface.
+	 *
+	 * <p>Only called when the feature is switched off or the interface goes away, not on an item
+	 * change - a hidden widget stays a child of its container, so calling this per item change is
+	 * what accumulated orphans (#324).
+	 */
 	private void hideGeButton()
 	{
 		if (geButton == null)

@@ -15672,6 +15672,7 @@ executor.
 | `private void` | `scheduleRefresh()` | (Re)schedules the recurring GE price refresh at the configured rate (min 30s), replacing any prior task. |
 | `private Integer` | `searchItemIdByExactName(String lowerName)` | Offline fallback for `#resolveVariantIds`: searches the client's item index for a tradeable item whose name equals `lowerName` (case-insensitive). |
 | `private void` | `setFavorite(int itemId, boolean favorite)` | Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes. |
+| `private void` | `setGeWidgetsVisible(boolean visible)` | Shows or hides the injected GE widgets without destroying them, for when the interface is on a screen with no item (the offer list). |
 | `private void` | `setGlobalOrder(List<Integer> orderedIds)` | Reorders the tracked items to match the given id order (drag reorder), then persists and refreshes. |
 | `private void` | `setGroupCollapsed(String groupKey, boolean collapsed)` | Sets a list group's collapsed state (a category name, or a special-group key), then persists and refreshes. |
 | `private void` | `setItemCategory(int itemId, String category)` | Assigns an item to a category (null/blank clears it to Uncategorized), then persists and refreshes. |
@@ -17053,6 +17054,10 @@ Brings the compare window to the front if one is open. Runs on the EDT.
 
 Hides and forgets the injected GE button, if one is currently on the offer interface.
 
+<p>Only called when the feature is switched off or the interface goes away, not on an item
+change - a hidden widget stays a child of its container, so calling this per item change is
+what accumulated orphans (#324).
+
 #### hideGeTrackButton
 
 `private void hideGeTrackButton()`
@@ -17468,6 +17473,16 @@ where swallowing real offer events would lose a genuine fill.
 Grand Exchange integration: each tick, detects the item on the open offer setup/details
 screen and, per `StockpileConfig#geIntegration()`, either auto-opens it in Stockpile
 or injects a "View in Stockpile" button. Only acts when the shown item changes.
+
+<p>The injected widgets are <em>reused</em> across item changes rather than torn down and
+rebuilt. They used to be hidden and re-injected on every change, and hiding a widget leaves it
+a child of the container - so browsing N items left up to 3N orphaned children on a live
+interface, each still walked by the client's widget tree (#324). Neither widget depends on the
+item: the Stockpile button's sprite is fixed and its handler reads `currentGeItem` at
+click time, and the Track/Untrack button only needs its label refreshed, which
+`#applyGeTrackLabel()` does in place. Not re-injecting also drops
+`injectGeTrackButton`'s full recursive scan of the GE toplevel from every item change to
+once per interface load.
 
 #### onGrandExchangeOfferChanged
 
@@ -18039,6 +18054,14 @@ item whose name equals `lowerName` (case-insensitive).
 `private void setFavorite(int itemId, boolean favorite)`
 
 Sets an item's favorite flag (pinning it to the top "Favorites" group), then persists and refreshes.
+
+#### setGeWidgetsVisible
+
+`private void setGeWidgetsVisible(boolean visible)`
+
+Shows or hides the injected GE widgets without destroying them, for when the interface is on a
+screen with no item (the offer list). Reusing them this way is what keeps a browsing session
+from stacking orphaned children on the container (#324).
 
 #### setGlobalOrder
 
